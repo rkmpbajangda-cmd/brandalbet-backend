@@ -20,9 +20,9 @@ export class ProfileValidationError extends Error {
 function cleanString(value, max, field) {
   if (value === undefined) return undefined;
   if (value === null) return null;
-  if (typeof value !== 'string') throw new ProfileValidationError(`invalid_${field}`);
+  if (typeof value !== 'string') throw new ProfileValidationError('invalid_' + field);
   const cleaned = value.trim();
-  if (cleaned.length > max) throw new ProfileValidationError(`invalid_${field}`);
+  if (cleaned.length > max) throw new ProfileValidationError('invalid_' + field);
   return cleaned;
 }
 
@@ -47,10 +47,12 @@ export function profileView(uid, data = {}) {
   return {
     uid,
     email: typeof data.email === 'string' ? data.email : null,
+    username: typeof data.username === 'string' ? data.username : '',
     displayName: typeof data.displayName === 'string' ? data.displayName : '',
     phone: typeof data.phone === 'string' ? data.phone : '',
     language: typeof data.language === 'string' ? data.language : 'id',
     timezone: typeof data.timezone === 'string' ? data.timezone : 'Asia/Jakarta',
+    onboardingCompleted: data.onboardingCompleted === true,
   };
 }
 
@@ -62,10 +64,12 @@ export async function getOrCreateProfile(actor, { db = getAdminDb() } = {}) {
   const initial = {
     uid: actor.uid,
     email: typeof actor.email === 'string' ? actor.email : null,
+    username: '',
     displayName: typeof actor.name === 'string' ? actor.name : '',
     phone: '',
     language: 'id',
     timezone: 'Asia/Jakarta',
+    onboardingCompleted: false,
     createdAt: FieldValue.serverTimestamp(),
     updatedAt: FieldValue.serverTimestamp(),
   };

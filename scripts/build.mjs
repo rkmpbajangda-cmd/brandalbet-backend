@@ -14,11 +14,13 @@ const expected = [
   'bootstrap-superadmin',
   'health',
   'me',
+  'member-bank-account',
+  'member-onboarding',
   'member-profile',
   'member-session',
   'wallet',
 ];
 if (JSON.stringify(actual) !== JSON.stringify(expected)) {
-  throw new Error(`Unexpected deployable functions: ${actual.join(', ')}`);
+  throw new Error('Unexpected deployable functions: ' + actual.join(', '));
 }
-console.log(`Netlify bundling passed: ${actual.join(', ')} (Node.js 22, esbuild).`);
+console.log('Netlify bundling passed: ' + actual.join(', ') + ' (Node.js 22, esbuild).');
