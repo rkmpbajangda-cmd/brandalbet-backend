@@ -1,12 +1,13 @@
 # Security baseline
 
-Status: initial scaffold; only public GET health is implemented. The following
-requirements are mandatory acceptance gates for future authenticated features,
-not a claim that those features already exist.
+Status: Firebase Admin / authentication / RBAC foundation implemented. Public health
+remains credential-free. Protected routes verify Firebase ID Tokens, backoffice access
+requires both the backoffice claim and an allowed role, and bootstrap is disabled unless
+explicitly enabled through server-side environment configuration.
 
 - Firebase Admin runs only in backend functions; never bundle it into member or backoffice UI.
-- Each future authenticated endpoint must verify the Firebase ID Token with Firebase Admin,
-  including revocation for sensitive operations. Missing/invalid/revoked tokens fail closed.
+- Each authenticated endpoint verifies the Firebase ID Token with Firebase Admin,
+  including revocation for protected routes. Missing/invalid/revoked tokens fail closed.
 - Authorization uses verified Firebase Custom Claims and explicit per-action permissions.
   Prepared roles: member, operator, finance, admin, superadmin. Unknown/missing roles and
   unlisted actions are denied. No implicit role hierarchy or hardcoded admin UID bypass.
@@ -19,12 +20,14 @@ not a claim that those features already exist.
   authentication/signature verification over original request bytes, constant-time comparisons,
   replay protection, and durable transactional idempotency. Duplicate events cannot credit twice.
   Fail closed when provider configuration is absent. No fake providers or callbacks exist here.
-- Sensitive administrative actions require durable audit records with actor, action, target,
-  outcome, timestamp, and correlation ID. Never log tokens, keys, or raw sensitive payloads.
+- Protected access emits structured security audit events with actor, action, outcome, timestamp,
+  and correlation ID. Before sensitive administrative mutations go live, attach a durable audit
+  sink. Never log tokens, keys, or raw sensitive payloads.
 - Validate inputs, bound payload sizes, apply rate limits, and use explicit origin allowlists.
   CORS is not authentication. Trust no role, wallet amount, or authorization decision from UI.
 - Secrets come from Netlify environment settings or managed secret storage. Never commit
   secrets, service-account JSON, private keys, or .env files. No credentials are provisioned here.
 
-This stage intentionally has no authenticated routes, Firebase initialization,
-wallet/payment/game logic, database writes, or administrative operations.
+This stage intentionally has no wallet/payment/game logic or provider callbacks.
+Firebase Admin initializes lazily from server-side environment values only. Structured
+security audit events are emitted without bearer tokens or private keys.

@@ -3,9 +3,11 @@
 Secure server-side backend API for Brandalbet.
 
 Repository ini berdiri sendiri untuk backend Netlify Functions + Firebase Admin.
-Tahap awal hanya menyediakan health-check publik. Firebase belum diinisialisasi;
-tidak ada credential, endpoint authenticated, wallet, payment, atau integrasi game.
-Prinsip keamanan untuk tahap berikutnya tertulis di `docs/security.md`.
+Tahap autentikasi backend menyediakan health-check publik serta endpoint protected
+`me`, `backoffice-health`, dan bootstrap superadmin yang fail-closed. Firebase Admin
+hanya diinisialisasi saat endpoint authenticated memerlukannya dan semua credential
+tetap berasal dari Netlify Environment Variables. Wallet, payment, dan integrasi game
+belum diimplementasikan. Prinsip keamanan ada di `docs/security.md`.
 
 ## Runtime dan dependency
 
@@ -27,23 +29,28 @@ brandalbet-backend/
 ├── netlify.toml
 ├── netlify/functions/
 │   ├── health.js
+│   ├── me.js
+│   ├── backoffice-health.js
+│   ├── bootstrap-superadmin.js
 │   └── _shared/
 ├── src/
 │   ├── config/
-│   ├── auth/
+│   ├── auth/authenticate.js
 │   ├── rbac/roles.js
-│   ├── firebase/
+│   ├── firebase/admin.js
+│   ├── audit/logger.js
+│   ├── security/cors.js
+│   ├── utils/http.js
 │   ├── wallet/
 │   ├── ledger/
 │   ├── payment/
-│   ├── game/
-│   ├── audit/
-│   ├── security/
-│   └── utils/
+│   └── game/
 ├── scripts/
 │   ├── check.mjs
 │   └── build.mjs
-├── tests/health.test.js
+├── tests/
+│   ├── health.test.js
+│   └── auth-rbac.test.js
 ├── docs/security.md
 └── public/.gitkeep
 ```
@@ -89,33 +96,31 @@ Output bundling validasi berada di `.netlify/validation-functions/` dan diabaika
 4. Deploy, lalu akses `/.netlify/functions/health` pada URL situs Netlify.
 5. Verifikasi status 200 dan response JSON persis seperti di atas.
 
-Instruksi deploy disediakan untuk tahap pengguna berikutnya; scaffold ini tidak
-membuat akun Netlify, mengatur credential, atau menjalankan deployment produksi.
-Health dapat dideploy tanpa Firebase. Jangan menambahkan credential hanya untuk
-menjalankan health-check.
+Health dapat dideploy tanpa Firebase. Protected endpoint fail closed sampai Firebase
+Admin dan origin allowlist dikonfigurasi di Netlify Environment Variables.
 
 Referensi konfigurasi: https://docs.netlify.com/build/functions/configuration/
 
 ## Security principles
 
 - Firebase Admin hanya server-side.
-- Endpoint authenticated mendatang wajib memverifikasi Firebase ID Token.
+- Endpoint authenticated memverifikasi Firebase ID Token dengan revocation check.
 - RBAC berdasarkan Firebase Custom Claims dengan role `member`, `operator`,
   `finance`, `admin`, `superadmin`; default deny dan least privilege.
+- Backoffice memerlukan `backoffice=true` **dan** role backoffice yang dikenal.
 - Tidak ada UID admin yang di-hardcode sebagai bypass atau satu-satunya keamanan.
 - Wallet mutation hanya server-side; ledger append-only dan immutable.
 - Payment webhook dan game callback wajib memiliki verifikasi signature/auth,
   replay protection, dan idempotency yang durable sebelum diaktifkan.
-- Semua tindakan administratif sensitif wajib menghasilkan audit log.
+- Protected access menghasilkan structured security audit log tanpa token/private key.
 - Secret hanya dari Netlify Environment Variables / managed secret storage.
 - Origin allowlist bukan pengganti authentication/authorization.
 
-Ini adalah baseline untuk implementasi tahap berikutnya. Kontrol transaksi,
-webhook, auth, dan audit belum diimplementasikan karena belum ada endpoint terkait.
+Kontrol transaksi, wallet, payment, webhook, dan game provider belum diimplementasikan.
 
 ## Environment variable names
 
-Nama saja, tanpa nilai. Belum diperlukan oleh health-check:
+Nama saja, tanpa nilai. Health-check publik tidak memerlukan nilai ini:
 
 ```text
 FIREBASE_PROJECT_ID
@@ -123,9 +128,11 @@ FIREBASE_CLIENT_EMAIL
 FIREBASE_PRIVATE_KEY
 ALLOWED_MEMBER_ORIGINS
 ALLOWED_BACKOFFICE_ORIGINS
+BOOTSTRAP_SUPERADMIN_UID
+BOOTSTRAP_ENABLED
 ```
 
-Masukkan nilai kelak melalui pengaturan environment Netlify atau secret storage;
+Masukkan nilai melalui pengaturan environment Netlify atau secret storage;
 jangan menuliskannya di README, source, `netlify.toml`, test, log, atau GitHub.
 
 ## Larangan secret di Git
@@ -140,3 +147,10 @@ jangan gunakan `git add -f` untuk melewati pengabaian file sensitif.
 Repository wajib PRIVATE, default branch `main`, dan tanpa file lisensi.
 `private: true` pada package mencegah publikasi npm; privasi GitHub tetap harus
 dikonfirmasi tersendiri melalui pengaturan repository.
+
+## Protected endpoint contracts
+
+- `GET /.netlify/functions/me` memerlukan Firebase ID Token dan hanya mengembalikan `uid`, role yang dikenal, serta status backoffice.
+- `GET /.netlify/functions/backoffice-health` memerlukan `backoffice=true` dan role `operator`, `finance`, `admin`, atau `superadmin`.
+- `POST /.netlify/functions/bootstrap-superadmin` hanya aktif saat `BOOTSTRAP_ENABLED=true`, UID token sama dengan `BOOTSTRAP_SUPERADMIN_UID`, dan harus dinonaktifkan kembali setelah bootstrap berhasil.
+- Missing/invalid token fail closed. Credential tidak pernah dikembalikan dalam response atau log.
