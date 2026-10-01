@@ -9,7 +9,15 @@ const functions = await zipFunctions('netlify/functions', '.netlify/validation-f
 });
 
 const actual = functions.map((item) => item.name).sort();
-const expected = ['backoffice-health', 'bootstrap-superadmin', 'health', 'me'];
+const expected = [
+  'backoffice-health',
+  'bootstrap-superadmin',
+  'health',
+  'me',
+  'member-profile',
+  'member-session',
+  'wallet',
+];
 if (JSON.stringify(actual) !== JSON.stringify(expected)) {
   throw new Error(`Unexpected deployable functions: ${actual.join(', ')}`);
 }

@@ -1,5 +1,6 @@
 import { cert, getApps, initializeApp } from 'firebase-admin/app';
 import { getAuth } from 'firebase-admin/auth';
+import { getFirestore } from 'firebase-admin/firestore';
 
 export class FirebaseConfigError extends Error {
   constructor(missing) {
@@ -27,7 +28,7 @@ export function readFirebaseConfig(env = process.env) {
   };
 }
 
-export function getAdminAuth(env = process.env) {
+export function ensureAdminApp(env = process.env) {
   if (getApps().length === 0) {
     const { projectId, clientEmail, privateKey } = readFirebaseConfig(env);
     initializeApp({
@@ -35,5 +36,14 @@ export function getAdminAuth(env = process.env) {
       projectId,
     });
   }
+}
+
+export function getAdminAuth(env = process.env) {
+  ensureAdminApp(env);
   return getAuth();
+}
+
+export function getAdminDb(env = process.env) {
+  ensureAdminApp(env);
+  return getFirestore();
 }
