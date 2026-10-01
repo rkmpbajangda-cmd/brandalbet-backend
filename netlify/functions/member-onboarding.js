@@ -1,3 +1,4 @@
+import { ServiceError } from '../../src/utils/errors.js';
 import { authenticateRequest, AuthHttpError } from '../../src/auth/authenticate.js';
 import { auditSecurityEvent } from '../../src/audit/logger.js';
 import { corsHeaders, CorsError } from '../../src/security/cors.js';
@@ -27,10 +28,11 @@ export function createHandler({ verifyIdToken, onboard = completeMemberOnboardin
       return json(200, { ok: true, ...result }, cors);
     } catch (error) {
       if (actor) auditSecurityEvent({ event, actor, action: 'member.onboarding.complete', outcome: 'error' });
-      const known = error instanceof AuthHttpError || error instanceof CorsError || error instanceof OnboardingValidationError;
+      const known = error instanceof ServiceError || error instanceof AuthHttpError || error instanceof CorsError || error instanceof OnboardingValidationError;
       return json(known ? error.statusCode : 500, { ok: false, error: known ? error.code : 'internal_error' }, cors);
     }
   };
 }
 
 export const handler = createHandler();
+
