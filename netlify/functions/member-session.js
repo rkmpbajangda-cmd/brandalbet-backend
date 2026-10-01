@@ -2,12 +2,14 @@ import { authenticateRequest, AuthHttpError } from '../../src/auth/authenticate.
 import { auditSecurityEvent } from '../../src/audit/logger.js';
 import { corsHeaders, CorsError } from '../../src/security/cors.js';
 import { getOrCreateProfile } from '../../src/member/profile.js';
+import { getBankAccount } from '../../src/member/bank-account.js';
 import { getOrCreateWallet } from '../../src/wallet/service.js';
 import { empty, json } from '../../src/utils/http.js';
 
 export function createHandler({
   verifyIdToken,
   loadProfile = getOrCreateProfile,
+  loadBankAccount = getBankAccount,
   loadWallet = getOrCreateWallet,
 } = {}) {
   return async (event) => {
@@ -19,13 +21,14 @@ export function createHandler({
       if (event.httpMethod !== 'GET') return json(405, { ok: false, error: 'method_not_allowed' }, { ...cors, Allow: 'GET, OPTIONS' });
 
       actor = await authenticateRequest(event, { verifyIdToken });
-      const [profile, wallet] = await Promise.all([
+      const [profile, bankAccount, wallet] = await Promise.all([
         loadProfile(actor),
+        loadBankAccount(actor.uid),
         loadWallet(actor.uid),
       ]);
 
       auditSecurityEvent({ event, actor, action: 'member.session.read', outcome: 'allowed' });
-      return json(200, { ok: true, profile, wallet }, cors);
+      return json(200, { ok: true, profile, bankAccount, wallet }, cors);
     } catch (error) {
       if (actor) auditSecurityEvent({ event, actor, action: 'member.session.read', outcome: 'error' });
       const known = error instanceof AuthHttpError || error instanceof CorsError;
