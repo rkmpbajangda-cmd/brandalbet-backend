@@ -5,6 +5,7 @@ import { isKnownRole } from '../../src/rbac/roles.js';
 import { empty, json } from '../../src/utils/http.js';
 
 export function createHandler(dependencies = {}) {
+  const { verifyIdToken, verifyMemberSession, env = process.env } = dependencies;
   return async (event) => {
     let cors = {};
     try {
@@ -12,7 +13,12 @@ export function createHandler(dependencies = {}) {
       if (event.httpMethod === 'OPTIONS') return empty(204, cors);
       if (event.httpMethod !== 'GET') return json(405, { ok: false, error: 'method_not_allowed' }, { ...cors, Allow: 'GET, OPTIONS' });
 
-      const actor = await authenticateRequest(event, dependencies);
+      const actor = await authenticateRequest(event, {
+        verifyIdToken,
+        verifyMemberSession,
+        requireMemberSession: true,
+        env,
+      });
       auditSecurityEvent({ event, actor, action: 'auth.me.read', outcome: 'allowed' });
       return json(200, {
         ok: true,
