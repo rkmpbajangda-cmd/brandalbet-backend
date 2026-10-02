@@ -16,6 +16,8 @@ const expected = [
   'backoffice-readiness',
   'bootstrap-superadmin',
   'game-launch',
+  'game-wallet-reconcile',
+  'game-wallet-transfer',
   'games',
   'health',
   'me',
