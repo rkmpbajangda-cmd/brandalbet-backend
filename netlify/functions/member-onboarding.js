@@ -11,7 +11,7 @@ function parseBody(event) {
   catch { throw new OnboardingValidationError('invalid_json'); }
 }
 
-export function createHandler({ verifyIdToken, onboard = completeMemberOnboarding
+export function createHandler({ verifyIdToken, onboard = completeMemberOnboarding,
   env = process.env,
 } = {}) {
   return async (event) => {
