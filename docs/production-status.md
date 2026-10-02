@@ -79,3 +79,7 @@ Dokumen menegaskan Transfer Wallet berbeda dari deposit/withdraw payment gateway
 - 14 Netlify functions berhasil dibundle dengan target Node 22. Runtime Node 22 belum diuji pada sesi ini.
 - XML dan sintaks JavaScript lulus. Browser test belum berjalan karena executable Chromium tidak tersedia.
 - Belum ada adapter payment produksi terdaftar. Status readiness tetap false; tidak ada endpoint mutasi saldo dari konfigurasi ini.
+
+## Kolom payment dinamis
+
+Form tidak lagi terbatas pada lima kolom. Tersedia 20 preset dan kolom khusus per merchant, maksimum 30 kolom dengan jenis teks/rahasia/PEM/URL HTTPS. Schema dan nilai tersimpan terpisah; nilai tetap terenkripsi. Konfigurasi lama kompatibel. 47/47 backend tests lulus; status transaksi live tetap belum aktif dan registry adapter tetap kosong.

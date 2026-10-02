@@ -87,3 +87,45 @@ test('endpoint denies financial role before storage and enforces recent authenti
  }
  assert.equal(called,false);
 });
+
+test('custom credential schemas store arbitrary documented fields without exposing values',async()=>{
+ const db=transactionDb();
+ const schema=[{id:'partner_id',label:'Partner ID',kind:'text'},{id:'signing_secret',label:'Signing Secret',kind:'secret'},{id:'endpoint',label:'API URL',kind:'url'}];
+ const record=await saveConnection(admin,{...input,credentialSchema:schema,credentials:{partner_id:'partner-fixture',signing_secret:'secret-fixture',endpoint:'https://example.invalid/api'}},{db,env,now});
+ assert.deepEqual(record.credentialSchema,schema);
+ assert.deepEqual(record.credentialFields,['partner_id','signing_secret','endpoint']);
+ assert.ok(!JSON.stringify(record).includes('secret-fixture'));
+ const stored=db.read('paymentConnections/'+record.id);
+ assert.equal(openCredentials(record.id,stored.credentials,env).signing_secret,'secret-fixture');
+ // Omitting schema on subsequent edits preserves the stored custom definition.
+ const changed=await saveConnection(admin,{...input,id:record.id,expectedRevision:1,credentials:{}},{db,env,now});
+ assert.deepEqual(changed.credentialSchema,schema);
+});
+test('schema cannot drop a populated credential or silently reinterpret an invalid URL',async()=>{
+ const db=transactionDb();const schema=[{id:'partner',label:'Partner',kind:'secret'},{id:'other',label:'Other',kind:'text'}];
+ const record=await saveConnection(admin,{...input,credentialSchema:schema,credentials:{partner:'saved-secret'}},{db,env,now});
+ await assert.rejects(saveConnection(admin,{...input,id:record.id,expectedRevision:1,credentialSchema:[schema[1]],credentials:{}},{db,env,now}),{code:'credential_field_in_use'});
+ await assert.rejects(saveConnection(admin,{...input,id:record.id,expectedRevision:1,credentialSchema:[{...schema[0],kind:'url'},schema[1]],credentials:{}},{db,env,now}),{code:'invalid_payment_url'});
+ assert.equal(db.read('paymentConnections/'+record.id).revision,1);
+});
+test('dynamic schema blocks duplicate IDs, prototype names, unknown types and oversized schema',async()=>{
+ const db=transactionDb();const field={id:'partner',label:'Partner',kind:'secret'};
+ for(const schema of [[field,{...field,id:'PARTNER'}],[{...field,id:'constructor'}],[{...field,kind:'script'}],Array.from({length:31},(_,i)=>({...field,id:'field'+i}))]){
+  await assert.rejects(saveConnection(admin,{...input,credentials:{},credentialSchema:schema},{db,env,now}));
+ }
+ assert.equal(db.entries().length,0);
+});
+test('custom URL fields require HTTPS and cannot contain embedded credentials',async()=>{
+ const db=transactionDb();const schema=[{id:'endpoint',label:'Endpoint',kind:'url'}];
+ for(const endpoint of ['http://example.invalid','javascript:alert(1)','https://user:pass@example.invalid']){
+  await assert.rejects(saveConnection(admin,{...input,credentialSchema:schema,credentials:{endpoint}},{db,env,now}),{code:'invalid_payment_url'});
+ }
+ assert.equal(db.entries().length,0);
+});
+test('legacy connections keep their original five-field schema on edits',async()=>{
+ const id='legacy';const db=transactionDb({['paymentConnections/'+id]:{label:input.label,provider:input.provider,mode:'sandbox',revision:1,credentialFields:['privateKey'],credentials:sealCredentials(id,{privateKey:'old-key-fixture'},env)}});
+ const result=await saveConnection(admin,{...input,id,expectedRevision:1,credentials:{}},{db,env,now});
+ assert.equal(result.credentialSchema.length,5);
+ assert.deepEqual(result.credentialFields,['privateKey']);
+ assert.equal(openCredentials(id,db.read('paymentConnections/'+id).credentials,env).privateKey,'old-key-fixture');
+});

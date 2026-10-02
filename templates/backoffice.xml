@@ -99,8 +99,9 @@
       }catch(error){document.getElementById('readinessMessage').textContent=error.message||'Gagal memeriksa konfigurasi.'}
     }
 
-    let paymentCache=[];let paymentProviders=[];
-    const paymentLabels={merchantId:'Merchant ID',privateKey:'Private Key',apiKey:'API Key',publicKey:'Public Key',webhookSecret:'Webhook Secret'};
+    let paymentCache=[],paymentProviders=[],paymentPresets=[],paymentSavedFields=[];
+    let paymentDefaults=[{id:'merchantId',label:'Merchant ID',kind:'text'},{id:'privateKey',label:'Private Key',kind:'multiline'},{id:'apiKey',label:'API Key',kind:'secret'},{id:'publicKey',label:'Public Key',kind:'multiline'},{id:'webhookSecret',label:'Webhook Secret',kind:'secret'}];
+    let paymentSchema=paymentDefaults.map(f=>({...f}));
     function paymentNotice(message){const node=$('#paymentNotice');if(node)node.textContent=message}
     async function paymentRequest(method='GET',payload){
       if(!user)throw new Error('Silakan login kembali.');
@@ -109,48 +110,80 @@
         method,headers:{Authorization:'Bearer '+token,'Content-Type':'application/json'},
         cache:'no-store',body:payload===undefined?undefined:JSON.stringify(payload)});
       let data={};try{data=await response.json()}catch{}
-      if(!response.ok){const messages={recent_login_required:'Silakan keluar dan login kembali sebelum mengganti kredensial.',payment_vault_unconfigured:'Penyimpanan kredensial belum diaktifkan pada server.',payment_revision_conflict:'Konfigurasi telah berubah. Muat ulang sebelum menyimpan.',forbidden:'Pengaturan pembayaran hanya dapat diakses admin/superadmin.',create_separate_connection_for_provider_or_mode:'Gunakan koneksi baru untuk layanan atau mode berbeda.'};throw new Error(messages[data.error]||'Konfigurasi belum dapat diproses. Silakan muat ulang.')}
+      if(!response.ok){const messages={recent_login_required:'Silakan keluar dan login kembali sebelum mengganti konfigurasi.',payment_vault_unconfigured:'Penyimpanan kredensial belum diaktifkan pada server.',payment_revision_conflict:'Konfigurasi telah berubah. Muat ulang sebelum menyimpan.',forbidden:'Pengaturan pembayaran hanya dapat diakses admin/superadmin.',credential_field_in_use:'Kolom yang memiliki nilai tersimpan harus dipertahankan.',invalid_credential_field_id:'Nama teknis kolom tidak valid atau duplikat.',invalid_credential_schema:'Definisi kolom tidak valid. Maksimal 30 kolom.',invalid_payment_url:'URL harus menggunakan HTTPS tanpa username/password di dalam URL.',invalid_payment_credentials:'Periksa nama kolom dan panjang nilainya.'};throw new Error(messages[data.error]||'Konfigurasi belum dapat diproses. Silakan muat ulang.')}
       return data;
     }
-    function resetPaymentForm(){const form=$('#paymentForm');form.reset();$('#paymentId').value='';$('#paymentRevision').value='0';$('#paymentProvider').disabled=false;$('#paymentMode').disabled=false;$('#paymentFormTitle').textContent='Tambah Merchant';$('#paymentCredentialState').textContent='Isi kredensial yang dibutuhkan layanan Anda.'}
+    function paymentValues(){const result={};for(const input of document.querySelectorAll('#paymentFields [data-credential]')){if(input.value.trim())result[input.dataset.credential]=input.value}return result}
+    function renderPaymentFields(values={}){
+      const root=$('#paymentFields');root.replaceChildren();
+      for(const field of paymentSchema){
+        const wrapper=document.createElement('div');wrapper.className='field full';
+        const label=document.createElement('label');label.htmlFor='paymentValue_'+field.id;label.textContent=field.label+(paymentSavedFields.includes(field.id)?' — sudah tersimpan':'');
+        const input=document.createElement(field.kind==='multiline'?'textarea':'input');input.id='paymentValue_'+field.id;input.dataset.credential=field.id;input.maxLength=12000;input.autocomplete='off';input.spellcheck=false;
+        if(field.kind!=='multiline')input.type=field.kind==='secret'?'password':field.kind==='url'?'url':'text';
+        input.value=values[field.id]||'';input.placeholder=paymentSavedFields.includes(field.id)?'Kosongkan untuk mempertahankan nilai lama':'';
+        const remove=document.createElement('button');remove.type='button';remove.className='btn ghost';remove.textContent='Hapus Kolom';remove.disabled=paymentSavedFields.includes(field.id)||paymentSchema.length===1;
+        remove.addEventListener('click',()=>{const current=paymentValues();delete current[field.id];paymentSchema=paymentSchema.filter(f=>f.id!==field.id);renderPaymentFields(current)});
+        wrapper.append(label,input,remove);root.appendChild(wrapper);
+      }
+    }
+    function addPaymentField(field){
+      if(paymentSchema.length>=30){paymentNotice('Maksimal 30 kolom per koneksi.');return}
+      if(!/^[A-Za-z][A-Za-z0-9_]{0,49}$/.test(field.id)||['constructor','prototype','__proto__'].includes(field.id.toLowerCase())||paymentSchema.some(f=>f.id.toLowerCase()===field.id.toLowerCase())){paymentNotice('Nama teknis harus unik, diawali huruf, dan hanya memakai huruf, angka, atau underscore.');return}
+      if(!field.label.trim()||field.label.length>80){paymentNotice('Isi label kolom, maksimal 80 karakter.');return}
+      const values=paymentValues();paymentSchema.push(field);renderPaymentFields(values);paymentNotice('Kolom ditambahkan. Simpan Konfigurasi untuk menyimpan perubahan.');
+    }
+    function resetPaymentForm(){
+      $('#paymentForm').reset();$('#paymentId').value='';$('#paymentRevision').value='0';$('#paymentProvider').disabled=false;$('#paymentMode').disabled=false;
+      $('#paymentFormTitle').textContent='Tambah Merchant';paymentSavedFields=[];paymentSchema=paymentDefaults.map(f=>({...f}));renderPaymentFields();
+    }
     function renderPaymentConnections(){
       const root=$('#paymentList');root.replaceChildren();
       if(!paymentCache.length){root.textContent='Belum ada merchant tersimpan.';return}
       for(const connection of paymentCache){
-        const row=document.createElement('div');row.className='promo-admin-item';
-        const info=document.createElement('div');const title=document.createElement('h3');title.textContent=connection.label;
-        const summary=document.createElement('p');summary.textContent=connection.provider+' · '+connection.mode+' · '+(connection.adapterAvailable?'Konfigurasi tersimpan; koneksi belum diuji':'Adapter layanan belum tersedia');
-        const fields=document.createElement('p');fields.textContent='Terisi: '+(connection.credentialFields.map(f=>paymentLabels[f]||f).join(', ')||'belum ada kredensial');
-        info.append(title,summary,fields);
+        const schema=connection.credentialSchema||paymentDefaults;
+        const row=document.createElement('div');row.className='promo-admin-item';const info=document.createElement('div');const title=document.createElement('h3');title.textContent=connection.label;
+        const summary=document.createElement('p');summary.textContent=connection.provider+' · '+connection.mode+' · '+(connection.adapterAvailable?'Konfigurasi tersimpan; koneksi belum diuji':'Layanan belum tersedia untuk transaksi');
+        const fields=document.createElement('p');fields.textContent='Terisi: '+(connection.credentialFields.map(id=>schema.find(f=>f.id===id)?.label||id).join(', ')||'belum ada kredensial');info.append(title,summary,fields);
         const button=document.createElement('button');button.type='button';button.className='btn ghost';button.textContent='Edit';button.addEventListener('click',()=>{
-          resetPaymentForm();$('#paymentId').value=connection.id;$('#paymentRevision').value=String(connection.revision);$('#paymentLabel').value=connection.label;$('#paymentProvider').value=connection.provider;$('#paymentMode').value=connection.mode;$('#paymentProvider').disabled=true;$('#paymentMode').disabled=true;$('#paymentFormTitle').textContent='Edit Merchant';$('#paymentCredentialState').textContent='Kredensial tersimpan: '+(connection.credentialFields.map(f=>paymentLabels[f]).join(', ')||'belum ada')+'. Kosongkan kolom untuk mempertahankan nilai lama.';$('#paymentLabel').focus();
+          resetPaymentForm();$('#paymentId').value=connection.id;$('#paymentRevision').value=String(connection.revision);$('#paymentLabel').value=connection.label;$('#paymentProvider').value=connection.provider;$('#paymentMode').value=connection.mode;$('#paymentProvider').disabled=true;$('#paymentMode').disabled=true;$('#paymentFormTitle').textContent='Edit Merchant';paymentSavedFields=[...connection.credentialFields];paymentSchema=schema.map(f=>({...f}));renderPaymentFields();$('#paymentLabel').focus();
         });row.append(info,button);root.appendChild(row);
       }
     }
-    async function refreshPaymentConnections(){const data=await paymentRequest();paymentCache=data.connections||[];paymentProviders=data.supportedProviders||[];const choices=$('#paymentProviderChoices');choices.replaceChildren();for(const provider of paymentProviders){const option=document.createElement('option');option.value=provider.id;option.label=provider.label;choices.appendChild(option)}renderPaymentConnections();$('#paymentSave').disabled=!data.vaultConfigured;paymentNotice(data.vaultConfigured?'Konfigurasi tersimpan terpisah untuk setiap merchant. Aktivasi transaksi memerlukan adapter dan uji koneksi.':'Penyimpanan kredensial belum diaktifkan pada server. Form dapat digunakan setelah pengaturan server selesai.')}
+    async function refreshPaymentConnections(){
+      const data=await paymentRequest();paymentCache=data.connections||[];paymentProviders=data.supportedProviders||[];paymentPresets=data.fieldPresets||[];paymentDefaults=data.defaultCredentialSchema||paymentDefaults;
+      const choices=$('#paymentProviderChoices');choices.replaceChildren();for(const provider of paymentProviders){const option=document.createElement('option');option.value=provider.id;option.label=provider.label;choices.appendChild(option)}
+      const select=$('#paymentPreset');select.replaceChildren();for(const field of paymentPresets){const option=document.createElement('option');option.value=field.id;option.textContent=field.label;select.appendChild(option)}
+      renderPaymentConnections();$('#paymentSave').disabled=!data.vaultConfigured;
+      paymentNotice(data.vaultConfigured?'Sesuaikan kolom dengan dokumentasi layanan. Semua nilai disimpan terenkripsi.':'Penyimpanan kredensial belum diaktifkan pada server. Form dapat disimpan setelah pengaturan server selesai.');
+    }
     async function loadPayments(){
       const root=document.querySelector('section[data-screen="payment"]');
-      root.innerHTML=`<div class="section-title"><div><h2>Payment Gateway</h2><p>Kelola beberapa layanan dan merchant dalam satu tempat.</p></div><div class="grow"></div><button class="btn ghost" id="paymentRefresh" type="button">Muat Ulang</button></div>
+      root.innerHTML=`<div class="section-title"><div><h2>Payment Gateway</h2><p>Banyak layanan dan merchant, dengan kolom sesuai kebutuhan masing-masing.</p></div><div class="grow"></div><button class="btn ghost" id="paymentRefresh" type="button">Muat Ulang</button></div>
       <div class="notice" id="paymentNotice" role="status">Memuat konfigurasi…</div>
       <div class="promo-admin-grid"><div class="panel" style="margin-top:0"><h2 id="paymentFormTitle">Tambah Merchant</h2>
       <form id="paymentForm" autocomplete="off"><input id="paymentId" type="hidden"/><input id="paymentRevision" type="hidden" value="0"/>
       <div class="promo-form-grid"><div class="field"><label for="paymentLabel">Nama Koneksi</label><input id="paymentLabel" required="required" maxlength="80" placeholder="Merchant utama"/></div>
       <div class="field"><label for="paymentProvider">Layanan Gateway</label><input list="paymentProviderChoices" id="paymentProvider" required="required" maxlength="50" pattern="[a-z][a-z0-9_-]{1,49}" placeholder="nama-layanan"/><datalist id="paymentProviderChoices"></datalist></div>
-      <div class="field full"><label for="paymentMode">Mode</label><select id="paymentMode"><option value="sandbox">Sandbox / Pengujian</option><option value="production">Produksi</option></select><small>Mode produksi tetap memerlukan verifikasi koneksi sebelum transaksi dapat diaktifkan.</small></div>
-      <div class="field full"><label for="paymentMerchantId">Merchant ID</label><input id="paymentMerchantId" type="password" autocomplete="new-password" maxlength="12000"/></div>
-      <div class="field full"><label for="paymentPrivateKey">Private Key</label><textarea id="paymentPrivateKey" autocomplete="off" spellcheck="false" maxlength="12000" placeholder="Tempel private key payment gateway jika diperlukan"></textarea></div></div>
-      <details><summary>Kredensial tambahan sesuai layanan</summary><div class="field"><label for="paymentApiKey">API Key</label><input id="paymentApiKey" type="password" autocomplete="new-password" maxlength="12000"/></div><div class="field"><label for="paymentPublicKey">Public Key</label><textarea id="paymentPublicKey" maxlength="12000" spellcheck="false"></textarea></div><div class="field"><label for="paymentWebhookSecret">Webhook Secret</label><input id="paymentWebhookSecret" type="password" autocomplete="new-password" maxlength="12000"/></div></details>
-      <p id="paymentCredentialState" class="promo-help">Isi kredensial yang dibutuhkan layanan Anda.</p>
+      <div class="field full"><label for="paymentMode">Mode</label><select id="paymentMode"><option value="sandbox">Sandbox / Pengujian</option><option value="production">Produksi</option></select><small>Mode produksi tetap memerlukan verifikasi koneksi sebelum transaksi diaktifkan.</small></div></div>
+      <div id="paymentFields" class="promo-form-grid"></div>
+      <details><summary>Tambah kolom konfigurasi</summary><div class="field"><label for="paymentPreset">Kolom umum</label><select id="paymentPreset"></select></div><button class="btn ghost" id="paymentAddPreset" type="button">Tambah Kolom Umum</button>
+      <div class="field"><label for="paymentCustomLabel">Nama kolom khusus</label><input id="paymentCustomLabel" maxlength="80" placeholder="Contoh: Partner ID"/></div>
+      <div class="field"><label for="paymentCustomId">Nama teknis sesuai dokumentasi</label><input id="paymentCustomId" maxlength="50" placeholder="Contoh: partner_id"/></div>
+      <div class="field"><label for="paymentCustomKind">Jenis isian</label><select id="paymentCustomKind"><option value="secret">Rahasia / Password</option><option value="text">Teks</option><option value="multiline">Teks panjang / PEM</option><option value="url">URL HTTPS</option></select></div><button class="btn ghost" id="paymentAddCustom" type="button">Tambah Kolom Khusus</button></details>
+      <p class="promo-help">Kolom kosong saat edit mempertahankan nilai lama. Kolom yang sudah berisi data tersimpan tidak dapat dihapus. Menambahkan kolom tidak otomatis mengaktifkan integrasi layanan.</p>
       <div class="promo-form-actions"><button class="btn primary" id="paymentSave" type="submit" disabled="disabled">Simpan Konfigurasi</button><button class="btn ghost" id="paymentNew" type="button">Merchant Baru</button></div></form></div>
       <div class="panel" style="margin-top:0"><h2>Daftar Merchant</h2><div class="promo-admin-list" id="paymentList"></div></div></div>`;
+      resetPaymentForm();
       $('#paymentRefresh').addEventListener('click',()=>refreshPaymentConnections().catch(e=>paymentNotice(e.message)));
-      $('#paymentNew').addEventListener('click',resetPaymentForm);$('#paymentProvider').addEventListener('input',()=>{const provider=paymentProviders.find(p=>p.id===$('#paymentProvider').value);$('#paymentCredentialState').textContent=provider?'Kredensial yang dibutuhkan: '+provider.requiredCredentials.map(f=>paymentLabels[f]||f).join(', '):'Layanan belum didukung untuk transaksi. Konfigurasi dapat disimpan terlebih dahulu.'});
+      $('#paymentNew').addEventListener('click',resetPaymentForm);
+      $('#paymentAddPreset').addEventListener('click',()=>{const field=paymentPresets.find(f=>f.id===$('#paymentPreset').value);if(field)addPaymentField({...field})});
+      $('#paymentAddCustom').addEventListener('click',()=>addPaymentField({id:$('#paymentCustomId').value.trim(),label:$('#paymentCustomLabel').value.trim(),kind:$('#paymentCustomKind').value}));
+      $('#paymentProvider').addEventListener('change',()=>{const provider=paymentProviders.find(p=>p.id===$('#paymentProvider').value);if(!provider)return;for(const id of provider.requiredCredentials)if(!paymentSchema.some(f=>f.id===id))addPaymentField({...paymentPresets.find(f=>f.id===id)||{id,label:id,kind:'secret'}})});
       $('#paymentForm').addEventListener('submit',async event=>{
         event.preventDefault();const button=$('#paymentSave');button.disabled=true;
-        const ids={merchantId:'paymentMerchantId',privateKey:'paymentPrivateKey',apiKey:'paymentApiKey',publicKey:'paymentPublicKey',webhookSecret:'paymentWebhookSecret'};
-        const credentials={};for(const [field,id] of Object.entries(ids)){const value=document.getElementById(id).value;if(value.trim())credentials[field]=value}
-        const payload={id:$('#paymentId').value||undefined,expectedRevision:Number($('#paymentRevision').value),label:$('#paymentLabel').value,provider:$('#paymentProvider').value,mode:$('#paymentMode').value,credentials};
-        try{await paymentRequest('POST',payload);resetPaymentForm();await refreshPaymentConnections();paymentNotice('Konfigurasi merchant tersimpan. Transaksi belum diaktifkan.')}catch(error){paymentNotice(error.message)}finally{for(const id of Object.values(ids))document.getElementById(id).value='';for(const field of Object.keys(credentials))delete credentials[field];button.disabled=false}
+        const credentials=paymentValues();const payload={id:$('#paymentId').value||undefined,expectedRevision:Number($('#paymentRevision').value),label:$('#paymentLabel').value,provider:$('#paymentProvider').value,mode:$('#paymentMode').value,credentialSchema:paymentSchema.map(f=>({...f})),credentials};
+        try{await paymentRequest('POST',payload);resetPaymentForm();await refreshPaymentConnections();paymentNotice('Konfigurasi dan susunan kolom tersimpan. Transaksi belum diaktifkan.')}catch(error){paymentNotice(error.message)}finally{for(const input of document.querySelectorAll('#paymentFields [data-credential]'))input.value='';for(const field of Object.keys(credentials))delete credentials[field];button.disabled=false}
       });
       try{await refreshPaymentConnections()}catch(error){paymentNotice(error.message)}
     }

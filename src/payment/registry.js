@@ -2,7 +2,6 @@
 // signature verification, status query, idempotency and reconciliation contracts.
 // A connection form alone cannot turn arbitrary credentials into a working payment API.
 export const PAYMENT_ADAPTERS = Object.freeze({});
-export const CREDENTIAL_FIELDS = Object.freeze(['merchantId', 'privateKey', 'apiKey', 'publicKey', 'webhookSecret']);
 export function adapterFor(provider, adapters = PAYMENT_ADAPTERS) {
   return Object.hasOwn(adapters, provider) ? adapters[provider] : null;
 }
