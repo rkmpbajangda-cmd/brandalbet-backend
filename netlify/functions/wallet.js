@@ -5,7 +5,7 @@ import { corsHeaders, CorsError } from '../../src/security/cors.js';
 import { getOrCreateWallet } from '../../src/wallet/service.js';
 import { empty, json } from '../../src/utils/http.js';
 
-export function createHandler({ verifyIdToken, loadWallet = getOrCreateWallet
+export function createHandler({ verifyIdToken, loadWallet = getOrCreateWallet,
   env = process.env,
 } = {}) {
   return async (event) => {
