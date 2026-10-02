@@ -154,3 +154,6 @@ dikonfirmasi tersendiri melalui pengaturan repository.
 - `GET /.netlify/functions/backoffice-health` memerlukan `backoffice=true` dan role `operator`, `finance`, `admin`, atau `superadmin`.
 - `POST /.netlify/functions/bootstrap-superadmin` hanya aktif saat `BOOTSTRAP_ENABLED=true`, UID token sama dengan `BOOTSTRAP_SUPERADMIN_UID`, dan harus dinonaktifkan kembali setelah bootstrap berhasil.
 - Missing/invalid token fail closed. Credential tidak pernah dikembalikan dalam response atau log.
+
+
+<!-- deploy-preview: goldslot-v4-hotfix -->
