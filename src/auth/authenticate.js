@@ -23,14 +23,19 @@ async function defaultVerifyIdToken(token) {
   return getAdminAuth().verifyIdToken(token, true);
 }
 
-export async function authenticateRequest(event, { verifyIdToken = defaultVerifyIdToken } = {}) {
+export async function authenticateRequest(event, {
+  verifyIdToken = defaultVerifyIdToken,
+  requireMemberSession = false,
+  verifyMemberSession,
+  env = process.env,
+} = {}) {
   const token = extractBearerToken(event?.headers ?? {});
+  let decoded;
   try {
-    const decoded = await verifyIdToken(token);
+    decoded = await verifyIdToken(token);
     if (!decoded || typeof decoded.uid !== 'string' || decoded.uid.length === 0) {
       throw new AuthHttpError(401, 'invalid_id_token');
     }
-    return decoded;
   } catch (error) {
     if (error instanceof AuthHttpError) throw error;
     const knownCodes = new Set([
@@ -56,4 +61,14 @@ export async function authenticateRequest(event, { verifyIdToken = defaultVerify
     }
     throw new AuthHttpError(401, 'invalid_or_expired_id_token');
   }
+
+  if (requireMemberSession) {
+    const { memberSingleSessionEnabled, assertMemberDeviceSession } = await import('./member-device-session.js');
+    if (memberSingleSessionEnabled(env)) {
+      const verify = verifyMemberSession ?? ((actor, request) => assertMemberDeviceSession(actor, request));
+      await verify(decoded, event);
+    }
+  }
+
+  return decoded;
 }
