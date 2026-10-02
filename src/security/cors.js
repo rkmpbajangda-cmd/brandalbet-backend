@@ -11,6 +11,10 @@ const DEFAULT_MEMBER_ORIGINS = Object.freeze([
   'https://brandalbet.blogspot.com',
 ]);
 
+const DEFAULT_BACKOFFICE_ORIGINS = Object.freeze([
+  'https://backoffic.blogspot.com',
+]);
+
 function getHeader(headers = {}, wanted) {
   const key = Object.keys(headers).find((item) => item.toLowerCase() === wanted);
   return key ? headers[key] : undefined;
@@ -37,6 +41,9 @@ export function corsHeaders(event, scope, env = process.env) {
   // ALLOWED_MEMBER_ORIGINS. Never use wildcard CORS for authenticated APIs.
   if (scope === 'member') {
     for (const memberOrigin of DEFAULT_MEMBER_ORIGINS) allowed.add(memberOrigin);
+  }
+  if (scope === 'backoffice') {
+    for (const backofficeOrigin of DEFAULT_BACKOFFICE_ORIGINS) allowed.add(backofficeOrigin);
   }
 
   if (!allowed.has(origin)) throw new CorsError();
