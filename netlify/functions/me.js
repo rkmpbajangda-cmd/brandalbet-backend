@@ -1,4 +1,5 @@
 import { authenticateRequest, AuthHttpError } from '../../src/auth/authenticate.js';
+import { ServiceError } from '../../src/utils/errors.js';
 import { auditSecurityEvent } from '../../src/audit/logger.js';
 import { corsHeaders, CorsError } from '../../src/security/cors.js';
 import { isKnownRole } from '../../src/rbac/roles.js';
@@ -27,8 +28,9 @@ export function createHandler(dependencies = {}) {
         backoffice: actor.backoffice === true,
       }, cors);
     } catch (error) {
-      const statusCode = error instanceof AuthHttpError || error instanceof CorsError ? error.statusCode : 500;
-      const code = error instanceof AuthHttpError || error instanceof CorsError ? error.code : 'internal_error';
+      const known = error instanceof AuthHttpError || error instanceof CorsError || error instanceof ServiceError;
+      const statusCode = known ? error.statusCode : 500;
+      const code = known ? error.code : 'internal_error';
       return json(statusCode, { ok: false, error: code }, cors);
     }
   };
