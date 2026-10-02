@@ -11,7 +11,7 @@ import {
 const actor = { uid: 'member-1' };
 const one = 'a'.repeat(43);
 const two = 'b'.repeat(43);
-const event = sessionId => ({ headers: sessionId ? { 'x-brandal-session': sessionId } : {} });
+const event = sessionId => ({ headers: { Authorization: sessionId ? `Bearer fixture-token;BrandalSession=${sessionId}` : 'Bearer fixture-token' } });
 
 test('single-session enforcement is automatically enabled in production', () => {
   assert.equal(memberSingleSessionEnabled({ CONTEXT: 'production' }), true);
