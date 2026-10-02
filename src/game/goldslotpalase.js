@@ -1,8 +1,16 @@
 import { ServiceError } from '../utils/errors.js';
 
 // Only GoldslotPalase. Never take a provider URL or credentials from a browser request.
-const BASE_URL = 'https://agent.goldslotpalase.com';
 const MAX_RESPONSE_BYTES = 2 * 1024 * 1024;
+
+function providerBaseUrl(env) {
+  const raw = env.GOLDSLOTPALASE_API_URL;
+  if (typeof raw !== 'string' || !raw.trim() || /[\r\n]/.test(raw)) throw new GoldslotError('provider_unconfigured');
+  let url;
+  try { url = new URL(raw.trim()); } catch { throw new GoldslotError('provider_invalid_base_url'); }
+  if (url.protocol !== 'https:' || url.username || url.password || url.search || url.hash) throw new GoldslotError('provider_invalid_base_url');
+  return url.toString().replace(/\/+$/, '').replace(/\/v4$/i, '');
+}
 
 export class GoldslotError extends ServiceError {
   constructor(code, { providerResult = null, ambiguous = false } = {}) {
@@ -83,6 +91,7 @@ function validateSuccessEnvelope(payload, mutation) {
 
 export function createGoldslotClient({ env = process.env, fetchImpl = fetch, timeoutMs = 8000 } = {}) {
   const token = env.GOLDSLOTPALASE_API_TOKEN;
+  const baseUrl = providerBaseUrl(env);
   if (typeof token !== 'string' || !token.trim() || /[\r\n]/.test(token)) {
     throw new GoldslotError('provider_unconfigured');
   }
@@ -95,7 +104,7 @@ export function createGoldslotClient({ env = process.env, fetchImpl = fetch, tim
     const timer = setTimeout(() => controller.abort(), timeoutMs);
     try {
       // Single attempt only for every request. Mutations that time out are ambiguous and must be reconciled.
-      const response = await fetchImpl(BASE_URL + path, {
+      const response = await fetchImpl(baseUrl + path, {
         method: 'POST',
         redirect: 'error',
         signal: controller.signal,

@@ -10,10 +10,10 @@ import { configurationReadiness } from '../src/config/readiness.js';
 import { createHandler as readinessHandler } from '../netlify/functions/backoffice-readiness.js';
 import { createHandler as transactionsHandler } from '../netlify/functions/transactions.js';
 import { parseJsonBody } from '../src/utils/body.js';
-const env = { GOLDSLOTPALASE_API_TOKEN: 'fixture-not-a-real-secret' };
+const env = { GOLDSLOTPALASE_API_TOKEN: 'fixture-not-a-real-secret', GOLDSLOTPALASE_API_URL: 'https://agent.goldslotpalase.com' };
 const event = { httpMethod: 'GET', headers: { Authorization: 'Bearer test' }, queryStringParameters: { uid: 'victim' } };
 
-test('Goldslot client uses fixed host, documented request and server-only token', async () => {
+test('Goldslot client uses configured API URL, documented request and server-only token', async () => {
   let observed;
   const client = createGoldslotClient({ env, fetchImpl: async (url, options) => {
     observed = { url, options }; return new Response(JSON.stringify({ result: 0, data: { user_code: 123 } }));
@@ -23,6 +23,16 @@ test('Goldslot client uses fixed host, documented request and server-only token'
   assert.deepEqual(JSON.parse(observed.options.body), { name: 'member_123' });
   assert.equal(observed.options.redirect, 'error');
   assert.equal(observed.options.headers.Authorization, 'Bearer ' + env.GOLDSLOTPALASE_API_TOKEN);
+});
+test('Goldslot client normalizes an API URL ending in /v4', async () => {
+  let observedUrl;
+  const client = createGoldslotClient({ env: { ...env, GOLDSLOTPALASE_API_URL: 'https://agent.goldslotpalase.com/v4/' }, fetchImpl: async url => { observedUrl = url; return new Response(JSON.stringify({ result: 0, data: {} })); } });
+  await client.agentInfo();
+  assert.equal(observedUrl, 'https://agent.goldslotpalase.com/v4/agent/info');
+});
+test('Goldslot client requires an HTTPS API URL', () => {
+  assert.throws(() => createGoldslotClient({ env: { GOLDSLOTPALASE_API_TOKEN: 'fixture' } }), { code: 'provider_unconfigured' });
+  assert.throws(() => createGoldslotClient({ env: { ...env, GOLDSLOTPALASE_API_URL: 'http://agent.goldslotpalase.com' } }), { code: 'provider_invalid_base_url' });
 });
 test('provider errors are redacted and never automatically retried', async () => {
   let calls = 0;

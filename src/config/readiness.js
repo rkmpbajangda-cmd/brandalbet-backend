@@ -6,6 +6,7 @@ export function configurationReadiness(env = process.env) {
     'ALLOWED_MEMBER_ORIGINS',
     'ALLOWED_BACKOFFICE_ORIGINS',
     'GOLDSLOTPALASE_API_TOKEN',
+    'GOLDSLOTPALASE_API_URL',
     'PAYMENT_CONFIG_ENCRYPTION_KEY',
   ];
   const configuration = required.map(name => ({
