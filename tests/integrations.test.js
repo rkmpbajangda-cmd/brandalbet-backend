@@ -4,7 +4,7 @@ import { createGoldslotClient } from '../src/game/goldslotpalase.js';
 import { normalizeGoldslotGames, normalizeGoldslotProviders, loadPublicGameCatalog, clearCatalogCacheForTest } from '../src/game/catalog.js';
 import { providerUsernameForUid } from '../src/game/player.js';
 import { launchGoldslotGame } from '../src/game/launch.js';
-import { executeGoldslotTransfer, reconcileGoldslotTransfer } from '../src/game/transfer.js';
+import { executeGoldslotTransfer, reconcileGoldslotTransfer, getActiveGoldslotTransfer } from '../src/game/transfer.js';
 import { transactionDb } from './helpers/transaction-db.js';
 import { configurationReadiness } from '../src/config/readiness.js';
 import { createHandler as readinessHandler } from '../netlify/functions/backoffice-readiness.js';
@@ -309,4 +309,28 @@ test('ambiguous balance-only reconciliation stays disabled unless explicitly sta
     db,
     client: { userInfo: async () => ({ balance: 0 }) },
   }), { code: 'game_transfer_manual_reconciliation_required' });
+});
+
+
+test('active game transfer can be recovered after browser reload', async () => {
+  const activeId = 'b'.repeat(64);
+  const db = transactionDb({
+    'providerPlayers/u1': { uid: 'u1', provider: 'goldslotpalase', userCode: 77, activeTransferId: activeId },
+    ['providerTransfers/' + activeId]: {
+      uid: 'u1', provider: 'goldslotpalase', direction: 'in', status: 'ambiguous',
+      amountMinor: 400, providerBalanceBefore: 0, providerAmount: null, providerBalanceAfter: null,
+    },
+  });
+  const result = await getActiveGoldslotTransfer({ uid: 'u1' }, { db });
+  assert.equal(result.activeTransfer.id, activeId);
+  assert.equal(result.activeTransfer.status, 'ambiguous');
+  assert.equal(result.activeTransfer.reconciliationRequired, true);
+});
+
+test('game transfer recovery returns null when member has no active transfer', async () => {
+  const db = transactionDb({
+    'providerPlayers/u1': { uid: 'u1', provider: 'goldslotpalase', userCode: 77, activeTransferId: null },
+  });
+  const result = await getActiveGoldslotTransfer({ uid: 'u1' }, { db });
+  assert.deepEqual(result, { activeTransfer: null });
 });

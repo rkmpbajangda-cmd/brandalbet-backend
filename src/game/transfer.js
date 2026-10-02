@@ -58,7 +58,7 @@ function providerAmount(data, { allowZero = false } = {}) {
   return providerInteger(data?.amount, 'amount', { allowZero });
 }
 
-function transferView(id, data) {
+export function transferView(id, data) {
   return Object.freeze({
     id,
     provider: PROVIDER,
@@ -314,6 +314,22 @@ async function settleTransferOut(id, uid, upstream, { db }) {
       providerBalanceAfter: balanceAfter,
     });
   });
+}
+
+export async function getActiveGoldslotTransfer(actor, { db = getAdminDb() } = {}) {
+  if (!actor?.uid) throw new ServiceError('invalid_actor', 401);
+  const playerSnapshot = await db.collection('providerPlayers').doc(actor.uid).get();
+  if (!playerSnapshot.exists) return { activeTransfer: null };
+  const activeTransferId = playerSnapshot.data()?.activeTransferId;
+  if (!activeTransferId) return { activeTransfer: null };
+  if (typeof activeTransferId !== 'string' || !/^[a-f0-9]{64}$/.test(activeTransferId)) {
+    throw new ServiceError('provider_player_integrity_error', 503);
+  }
+  const transferSnapshot = await db.collection('providerTransfers').doc(activeTransferId).get();
+  if (!transferSnapshot.exists || transferSnapshot.data()?.uid !== actor.uid) {
+    throw new ServiceError('provider_transfer_integrity_error', 503);
+  }
+  return { activeTransfer: transferView(activeTransferId, transferSnapshot.data()) };
 }
 
 export async function executeGoldslotTransfer(actor, rawInput, {
