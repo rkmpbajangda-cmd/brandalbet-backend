@@ -71,7 +71,7 @@ async function readJsonResponse(response, mutation) {
   }
 }
 
-function validateSuccessEnvelope(payload, mutation) {
+function validateSuccessEnvelope(payload, mutation, { requireData = true } = {}) {
   if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
     throw new GoldslotError('provider_invalid_response', { ambiguous: mutation });
   }
@@ -83,6 +83,7 @@ function validateSuccessEnvelope(payload, mutation) {
     // A valid provider envelope with a non-zero result is an explicit rejection, not an ambiguous mutation.
     throw new GoldslotError('provider_rejected', { providerResult: result, ambiguous: false });
   }
+  if (!requireData) return ('data' in payload ? payload.data : {});
   if (!('data' in payload) || payload.data === null || typeof payload.data !== 'object') {
     throw new GoldslotError('provider_invalid_response', { ambiguous: mutation });
   }
@@ -99,7 +100,7 @@ export function createGoldslotClient({ env = process.env, fetchImpl = fetch, tim
     throw new ServiceError('invalid_provider_timeout');
   }
 
-  async function post(path, payload = {}, mutation = false) {
+  async function post(path, payload = {}, mutation = false, { requireData = true } = {}) {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), timeoutMs);
     try {
@@ -118,7 +119,7 @@ export function createGoldslotClient({ env = process.env, fetchImpl = fetch, tim
       if (!response.ok) {
         throw new GoldslotError('provider_http_error', { ambiguous: mutation });
       }
-      return validateSuccessEnvelope(await readJsonResponse(response, mutation), mutation);
+      return validateSuccessEnvelope(await readJsonResponse(response, mutation), mutation, { requireData });
     } catch (error) {
       if (error instanceof GoldslotError) throw error;
       // Never include upstream error text, URL, headers, token, or payload in logs/errors.
@@ -135,12 +136,15 @@ export function createGoldslotClient({ env = process.env, fetchImpl = fetch, tim
       if (typeof rtp !== 'number' || !Number.isFinite(rtp) || rtp < 0 || rtp > 100) {
         throw new ServiceError('invalid_rtp');
       }
-      return post('/v4/agent/rtp', { rtp }, true);
+      return post('/v4/agent/rtp', { rtp }, true, { requireData: false });
     },
 
-    callbackTest: () => post('/v4/agent/callback-test', {}, true),
+    callbackTest: () => post('/v4/agent/callback-test', {}, true, { requireData: false }),
 
-    providers: () => post('/v4/game/providers'),
+    providers: ({ language = 9 } = {}) => {
+      if (!Number.isInteger(language) || language < 1 || language > 33) throw new ServiceError('invalid_language');
+      return post('/v4/game/providers', { lang: language });
+    },
 
     games: ({ providerId, language = 9 }) => {
       positiveIdentifier(providerId, 'provider_id');
@@ -186,6 +190,12 @@ export function createGoldslotClient({ env = process.env, fetchImpl = fetch, tim
         provider_id: providerId,
         game_symbol: gameSymbol,
         lang: language,
+        return_url: '',
+        min_bet: 0,
+        max_bet: 0,
+        round_max_win: 0,
+        rtp: 0,
+        is_finish_jackpot: true,
       }, true);
     },
 
