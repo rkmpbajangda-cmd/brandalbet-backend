@@ -169,6 +169,7 @@ test('launch service rejects unsafe provider launch URL', async () => {
 const transferEnv = {
   GOLDSLOTPALASE_TRANSFER_ENABLED: 'true',
   GOLDSLOTPALASE_IDR_SCALE: '1',
+  GOLDSLOTPALASE_BALANCE_RECONCILIATION_ENABLED: 'true',
 };
 
 function transferDb({ balance = 1000, available = balance, providerBalance = 0 } = {}) {
@@ -296,4 +297,16 @@ test('local settlement failure after provider success never releases reserved fu
   assert.equal(result.status, 'ambiguous');
   assert.equal(db.read('wallets/u1').balanceMinor, 1000);
   assert.equal(db.read('wallets/u1').availableMinor, 600);
+});
+
+
+test('ambiguous balance-only reconciliation stays disabled unless explicitly staging-approved', async () => {
+  const db = transferDb();
+  await assert.rejects(reconcileGoldslotTransfer(transferActor, {
+    transferId: 'a'.repeat(64),
+  }, {
+    env: { GOLDSLOTPALASE_TRANSFER_ENABLED: 'true', GOLDSLOTPALASE_IDR_SCALE: '1' },
+    db,
+    client: { userInfo: async () => ({ balance: 0 }) },
+  }), { code: 'game_transfer_manual_reconciliation_required' });
 });
