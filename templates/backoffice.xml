@@ -79,7 +79,7 @@
     function busy(v){loader.classList.toggle('show',!!v)} function notice(m,ok=false){$('#loginNotice').innerHTML=m?`<div class="notice ${ok?'ok':''}">${String(m).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}</div>`:''}
     function generic(name){return `<div class="section-title"><div><h2 style="margin:0">${titles[name]}</h2><p style="margin:5px 0 0;color:var(--muted);font-size:13px">Modul UI siap. Data live menunggu endpoint bisnis server-side agar tidak ada data palsu atau mutasi dari browser.</p></div><div class="grow"></div></div><div class="panel"><div class="table"><div class="tr head"><div>Item</div><div>Status</div><div>Source</div><div>Action</div></div><div class="empty">Belum ada data live. Backend module belum diaktifkan.</div></div></div>`}
     $$('[data-screen]').filter(x=>x.tagName==='SECTION').forEach(s=>{if(!['dashboard','promotions'].includes(s.dataset.screen))s.innerHTML=generic(s.dataset.screen)});
-    function screen(name){$$('.screen').forEach(s=>s.classList.toggle('active',s.dataset.screen===name));$$('#nav button').forEach(b=>b.classList.toggle('active',b.dataset.screen===name));$('#screenTitle').textContent=titles[name]||'Backoffice';$('#sidebar').classList.remove('open');$('#drawerBackdrop').classList.remove('show');if(name==='promotions'&&user)loadPromotions();if(name==='security'&&user)loadReadiness()}
+    function screen(name){$$('.screen').forEach(s=>s.classList.toggle('active',s.dataset.screen===name));$$('#nav button').forEach(b=>b.classList.toggle('active',b.dataset.screen===name));$('#screenTitle').textContent=titles[name]||'Backoffice';$('#sidebar').classList.remove('open');$('#drawerBackdrop').classList.remove('show');if(name==='promotions'&&user)loadPromotions();if(name==='security'&&user)loadReadiness();if(name==='payment'&&user)loadPayments()}
     $('#nav').addEventListener('click',e=>{const b=e.target.closest('[data-screen]');if(b)screen(b.dataset.screen)});$('#menuBtn').addEventListener('click',()=>{$('#sidebar').classList.add('open');$('#drawerBackdrop').classList.add('show')});$('#drawerBackdrop').addEventListener('click',()=>{$('#sidebar').classList.remove('open');$('#drawerBackdrop').classList.remove('show')});
     async function authorize(current){const token=await current.getIdToken();const r=await fetch(API_BASE+'/.netlify/functions/backoffice-health',{headers:{Authorization:`Bearer ${token}`}});let body={};try{body=await r.json()}catch{};if(!r.ok)throw Object.assign(new Error(body.error||`HTTP ${r.status}`),{status:r.status,body});return body}
     async function bootstrap(current){const token=await current.getIdToken();const r=await fetch(API_BASE+'/.netlify/functions/bootstrap-superadmin',{method:'POST',headers:{Authorization:`Bearer ${token}`}});let body={};try{body=await r.json()}catch{};if(!r.ok)throw Object.assign(new Error(body.error||`HTTP ${r.status}`),{status:r.status,body});await current.getIdToken(true);return body}
@@ -99,6 +99,62 @@
       }catch(error){document.getElementById('readinessMessage').textContent=error.message||'Gagal memeriksa konfigurasi.'}
     }
 
+    let paymentCache=[];let paymentProviders=[];
+    const paymentLabels={merchantId:'Merchant ID',privateKey:'Private Key',apiKey:'API Key',publicKey:'Public Key',webhookSecret:'Webhook Secret'};
+    function paymentNotice(message){const node=$('#paymentNotice');if(node)node.textContent=message}
+    async function paymentRequest(method='GET',payload){
+      if(!user)throw new Error('Silakan login kembali.');
+      const token=await user.getIdToken();
+      const response=await fetch(API_BASE+'/.netlify/functions/backoffice-payment-connections',{
+        method,headers:{Authorization:'Bearer '+token,'Content-Type':'application/json'},
+        cache:'no-store',body:payload===undefined?undefined:JSON.stringify(payload)});
+      let data={};try{data=await response.json()}catch{}
+      if(!response.ok){const messages={recent_login_required:'Silakan keluar dan login kembali sebelum mengganti kredensial.',payment_vault_unconfigured:'Penyimpanan kredensial belum diaktifkan pada server.',payment_revision_conflict:'Konfigurasi telah berubah. Muat ulang sebelum menyimpan.',forbidden:'Pengaturan pembayaran hanya dapat diakses admin/superadmin.',create_separate_connection_for_provider_or_mode:'Gunakan koneksi baru untuk layanan atau mode berbeda.'};throw new Error(messages[data.error]||'Konfigurasi belum dapat diproses. Silakan muat ulang.')}
+      return data;
+    }
+    function resetPaymentForm(){const form=$('#paymentForm');form.reset();$('#paymentId').value='';$('#paymentRevision').value='0';$('#paymentProvider').disabled=false;$('#paymentMode').disabled=false;$('#paymentFormTitle').textContent='Tambah Merchant';$('#paymentCredentialState').textContent='Isi kredensial yang dibutuhkan layanan Anda.'}
+    function renderPaymentConnections(){
+      const root=$('#paymentList');root.replaceChildren();
+      if(!paymentCache.length){root.textContent='Belum ada merchant tersimpan.';return}
+      for(const connection of paymentCache){
+        const row=document.createElement('div');row.className='promo-admin-item';
+        const info=document.createElement('div');const title=document.createElement('h3');title.textContent=connection.label;
+        const summary=document.createElement('p');summary.textContent=connection.provider+' · '+connection.mode+' · '+(connection.adapterAvailable?'Konfigurasi tersimpan; koneksi belum diuji':'Adapter layanan belum tersedia');
+        const fields=document.createElement('p');fields.textContent='Terisi: '+(connection.credentialFields.map(f=>paymentLabels[f]||f).join(', ')||'belum ada kredensial');
+        info.append(title,summary,fields);
+        const button=document.createElement('button');button.type='button';button.className='btn ghost';button.textContent='Edit';button.addEventListener('click',()=>{
+          resetPaymentForm();$('#paymentId').value=connection.id;$('#paymentRevision').value=String(connection.revision);$('#paymentLabel').value=connection.label;$('#paymentProvider').value=connection.provider;$('#paymentMode').value=connection.mode;$('#paymentProvider').disabled=true;$('#paymentMode').disabled=true;$('#paymentFormTitle').textContent='Edit Merchant';$('#paymentCredentialState').textContent='Kredensial tersimpan: '+(connection.credentialFields.map(f=>paymentLabels[f]).join(', ')||'belum ada')+'. Kosongkan kolom untuk mempertahankan nilai lama.';$('#paymentLabel').focus();
+        });row.append(info,button);root.appendChild(row);
+      }
+    }
+    async function refreshPaymentConnections(){const data=await paymentRequest();paymentCache=data.connections||[];paymentProviders=data.supportedProviders||[];const choices=$('#paymentProviderChoices');choices.replaceChildren();for(const provider of paymentProviders){const option=document.createElement('option');option.value=provider.id;option.label=provider.label;choices.appendChild(option)}renderPaymentConnections();$('#paymentSave').disabled=!data.vaultConfigured;paymentNotice(data.vaultConfigured?'Konfigurasi tersimpan terpisah untuk setiap merchant. Aktivasi transaksi memerlukan adapter dan uji koneksi.':'Penyimpanan kredensial belum diaktifkan pada server. Form dapat digunakan setelah pengaturan server selesai.')}
+    async function loadPayments(){
+      const root=document.querySelector('section[data-screen="payment"]');
+      root.innerHTML=`<div class="section-title"><div><h2>Payment Gateway</h2><p>Kelola beberapa layanan dan merchant dalam satu tempat.</p></div><div class="grow"></div><button class="btn ghost" id="paymentRefresh" type="button">Muat Ulang</button></div>
+      <div class="notice" id="paymentNotice" role="status">Memuat konfigurasi…</div>
+      <div class="promo-admin-grid"><div class="panel" style="margin-top:0"><h2 id="paymentFormTitle">Tambah Merchant</h2>
+      <form id="paymentForm" autocomplete="off"><input id="paymentId" type="hidden"/><input id="paymentRevision" type="hidden" value="0"/>
+      <div class="promo-form-grid"><div class="field"><label for="paymentLabel">Nama Koneksi</label><input id="paymentLabel" required="required" maxlength="80" placeholder="Merchant utama"/></div>
+      <div class="field"><label for="paymentProvider">Layanan Gateway</label><input list="paymentProviderChoices" id="paymentProvider" required="required" maxlength="50" pattern="[a-z][a-z0-9_-]{1,49}" placeholder="nama-layanan"/><datalist id="paymentProviderChoices"></datalist></div>
+      <div class="field full"><label for="paymentMode">Mode</label><select id="paymentMode"><option value="sandbox">Sandbox / Pengujian</option><option value="production">Produksi</option></select><small>Mode produksi tetap memerlukan verifikasi koneksi sebelum transaksi dapat diaktifkan.</small></div>
+      <div class="field full"><label for="paymentMerchantId">Merchant ID</label><input id="paymentMerchantId" type="password" autocomplete="new-password" maxlength="12000"/></div>
+      <div class="field full"><label for="paymentPrivateKey">Private Key</label><textarea id="paymentPrivateKey" autocomplete="off" spellcheck="false" maxlength="12000" placeholder="Tempel private key payment gateway jika diperlukan"></textarea></div></div>
+      <details><summary>Kredensial tambahan sesuai layanan</summary><div class="field"><label for="paymentApiKey">API Key</label><input id="paymentApiKey" type="password" autocomplete="new-password" maxlength="12000"/></div><div class="field"><label for="paymentPublicKey">Public Key</label><textarea id="paymentPublicKey" maxlength="12000" spellcheck="false"></textarea></div><div class="field"><label for="paymentWebhookSecret">Webhook Secret</label><input id="paymentWebhookSecret" type="password" autocomplete="new-password" maxlength="12000"/></div></details>
+      <p id="paymentCredentialState" class="promo-help">Isi kredensial yang dibutuhkan layanan Anda.</p>
+      <div class="promo-form-actions"><button class="btn primary" id="paymentSave" type="submit" disabled="disabled">Simpan Konfigurasi</button><button class="btn ghost" id="paymentNew" type="button">Merchant Baru</button></div></form></div>
+      <div class="panel" style="margin-top:0"><h2>Daftar Merchant</h2><div class="promo-admin-list" id="paymentList"></div></div></div>`;
+      $('#paymentRefresh').addEventListener('click',()=>refreshPaymentConnections().catch(e=>paymentNotice(e.message)));
+      $('#paymentNew').addEventListener('click',resetPaymentForm);$('#paymentProvider').addEventListener('input',()=>{const provider=paymentProviders.find(p=>p.id===$('#paymentProvider').value);$('#paymentCredentialState').textContent=provider?'Kredensial yang dibutuhkan: '+provider.requiredCredentials.map(f=>paymentLabels[f]||f).join(', '):'Layanan belum didukung untuk transaksi. Konfigurasi dapat disimpan terlebih dahulu.'});
+      $('#paymentForm').addEventListener('submit',async event=>{
+        event.preventDefault();const button=$('#paymentSave');button.disabled=true;
+        const ids={merchantId:'paymentMerchantId',privateKey:'paymentPrivateKey',apiKey:'paymentApiKey',publicKey:'paymentPublicKey',webhookSecret:'paymentWebhookSecret'};
+        const credentials={};for(const [field,id] of Object.entries(ids)){const value=document.getElementById(id).value;if(value.trim())credentials[field]=value}
+        const payload={id:$('#paymentId').value||undefined,expectedRevision:Number($('#paymentRevision').value),label:$('#paymentLabel').value,provider:$('#paymentProvider').value,mode:$('#paymentMode').value,credentials};
+        try{await paymentRequest('POST',payload);resetPaymentForm();await refreshPaymentConnections();paymentNotice('Konfigurasi merchant tersimpan. Transaksi belum diaktifkan.')}catch(error){paymentNotice(error.message)}finally{for(const id of Object.values(ids))document.getElementById(id).value='';for(const field of Object.keys(credentials))delete credentials[field];button.disabled=false}
+      });
+      try{await refreshPaymentConnections()}catch(error){paymentNotice(error.message)}
+    }
+
     const PROMO_ADMIN_ENDPOINT=API_BASE+'/.netlify/functions/backoffice-promotions';let promoCache=[];
     const promoStatus=(text,ok=false)=>{const el=$('#promoAdminStatus');if(!el)return;el.classList.toggle('ok',!!ok);el.querySelector('span').textContent=text};
     const esc=value=>String(value??'').replace(/[&<>\"']/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;',"'":'&#39;'}[ch]));
@@ -115,7 +171,7 @@
     $('#promoAdminList')?.addEventListener('click',async e=>{const edit=e.target.closest('[data-promo-edit]');if(edit){editPromo(edit.dataset.promoEdit);return}const del=e.target.closest('[data-promo-delete]');if(del){if(!confirm('Hapus promo ini?'))return;busy(true);try{await promoRequest({method:'POST',body:JSON.stringify({action:'delete',id:del.dataset.promoDelete,expectedRevision:promoCache.find(p=>p.id===del.dataset.promoDelete)?.revision||0})});promoStatus('Promo dihapus.',true);await loadPromotions()}catch(err){promoStatus('Gagal menghapus promo: '+(err.message||'unknown'))}finally{busy(false)}}});
     $('#promoRefreshBtn')?.addEventListener('click',loadPromotions);$('#promoNewBtn')?.addEventListener('click',()=>{resetPromoForm();$('#promoTitle')?.focus()});$('#promoResetBtn')?.addEventListener('click',resetPromoForm);
 
-    $('#loginForm').addEventListener('submit',async e=>{e.preventDefault();notice('');busy(true);try{const c=await signInWithEmailAndPassword(auth,$('#email').value.trim(),$('#password').value);}catch(err){if(!auth.currentUser)notice('Login gagal. Periksa email/password Firebase Authentication.');}finally{$('#password').value='';busy(false)}});$('#logoutBtn').addEventListener('click',()=>signOut(auth));onAuthStateChanged(auth,async current=>{user=current;if(current)await enter(current);else{$('#adminShell').classList.add('hidden');$('#loginShell').classList.remove('hidden')}});
+    $('#loginForm').addEventListener('submit',async e=>{e.preventDefault();notice('');busy(true);try{const c=await signInWithEmailAndPassword(auth,$('#email').value.trim(),$('#password').value);}catch(err){if(!auth.currentUser)notice('Login gagal. Periksa email/password Firebase Authentication.');}finally{$('#password').value='';busy(false)}});$('#logoutBtn').addEventListener('click',()=>signOut(auth));onAuthStateChanged(auth,async current=>{user=current;if(current)await enter(current);else{paymentCache=[];document.querySelector('section[data-screen="payment"]')?.replaceChildren();$('#adminShell').classList.add('hidden');$('#loginShell').classList.remove('hidden')}});
   //]]>
 </script>
 </body>

@@ -11,6 +11,7 @@ const functions = await zipFunctions('netlify/functions', '.netlify/validation-f
 const actual = functions.map((item) => item.name).sort();
 const expected = [
   'backoffice-health',
+  'backoffice-payment-connections',
   'backoffice-promotions',
   'backoffice-readiness',
   'bootstrap-superadmin',

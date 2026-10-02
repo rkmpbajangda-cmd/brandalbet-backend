@@ -26,6 +26,7 @@ Provider game dipilih pengguna: **GoldslotPalase saja**. Tidak ada adapter Nexus
 | BOOTSTRAP_ENABLED | Aktif hanya selama bootstrap admin |
 | BOOTSTRAP_SUPERADMIN_UID | UID yang diizinkan bootstrap |
 | GOLDSLOTPALASE_API_TOKEN | Secret Agent API GoldslotPalase; hanya server |
+| PAYMENT_CONFIG_ENCRYPTION_KEY | Kunci enkripsi server 32-byte base64 untuk konfigurasi multi-gateway |
 
 Menambahkan token tidak otomatis mengaktifkan permainan. Tidak ada placeholder secret dalam source dan tidak ada credential dipindahkan dari chat.
 
@@ -49,7 +50,7 @@ Dokumen menegaskan Transfer Wallet berbeda dari deposit/withdraw payment gateway
 1. GoldslotPalase: verifikasi schema request/response penuh terbaru untuk catalog, transfer dan status transfer; konfirmasi mode transfer dan unit uang/IDR pada akun agen.
 2. Transfer provider belum diimplementasikan: perlu reserve/settle/release, penyimpanan status, rekonsiliasi hasil timeout dan idempotency provider yang terbukti. Jangan meniru retry semua POST dari client lama: dapat menggandakan transfer.
 3. Client launch belum dipasang ke endpoint member: masih perlu player mapping permanen, catalog validation, validasi URL keluaran, rate limit terdistribusi, dan pengecekan status member.
-4. Payment gateway belum dipilih/dihubungkan. Adapter, verifikasi callback, deposit, withdrawal approval/disbursement, serta rekonsiliasi belum tersedia.
+4. Pengelola konfigurasi multi-gateway/multi-merchant sudah tersedia dengan kredensial terenkripsi dan satu menu backoffice. Adapter layanan pembayaran nyata, verifikasi callback, deposit, withdrawal approval/disbursement, serta rekonsiliasi belum tersedia. Mengisi kredensial belum mengaktifkan transaksi.
 5. Banyak menu backoffice V18 masih placeholder; bukan dashboard bisnis lengkap.
 6. Firestore rules/indexes harus diterapkan dan diuji; primitive ledger baru diuji dengan transactional test double, bukan Firestore emulator/live concurrency.
 7. `balanceMinor` sudah ada di baseline tetapi skala rupiahnya belum dibuktikan. Jangan konversi ke angka provider/payment sebelum unit tersertifikasi dan saldo lama diaudit.
@@ -66,3 +67,15 @@ Dokumen menegaskan Transfer Wallet berbeda dari deposit/withdraw payment gateway
 - Source scan tidak menemukan marker private key.
 - Secret produksi tidak diakses atau disalin ke repository.
 - Source disiapkan untuk review/staging; tidak mengaktifkan deposit, withdraw, game-launch atau transfer uang nyata.
+
+## Tambahan multi-payment, 2 Oktober 2026 sore
+
+- Satu menu Payment Gateway untuk banyak layanan/merchant, termasuk koneksi sandbox dan produksi terpisah.
+- Kredensial AES-256-GCM server-side, authenticated data terikat ID koneksi; daftar API hanya mengembalikan nama field yang terisi.
+- Penyimpanan memerlukan admin/superadmin dengan login kurang dari 10 menit, revisi sesuai, dan encryption key server valid.
+- Mode/provider koneksi existing tidak dapat diubah agar kredensial tidak berpindah ke layanan lain. Buat koneksi terpisah.
+- Form menghapus isi kredensial setelah submit dan saat logout, tidak menyimpan ke localStorage.
+- 42/42 pengujian backend lulus menggunakan `node --test --test-isolation=none` pada Node 24.19.0.
+- 14 Netlify functions berhasil dibundle dengan target Node 22. Runtime Node 22 belum diuji pada sesi ini.
+- XML dan sintaks JavaScript lulus. Browser test belum berjalan karena executable Chromium tidak tersedia.
+- Belum ada adapter payment produksi terdaftar. Status readiness tetap false; tidak ada endpoint mutasi saldo dari konfigurasi ini.
