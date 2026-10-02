@@ -10,7 +10,11 @@ export function protectedHandler({ scope = 'member', methods = ['GET'], verifyId
       cors = corsHeaders(event, scope, env);
       if (event.httpMethod === 'OPTIONS') return empty(204, cors);
       if (!methods.includes(event.httpMethod)) return json(405, { ok: false, error: 'method_not_allowed' }, { ...cors, Allow: [...methods, 'OPTIONS'].join(', ') });
-      const actor = await authenticateRequest(event, { verifyIdToken });
+      const actor = await authenticateRequest(event, {
+        verifyIdToken,
+        requireMemberSession: scope === 'member',
+        env,
+      });
       if (scope === 'backoffice' && !canAccessBackoffice(actor)) throw new ServiceError('forbidden', 403);
       return json(200, { ok: true, ...await run(actor, event) }, cors);
     } catch (error) {
