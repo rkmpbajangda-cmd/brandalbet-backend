@@ -366,6 +366,12 @@ export async function reconcileGoldslotTransfer(actor, rawInput, {
   client,
 } = {}) {
   assertEnabled(env);
+  // Balance-only reconciliation can be fooled by concurrent game activity.
+  // Keep it disabled until staging validates the operational procedure or a
+  // provider transaction-identity query is implemented from the exact schema.
+  if (env.GOLDSLOTPALASE_BALANCE_RECONCILIATION_ENABLED !== 'true') {
+    throw new ServiceError('game_transfer_manual_reconciliation_required', 409);
+  }
   if (!client) throw new ServiceError('provider_unconfigured', 503);
   if (!rawInput || typeof rawInput !== 'object' || Array.isArray(rawInput)) throw new ServiceError('invalid_reconcile_payload');
   const id = rawInput.transferId;
