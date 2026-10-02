@@ -72,7 +72,8 @@ function validateSuccessEnvelope(payload, mutation) {
     throw new GoldslotError('provider_invalid_response', { ambiguous: mutation });
   }
   if (result !== 0) {
-    throw new GoldslotError('provider_rejected', { providerResult: result, ambiguous: mutation });
+    // A valid provider envelope with a non-zero result is an explicit rejection, not an ambiguous mutation.
+    throw new GoldslotError('provider_rejected', { providerResult: result, ambiguous: false });
   }
   if (!('data' in payload) || payload.data === null || typeof payload.data !== 'object') {
     throw new GoldslotError('provider_invalid_response', { ambiguous: mutation });
