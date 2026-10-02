@@ -40,6 +40,20 @@ function safeString(value, max = 200) {
   return out.length <= max ? out : out.slice(0, max);
 }
 
+export function jakartaDayKey(value = new Date()) {
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) return null;
+  const parts = Object.fromEntries(
+    new Intl.DateTimeFormat('en-US', {
+      timeZone: 'Asia/Jakarta',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    }).formatToParts(date).filter(part => part.type !== 'literal').map(part => [part.type, part.value]),
+  );
+  return `${parts.year}-${parts.month}-${parts.day}`;
+}
+
 function docTime(data) {
   return isoTimestamp(data?.createdAt ?? data?.updatedAt);
 }
@@ -69,7 +83,7 @@ export async function dashboard(actor, event, { db = getAdminDb(), env = process
   let withdrawToday = null;
   let pendingDeposits = null;
   let pendingWithdrawals = null;
-  const todayKey = new Date().toISOString().slice(0, 10);
+  const todayKey = jakartaDayKey(new Date());
 
   if (canSeeFinance) {
     depositToday = 0;
@@ -77,7 +91,7 @@ export async function dashboard(actor, event, { db = getAdminDb(), env = process
     for (const doc of ledgerDocs) {
       const row = doc.data();
       const stamp = isoTimestamp(row.createdAt);
-      if (!stamp || stamp.slice(0, 10) !== todayKey) continue;
+      if (!stamp || jakartaDayKey(stamp) !== todayKey) continue;
       const source = lower(row.source);
       if (source.includes('deposit') && row.type === 'credit') depositToday += Number(row.amountMinor || 0);
       if ((source.includes('withdraw') || source.includes('payout')) && row.type === 'debit') withdrawToday += Number(row.amountMinor || 0);
@@ -95,15 +109,15 @@ export async function dashboard(actor, event, { db = getAdminDb(), env = process
   const byDay = new Map();
   for (let i = days - 1; i >= 0; i--) {
     const d = new Date(Date.now() - i * 86400000);
-    const key = d.toISOString().slice(0, 10);
-    byDay.set(key, { label: d.toLocaleDateString('en-US', { weekday: 'short' }), deposit: 0, withdraw: 0 });
+    const key = jakartaDayKey(d);
+    byDay.set(key, { label: d.toLocaleDateString('en-US', { weekday: 'short', timeZone: 'Asia/Jakarta' }), deposit: 0, withdraw: 0 });
   }
   if (canSeeFinance) {
     for (const doc of ledgerDocs) {
       const row = doc.data();
       const stamp = isoTimestamp(row.createdAt);
       if (!stamp || Date.parse(stamp) < since) continue;
-      const bucket = byDay.get(stamp.slice(0, 10));
+      const bucket = byDay.get(jakartaDayKey(stamp));
       if (!bucket) continue;
       const source = lower(row.source);
       if (source.includes('deposit') && row.type === 'credit') bucket.deposit += Number(row.amountMinor || 0);
