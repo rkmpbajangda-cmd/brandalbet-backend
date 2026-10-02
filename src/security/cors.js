@@ -7,6 +7,10 @@ export class CorsError extends Error {
   }
 }
 
+const DEFAULT_MEMBER_ORIGINS = Object.freeze([
+  'https://brandalbet.blogspot.com',
+]);
+
 function getHeader(headers = {}, wanted) {
   const key = Object.keys(headers).find((item) => item.toLowerCase() === wanted);
   return key ? headers[key] : undefined;
@@ -27,6 +31,14 @@ export function corsHeaders(event, scope, env = process.env) {
 
   const variable = scope === 'backoffice' ? 'ALLOWED_BACKOFFICE_ORIGINS' : 'ALLOWED_MEMBER_ORIGINS';
   const allowed = parseOrigins(env[variable]);
+
+  // BrandalBet's canonical Blogger member origin is an exact allow-list entry.
+  // Additional/custom domains still have to be configured explicitly through
+  // ALLOWED_MEMBER_ORIGINS. Never use wildcard CORS for authenticated APIs.
+  if (scope === 'member') {
+    for (const memberOrigin of DEFAULT_MEMBER_ORIGINS) allowed.add(memberOrigin);
+  }
+
   if (!allowed.has(origin)) throw new CorsError();
 
   return {
