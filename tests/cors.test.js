@@ -42,3 +42,25 @@ test('Blogger member origin is not implicitly allowed for backoffice APIs', () =
     (error) => error instanceof CorsError && error.code === 'origin_not_allowed',
   );
 });
+
+
+test('canonical BrandalBet Blogger backoffice origin is always allowed for backoffice APIs', () => {
+  const headers = corsHeaders(
+    { headers: { Origin: 'https://backoffic.blogspot.com' } },
+    'backoffice',
+    {},
+  );
+  assert.equal(headers['Access-Control-Allow-Origin'], 'https://backoffic.blogspot.com');
+  assert.equal(headers.Vary, 'Origin');
+});
+
+test('unknown backoffice origins remain fail closed', () => {
+  assert.throws(
+    () => corsHeaders(
+      { headers: { origin: 'https://evil.example.test' } },
+      'backoffice',
+      {},
+    ),
+    (error) => error instanceof CorsError && error.code === 'origin_not_allowed',
+  );
+});
