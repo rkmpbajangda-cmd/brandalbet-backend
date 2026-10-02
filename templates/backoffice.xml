@@ -74,16 +74,55 @@
     import { initializeApp } from 'https://www.gstatic.com/firebasejs/12.4.0/firebase-app.js';
     import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut } from 'https://www.gstatic.com/firebasejs/12.4.0/firebase-auth.js';
     const firebaseConfig={apiKey:'AIzaSyAdndUMKN1KQjoMw0ZRL-2h-m32E_q6ris',authDomain:'brandal-bet.firebaseapp.com',projectId:'brandal-bet',storageBucket:'brandal-bet.firebasestorage.app',messagingSenderId:'38183964058',appId:'1:38183964058:web:2b128da5582e6932c73e23'};
-    const API_BASE='https://verdant-tiramisu-efb2f9.netlify.app'; const app=initializeApp(firebaseConfig); const auth=getAuth(app); const $=q=>document.querySelector(q); const $$=q=>[...document.querySelectorAll(q)]; const loader=$('#loader'); let user=null;
+    const API_BASE='https://verdant-tiramisu-efb2f9.netlify.app'; const app=initializeApp(firebaseConfig); const auth=getAuth(app); const $=q=>document.querySelector(q); const $$=q=>[...document.querySelectorAll(q)]; const loader=$('#loader'); let user=null,authRevision=0;
     const titles={dashboard:'Dashboard',members:'Members',finance:'Finance Ops',deposits:'Deposits',withdrawals:'Withdrawals',ledger:'Wallet / Ledger',reconciliation:'Reconciliation',catalog:'Game Catalog',providers:'Provider Operations',rtp:'RTP / Game Controls','provider-health':'Provider Health',promotions:'Promotions',rewards:'Bonus / VIP / Referral',payment:'Payment Gateway',reports:'Reports',website:'Website Settings',audit:'Audit Log',security:'Roles & Security'};
     function busy(v){loader.classList.toggle('show',!!v)} function notice(m,ok=false){$('#loginNotice').innerHTML=m?`<div class="notice ${ok?'ok':''}">${String(m).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}</div>`:''}
     function generic(name){return `<div class="section-title"><div><h2 style="margin:0">${titles[name]}</h2><p style="margin:5px 0 0;color:var(--muted);font-size:13px">Modul UI siap. Data live menunggu endpoint bisnis server-side agar tidak ada data palsu atau mutasi dari browser.</p></div><div class="grow"></div></div><div class="panel"><div class="table"><div class="tr head"><div>Item</div><div>Status</div><div>Source</div><div>Action</div></div><div class="empty">Belum ada data live. Backend module belum diaktifkan.</div></div></div>`}
     $$('[data-screen]').filter(x=>x.tagName==='SECTION').forEach(s=>{if(!['dashboard','promotions'].includes(s.dataset.screen))s.innerHTML=generic(s.dataset.screen)});
     function screen(name){$$('.screen').forEach(s=>s.classList.toggle('active',s.dataset.screen===name));$$('#nav button').forEach(b=>b.classList.toggle('active',b.dataset.screen===name));$('#screenTitle').textContent=titles[name]||'Backoffice';$('#sidebar').classList.remove('open');$('#drawerBackdrop').classList.remove('show');if(name==='promotions'&&user)loadPromotions();if(name==='security'&&user)loadReadiness();if(name==='payment'&&user)loadPayments()}
     $('#nav').addEventListener('click',e=>{const b=e.target.closest('[data-screen]');if(b)screen(b.dataset.screen)});$('#menuBtn').addEventListener('click',()=>{$('#sidebar').classList.add('open');$('#drawerBackdrop').classList.add('show')});$('#drawerBackdrop').addEventListener('click',()=>{$('#sidebar').classList.remove('open');$('#drawerBackdrop').classList.remove('show')});
-    async function authorize(current){const token=await current.getIdToken();const r=await fetch(API_BASE+'/.netlify/functions/backoffice-health',{headers:{Authorization:`Bearer ${token}`}});let body={};try{body=await r.json()}catch{};if(!r.ok)throw Object.assign(new Error(body.error||`HTTP ${r.status}`),{status:r.status,body});return body}
-    async function bootstrap(current){const token=await current.getIdToken();const r=await fetch(API_BASE+'/.netlify/functions/bootstrap-superadmin',{method:'POST',headers:{Authorization:`Bearer ${token}`}});let body={};try{body=await r.json()}catch{};if(!r.ok)throw Object.assign(new Error(body.error||`HTTP ${r.status}`),{status:r.status,body});await current.getIdToken(true);return body}
-    async function enter(current){busy(true);try{try{await authorize(current);}catch(first){if(first.status!==403)throw first;const boot=await bootstrap(current);if(!boot.ok)throw first;await authorize(current);}const result=await current.getIdTokenResult(true);const role=result.claims.role||'backoffice';$('#roleBadge').textContent=String(role).toUpperCase();$('#backendState').textContent='RBAC backend terverifikasi. Akses backoffice diizinkan. Jika bootstrap baru berhasil, segera ubah BOOTSTRAP_ENABLED=false di Netlify.';$('#loginShell').classList.add('hidden');$('#adminShell').classList.remove('hidden');notice('');}catch(err){$('#adminShell').classList.add('hidden');$('#loginShell').classList.remove('hidden');if(err.status===403)notice('Login Firebase berhasil, tetapi UID ini tidak diizinkan sebagai backoffice.');else if(err.status===404)notice('Bootstrap dinonaktifkan dan akun belum memiliki claim backoffice.');else if(err.status===503)notice('Firebase Admin backend belum siap atau credential server tidak valid.');else notice('Akses backoffice gagal: '+(err.message||'unknown'));await signOut(auth);}finally{busy(false)}}
+    function isCurrent(current,revision){return user===current&&auth.currentUser===current&&revision===authRevision}
+    function hideAdmin(){
+      $('#adminShell').classList.add('hidden');$('#loginShell').classList.remove('hidden');
+      $('#roleBadge').textContent='AUTH';$('#sidebar').classList.remove('open');$('#drawerBackdrop').classList.remove('show');
+    }
+    async function accessRequest(current,path,method='GET'){
+      const token=await current.getIdToken();
+      const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),15000);
+      try{
+        const r=await fetch(API_BASE+'/.netlify/functions/'+path,{method,headers:{Authorization:`Bearer ${token}`,Accept:'application/json'},signal:controller.signal,cache:'no-store',redirect:'error'});
+        let body;try{body=await r.json()}catch{throw new Error('invalid_server_response')}
+        if(!r.ok)throw Object.assign(new Error(body?.error||`HTTP ${r.status}`),{status:r.status});
+        if(!body||body.ok!==true)throw new Error('invalid_server_response');
+        return body;
+      }finally{clearTimeout(timer)}
+    }
+    async function authorize(current){return accessRequest(current,'backoffice-health')}
+    async function bootstrap(current){const body=await accessRequest(current,'bootstrap-superadmin','POST');await current.getIdToken(true);return body}
+    async function enter(current,revision){
+      hideAdmin();busy(true);
+      try{
+        try{await authorize(current);}catch(first){
+          if(!isCurrent(current,revision))return;
+          if(first.status!==403)throw first;
+          await bootstrap(current);
+          if(!isCurrent(current,revision))return;
+          await authorize(current);
+        }
+        if(!isCurrent(current,revision))return;
+        const result=await current.getIdTokenResult(true);
+        if(!isCurrent(current,revision))return;
+        $('#roleBadge').textContent=String(result.claims.role||'backoffice').toUpperCase();
+        $('#backendState').textContent='Akses akun telah diverifikasi oleh server.';
+        $('#loginShell').classList.add('hidden');$('#adminShell').classList.remove('hidden');notice('');
+      }catch(err){
+        if(!isCurrent(current,revision))return;
+        hideAdmin();
+        const messages={403:'Akun ini tidak memiliki akses backoffice.',404:'Akses admin belum tersedia.',503:'Layanan autentikasi server belum tersedia.'};
+        notice(messages[err.status]||'Akses belum dapat diverifikasi. Periksa koneksi lalu coba kembali.');
+        await signOut(auth);
+      }finally{if(revision===authRevision)busy(false)}
+    }
 
     async function loadReadiness(){
       const root=document.querySelector('section[data-screen="security"]');
@@ -204,7 +243,7 @@
     $('#promoAdminList')?.addEventListener('click',async e=>{const edit=e.target.closest('[data-promo-edit]');if(edit){editPromo(edit.dataset.promoEdit);return}const del=e.target.closest('[data-promo-delete]');if(del){if(!confirm('Hapus promo ini?'))return;busy(true);try{await promoRequest({method:'POST',body:JSON.stringify({action:'delete',id:del.dataset.promoDelete,expectedRevision:promoCache.find(p=>p.id===del.dataset.promoDelete)?.revision||0})});promoStatus('Promo dihapus.',true);await loadPromotions()}catch(err){promoStatus('Gagal menghapus promo: '+(err.message||'unknown'))}finally{busy(false)}}});
     $('#promoRefreshBtn')?.addEventListener('click',loadPromotions);$('#promoNewBtn')?.addEventListener('click',()=>{resetPromoForm();$('#promoTitle')?.focus()});$('#promoResetBtn')?.addEventListener('click',resetPromoForm);
 
-    $('#loginForm').addEventListener('submit',async e=>{e.preventDefault();notice('');busy(true);try{const c=await signInWithEmailAndPassword(auth,$('#email').value.trim(),$('#password').value);}catch(err){if(!auth.currentUser)notice('Login gagal. Periksa email/password Firebase Authentication.');}finally{$('#password').value='';busy(false)}});$('#logoutBtn').addEventListener('click',()=>signOut(auth));onAuthStateChanged(auth,async current=>{user=current;if(current)await enter(current);else{paymentCache=[];document.querySelector('section[data-screen="payment"]')?.replaceChildren();$('#adminShell').classList.add('hidden');$('#loginShell').classList.remove('hidden')}});
+    $('#loginForm').addEventListener('submit',async e=>{e.preventDefault();notice('');busy(true);try{const c=await signInWithEmailAndPassword(auth,$('#email').value.trim(),$('#password').value);}catch(err){if(!auth.currentUser)notice('Login gagal. Periksa email/password Firebase Authentication.');}finally{$('#password').value='';busy(false)}});$('#logoutBtn').addEventListener('click',async()=>{authRevision++;user=null;hideAdmin();busy(false);try{await signOut(auth)}catch{notice('Keluar belum berhasil. Coba kembali sebelum meninggalkan perangkat ini.')}});onAuthStateChanged(auth,async current=>{const revision=++authRevision;user=current;hideAdmin();paymentCache=[];document.querySelector('section[data-screen="payment"]')?.replaceChildren();if(current)await enter(current,revision);else busy(false)});
   //]]>
 </script>
 </body>
