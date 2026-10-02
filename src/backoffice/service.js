@@ -309,9 +309,12 @@ export async function providerStatus(actor, event, { env = process.env, clientFa
       launch: true,
       walletTransfer: env.GOLDSLOTPALASE_TRANSFER_ENABLED === 'true' && env.GOLDSLOTPALASE_IDR_SCALE === '1',
       balanceReconciliation: env.GOLDSLOTPALASE_BALANCE_RECONCILIATION_ENABLED === 'true',
-      rtpGlobal: false,
+      // GoldslotPalase V4 documents agent-level RTP mutation and
+      // launch-time per-user RTP override. Persistent per-game RTP and
+      // scatter controls are not documented in the supplied V4 contract.
+      rtpGlobal: true,
       rtpPerGame: false,
-      rtpPerUser: false,
+      rtpPerUser: true,
       scatterControl: false,
     },
   };
