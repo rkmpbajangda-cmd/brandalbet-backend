@@ -59,7 +59,7 @@ test('module-level RBAC separates operations, finance and admin scopes', async (
   );
 });
 
-test('GoldslotPalase capability response keeps RTP and scatter controls fail-closed', async () => {
+test('GoldslotPalase capability response exposes documented RTP controls only', async () => {
   const result = await providerStatus(operator, getEvent, {
     env: {
       GOLDSLOTPALASE_TRANSFER_ENABLED: 'false',
@@ -71,9 +71,9 @@ test('GoldslotPalase capability response keeps RTP and scatter controls fail-clo
   });
   assert.equal(result.provider, 'goldslotpalase');
   assert.equal(result.status, 'healthy');
-  assert.equal(result.capabilities.rtpGlobal, false);
+  assert.equal(result.capabilities.rtpGlobal, true);
   assert.equal(result.capabilities.rtpPerGame, false);
-  assert.equal(result.capabilities.rtpPerUser, false);
+  assert.equal(result.capabilities.rtpPerUser, true);
   assert.equal(result.capabilities.scatterControl, false);
   assert.equal(result.capabilities.walletTransfer, false);
 });
