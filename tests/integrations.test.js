@@ -53,12 +53,48 @@ test('provider timeout aborts the request', async () => {
   const client = createGoldslotClient({ env, timeoutMs: 5, fetchImpl: (_u, { signal }) => new Promise((_resolve, reject) => signal.addEventListener('abort', () => reject(new Error('aborted')))) });
   await assert.rejects(client.agentInfo(), { code: 'provider_unavailable' });
 });
-test('launch excludes RTP fields and uses Indonesian language code', async () => {
+test('launch uses documented V4 defaults and Indonesian language code', async () => {
   let body;
   const client = createGoldslotClient({ env, fetchImpl: async (_u, o) => { body = JSON.parse(o.body); return new Response('{"result":0,"data":{}}'); } });
   await client.launch({ userCode: 1, providerId: 2, gameSymbol: 'sample', rtp: 99 });
-  assert.deepEqual(body, { user_code: 1, provider_id: 2, game_symbol: 'sample', lang: 9 });
+  assert.deepEqual(body, {
+    user_code: 1,
+    provider_id: 2,
+    game_symbol: 'sample',
+    lang: 9,
+    return_url: '',
+    min_bet: 0,
+    max_bet: 0,
+    round_max_win: 0,
+    rtp: 0,
+    is_finish_jackpot: true,
+  });
 });
+test('provider list sends documented Indonesian language payload', async () => {
+  let seen;
+  const client = createGoldslotClient({ env, fetchImpl: async (url, options) => {
+    seen = { url, body: JSON.parse(options.body) };
+    return new Response(JSON.stringify({ code: 0, message: 'OK', data: [] }));
+  } });
+  await client.providers();
+  assert.equal(seen.url, 'https://agent.goldslotpalase.com/v4/game/providers');
+  assert.deepEqual(seen.body, { lang: 9 });
+});
+
+test('agent RTP and callback test accept documented code-only success envelopes', async () => {
+  const seen = [];
+  const client = createGoldslotClient({ env, fetchImpl: async (url, options) => {
+    seen.push({ url, body: JSON.parse(options.body) });
+    return new Response(JSON.stringify({ code: 0, message: 'OK' }));
+  } });
+  assert.deepEqual(await client.setGlobalAgentRtp(0), {});
+  assert.deepEqual(await client.callbackTest(), {});
+  assert.deepEqual(seen.map(x => [x.url.split('.com')[1], x.body]), [
+    ['/v4/agent/rtp', { rtp: 0 }],
+    ['/v4/agent/callback-test', {}],
+  ]);
+});
+
 test('readiness reveals no secret values and never asserts production readiness', async () => {
   const data = configurationReadiness({ ...env, FIREBASE_PRIVATE_KEY: 'private-fixture' });
   assert.equal(data.readyForRealMoney, false);
