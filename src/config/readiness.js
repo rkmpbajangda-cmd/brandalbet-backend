@@ -16,6 +16,7 @@ export function configurationReadiness(env = process.env) {
   const providerTransfer = {
     enabled: env.GOLDSLOTPALASE_TRANSFER_ENABLED === 'true',
     idrScaleVerified: env.GOLDSLOTPALASE_IDR_SCALE === '1',
+    balanceReconciliationEnabled: env.GOLDSLOTPALASE_BALANCE_RECONCILIATION_ENABLED === 'true',
   };
 
   return {
