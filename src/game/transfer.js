@@ -332,23 +332,31 @@ export async function executeGoldslotTransfer(actor, rawInput, {
   // Never re-send a previously prepared/ambiguous provider mutation.
   if (!prepared.created) return transferView(prepared.id, prepared.data);
 
+  let upstream;
   try {
-    let upstream;
     if (input.direction === 'in') {
       upstream = await client.walletDeposit({ userCode: player.userCode, amount: input.amountMinor });
-      return await settleTransferIn(prepared.id, actor.uid, upstream, { db });
-    }
-    if (input.direction === 'out') {
+    } else if (input.direction === 'out') {
       upstream = await client.walletWithdraw({ userCode: player.userCode, amount: input.amountMinor });
-      return await settleTransferOut(prepared.id, actor.uid, upstream, { db });
+    } else {
+      upstream = await client.walletWithdrawAll({ userCode: player.userCode });
     }
-    upstream = await client.walletWithdrawAll({ userCode: player.userCode });
-    return await settleTransferOut(prepared.id, actor.uid, upstream, { db });
   } catch (error) {
-    if (error?.code === 'provider_transfer_amount_mismatch' || error?.ambiguous === true) {
+    if (error?.ambiguous === true) {
       return markAmbiguous(prepared.id, actor.uid, { db });
     }
     return failPrepared(prepared.id, actor.uid, { db, reason: error?.code || 'provider_rejected' });
+  }
+
+  // From this point the provider has explicitly reported success. Any local
+  // settlement problem is ambiguous and must never release/credit funds as if
+  // the provider mutation had failed.
+  try {
+    return input.direction === 'in'
+      ? await settleTransferIn(prepared.id, actor.uid, upstream, { db })
+      : await settleTransferOut(prepared.id, actor.uid, upstream, { db });
+  } catch {
+    return markAmbiguous(prepared.id, actor.uid, { db });
   }
 }
 
