@@ -58,23 +58,18 @@ export function profileView(uid, data = {}) {
 
 export async function getOrCreateProfile(actor, { db = getAdminDb() } = {}) {
   const ref = db.collection('users').doc(actor.uid);
-  const snapshot = await ref.get();
-  if (snapshot.exists) return profileView(actor.uid, snapshot.data());
-
-  const initial = {
-    uid: actor.uid,
-    email: typeof actor.email === 'string' ? actor.email : null,
-    username: '',
-    displayName: typeof actor.name === 'string' ? actor.name : '',
-    phone: '',
-    language: 'id',
-    timezone: 'Asia/Jakarta',
-    onboardingCompleted: false,
-    createdAt: FieldValue.serverTimestamp(),
-    updatedAt: FieldValue.serverTimestamp(),
-  };
-  await ref.create(initial);
-  return profileView(actor.uid, initial);
+  return db.runTransaction(async tx => {
+    const snapshot = await tx.get(ref);
+    if (snapshot.exists) return profileView(actor.uid, snapshot.data());
+    const initial = {
+      uid: actor.uid, email: typeof actor.email === 'string' ? actor.email : null,
+      username: '', displayName: typeof actor.name === 'string' ? actor.name : '', phone: '',
+      language: 'id', timezone: 'Asia/Jakarta', onboardingCompleted: false,
+      createdAt: FieldValue.serverTimestamp(), updatedAt: FieldValue.serverTimestamp(),
+    };
+    tx.create(ref, initial);
+    return profileView(actor.uid, initial);
+  });
 }
 
 export async function updateProfile(actor, patch, { db = getAdminDb() } = {}) {
@@ -89,3 +84,4 @@ export async function updateProfile(actor, patch, { db = getAdminDb() } = {}) {
   const snapshot = await ref.get();
   return profileView(actor.uid, snapshot.data());
 }
+

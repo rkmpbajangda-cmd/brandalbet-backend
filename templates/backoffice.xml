@@ -1,0 +1,250 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE html>
+<html b:css='false' b:defaultwidgetversion='2' b:layoutsVersion='3' b:responsive='true' expr:dir='data:blog.languageDirection' expr:lang='data:blog.locale' xmlns='http://www.w3.org/1999/xhtml' xmlns:b='http://www.google.com/2005/gml/b' xmlns:data='http://www.google.com/2005/gml/data' xmlns:expr='http://www.google.com/2005/gml/expr'>
+<head>
+  <meta content='width=device-width,initial-scale=1' name='viewport'/><meta content='noindex,nofollow,noarchive' name='robots'/><meta content='#08100d' name='theme-color'/><title>Brandalbet Backoffice</title>
+  <b:skin><![CDATA[
+    :root{--bg:#07100c;--sidebar:#0b1510;--surface:#0f1c15;--surface2:#13251b;--line:#22372a;--text:#edf7f0;--muted:#8fa499;--brand:#20d866;--gold:#e2bc61;--danger:#ff6c6c;--radius:16px;--shadow:0 16px 44px rgba(0,0,0,.28);font-family:Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif}*{box-sizing:border-box}html,body{margin:0;background:var(--bg);color:var(--text);min-height:100%}button,input{font:inherit}.hidden{display:none!important}
+    .login-shell{min-height:100vh;display:grid;place-items:center;padding:22px;background:radial-gradient(circle at 20% 0,#143821 0,transparent 34%),var(--bg)}.login-card{width:min(440px,100%);background:var(--surface);border:1px solid var(--line);border-radius:24px;padding:24px;box-shadow:var(--shadow)}.logo{width:44px;height:44px;border-radius:14px;background:linear-gradient(145deg,var(--brand),#0c8238);display:grid;place-items:center;color:#03150a;font-weight:1000}.login-card h1{font-size:24px;margin:18px 0 6px}.login-card p{margin:0 0 18px;color:var(--muted);line-height:1.55}.field{margin:12px 0}.field label{display:block;color:#bdd0c4;font-size:12px;margin-bottom:7px}.field input{width:100%;border:1px solid var(--line);background:#08110d;color:var(--text);border-radius:13px;padding:13px 14px;outline:none}.btn{border:0;border-radius:13px;padding:13px 16px;font-weight:900}.btn.primary{background:var(--brand);color:#03150a}.btn.ghost{background:var(--surface2);color:var(--text);border:1px solid var(--line)}.wide{width:100%}.notice{margin:12px 0;border:1px solid rgba(255,108,108,.32);background:rgba(255,108,108,.08);color:#ffc1c1;border-radius:13px;padding:11px;font-size:12px;line-height:1.5}.notice.ok{border-color:rgba(32,216,102,.32);background:rgba(32,216,102,.08);color:#bdf2ce}
+    .admin{display:grid;grid-template-columns:260px 1fr;min-height:100vh}.sidebar{position:sticky;top:0;height:100vh;padding:18px 14px;background:var(--sidebar);border-right:1px solid var(--line);overflow:auto}.brand{display:flex;align-items:center;gap:10px;padding:4px 6px 18px;font-weight:1000}.nav-group{margin:16px 6px 7px;color:#60776a;font-size:10px;font-weight:900;text-transform:uppercase;letter-spacing:1.4px}.nav{display:grid;gap:5px}.nav button{border:0;background:transparent;color:#aabfb2;text-align:left;padding:11px 12px;border-radius:11px;font-weight:700}.nav button.active,.nav button:hover{background:rgba(32,216,102,.09);color:#dff8e7}.nav button.active{box-shadow:inset 3px 0 var(--brand)}.main{min-width:0}.top{position:sticky;top:0;z-index:20;height:70px;display:flex;align-items:center;gap:12px;padding:0 22px;background:rgba(7,16,12,.92);backdrop-filter:blur(18px);border-bottom:1px solid rgba(255,255,255,.055)}.top h1{font-size:18px;margin:0}.top .grow{flex:1}.badge{border-radius:999px;background:rgba(32,216,102,.1);color:#9af0ba;border:1px solid rgba(32,216,102,.2);padding:7px 10px;font-size:11px;font-weight:900}.icon-btn{width:40px;height:40px;border-radius:12px;border:1px solid var(--line);background:var(--surface);color:var(--text)}.content{padding:22px}.screen{display:none}.screen.active{display:block;animation:fade .16s ease}@keyframes fade{from{opacity:.7;transform:translateY(3px)}to{opacity:1;transform:none}}.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}.stat{background:var(--surface);border:1px solid var(--line);border-radius:18px;padding:16px}.stat small{color:var(--muted)}.stat strong{display:block;font-size:24px;margin-top:7px}.stat em{font-style:normal;color:#7cd99c;font-size:11px}.panel{margin-top:14px;background:var(--surface);border:1px solid var(--line);border-radius:18px;padding:17px}.panel h2{margin:0 0 5px;font-size:16px}.panel p{margin:0;color:var(--muted);line-height:1.55;font-size:13px}.table{margin-top:14px;border:1px solid var(--line);border-radius:14px;overflow:hidden}.tr{display:grid;grid-template-columns:1.2fr 1fr 1fr .8fr;gap:10px;padding:12px 13px;border-bottom:1px solid rgba(255,255,255,.055);font-size:12px}.tr.head{background:#0b1510;color:#789083;font-weight:900;text-transform:uppercase;font-size:10px}.tr:last-child{border-bottom:0}.empty{padding:30px;text-align:center;color:var(--muted)}.section-title{display:flex;align-items:center;gap:10px}.section-title .grow{flex:1}.toolbar{display:flex;gap:8px}.toolbar button{padding:9px 11px;border-radius:10px}.loader{position:fixed;z-index:100;inset:0;display:grid;place-items:center;background:rgba(7,16,12,.18);backdrop-filter:blur(2px);opacity:0;pointer-events:none;transition:.15s}.loader.show{opacity:1;pointer-events:auto}.spinner{width:42px;height:42px;border-radius:50%;border:4px solid rgba(255,255,255,.1);border-top-color:var(--brand);animation:spin .7s linear infinite}@keyframes spin{to{transform:rotate(360deg)}}
+    .mobile-menu{display:none}.drawer-backdrop{display:none}@media(max-width:980px){.admin{grid-template-columns:1fr}.sidebar{position:fixed;z-index:50;left:-280px;width:260px;transition:.2s}.sidebar.open{left:0}.drawer-backdrop{position:fixed;z-index:40;inset:0;background:rgba(0,0,0,.5)}.drawer-backdrop.show{display:block}.mobile-menu{display:inline-grid}.stats{grid-template-columns:repeat(2,1fr)}.content{padding:16px}.top{padding:0 14px}}@media(max-width:560px){.stats{grid-template-columns:1fr 1fr}.stat strong{font-size:19px}.tr{grid-template-columns:1fr 1fr}.tr>*:nth-child(3),.tr>*:nth-child(4){display:none}}
+
+
+    /* V18 Promotions manager */
+    .promo-admin-grid{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(320px,.9fr);gap:14px;margin-top:14px}.promo-form-grid{display:grid;grid-template-columns:1fr 1fr;gap:0 12px}.field textarea,.field select{width:100%;border:1px solid var(--line);background:#08110d;color:var(--text);border-radius:13px;padding:12px 13px;outline:none}.field textarea{min-height:92px;resize:vertical;line-height:1.45}.field select{min-height:44px}.field.full{grid-column:1/-1}.field small{display:block;margin-top:5px;color:#60766a;font-size:10px;line-height:1.45}.promo-form-actions{display:flex;gap:8px;margin-top:14px}.promo-form-actions .btn{min-width:120px}.promo-admin-status{display:flex;align-items:center;gap:8px;margin-top:10px;color:#87a294;font-size:11px}.promo-admin-status i{width:8px;height:8px;border-radius:50%;background:#697c72}.promo-admin-status.ok i{background:var(--brand);box-shadow:0 0 0 4px rgba(32,216,102,.1)}.promo-admin-list{display:grid;gap:8px;margin-top:12px}.promo-admin-item{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:12px;align-items:center;padding:12px;border:1px solid var(--line);border-radius:14px;background:#0b1711}.promo-admin-item h3{margin:0;font-size:13px}.promo-admin-item p{margin:4px 0 0;color:var(--muted);font-size:11px;line-height:1.4}.promo-admin-tags{display:flex;gap:5px;flex-wrap:wrap;margin-top:7px}.promo-admin-tag{padding:4px 6px;border-radius:999px;border:1px solid var(--line);color:#8da397;font-size:9px;font-weight:800}.promo-admin-tag.active{border-color:rgba(32,216,102,.24);color:#8ce8ac}.promo-admin-actions{display:flex;gap:6px}.promo-admin-actions button{border:1px solid var(--line);border-radius:9px;background:#0f2117;color:#dceae1;padding:8px 9px;font-size:10px;font-weight:800}.promo-admin-actions button.danger{color:#ffaaaa;border-color:rgba(255,108,108,.25);background:rgba(255,108,108,.06)}.promo-empty{padding:24px;border:1px dashed var(--line);border-radius:14px;color:var(--muted);text-align:center;font-size:12px}.promo-help{margin-top:10px;padding:11px;border:1px solid rgba(226,188,97,.18);border-radius:12px;background:rgba(226,188,97,.045);color:#c1b68e;font-size:11px;line-height:1.5}
+    @media(max-width:900px){.promo-admin-grid{grid-template-columns:1fr}.promo-form-grid{grid-template-columns:1fr}.field.full{grid-column:auto}}@media(max-width:560px){.promo-admin-item{grid-template-columns:1fr}.promo-admin-actions{justify-content:flex-start}.promo-form-actions{flex-direction:column}.promo-form-actions .btn{width:100%}}
+
+  ]]></b:skin>
+</head>
+<body>
+  <div class='login-shell' id='loginShell'>
+    <div class='login-card'><div class='logo'>B</div><h1>Brandalbet Backoffice</h1><p>Login operator memakai Firebase Authentication. Akses dashboard hanya diberikan setelah backend memverifikasi ID Token dan custom claims.</p><div id='loginNotice'></div><form id='loginForm'><div class='field'><label>Email admin</label><input id='email' type='email' autocomplete='username' required='required'/></div><div class='field'><label>Password</label><input id='password' type='password' autocomplete='current-password' required='required'/></div><button class='btn primary wide' type='submit'>Masuk ke Backoffice</button></form></div>
+  </div>
+
+  <div class='admin hidden' id='adminShell'>
+    <aside class='sidebar' id='sidebar'><div class='brand'><div class='logo'>B</div><div>BRANDALBET<br/><small style='color:#6f8979'>OPERATOR</small></div></div><div class='nav' id='nav'>
+      <div class='nav-group'>Overview</div><button class='active' data-screen='dashboard'>Dashboard</button><button data-screen='members'>Members</button>
+      <div class='nav-group'>Finance</div><button data-screen='finance'>Finance Ops</button><button data-screen='deposits'>Deposits</button><button data-screen='withdrawals'>Withdrawals</button><button data-screen='ledger'>Wallet / Ledger</button><button data-screen='reconciliation'>Reconciliation</button>
+      <div class='nav-group'>Games</div><button data-screen='catalog'>Game Catalog</button><button data-screen='providers'>Provider Operations</button><button data-screen='rtp'>RTP / Game Controls</button><button data-screen='provider-health'>Provider Health</button>
+      <div class='nav-group'>Growth</div><button data-screen='promotions'>Promotions</button><button data-screen='rewards'>Bonus / VIP / Referral</button>
+      <div class='nav-group'>System</div><button data-screen='payment'>Payment Gateway</button><button data-screen='reports'>Reports</button><button data-screen='website'>Website Settings</button><button data-screen='audit'>Audit Log</button><button data-screen='security'>Roles &amp; Security</button>
+    </div></aside><div class='drawer-backdrop' id='drawerBackdrop'></div>
+    <section class='main'><header class='top'><button class='icon-btn mobile-menu' id='menuBtn'>☰</button><h1 id='screenTitle'>Dashboard</h1><div class='grow'></div><span class='badge' id='roleBadge'>AUTH</span><button class='icon-btn' id='logoutBtn'>↗</button></header>
+      <main class='content'>
+        <section class='screen active' data-screen='dashboard'><div class='stats'><div class='stat'><small>Members</small><strong>—</strong><em>Backend module pending</em></div><div class='stat'><small>Deposits today</small><strong>—</strong><em>Provider not connected</em></div><div class='stat'><small>Withdrawals</small><strong>—</strong><em>Finance module pending</em></div><div class='stat'><small>Provider health</small><strong>—</strong><em>Not configured</em></div></div><div class='panel'><h2>Backend access</h2><p id='backendState'>Memverifikasi RBAC…</p></div><div class='panel'><h2>Release status</h2><p>Backoffice tidak menampilkan data palsu. Modul akan berubah dari status belum dikonfigurasi menjadi live setelah endpoint bisnis resmi tersedia.</p></div></section>
+        <section class='screen' data-screen='members'></section><section class='screen' data-screen='finance'></section><section class='screen' data-screen='deposits'></section><section class='screen' data-screen='withdrawals'></section><section class='screen' data-screen='ledger'></section><section class='screen' data-screen='reconciliation'></section><section class='screen' data-screen='catalog'></section><section class='screen' data-screen='providers'></section><section class='screen' data-screen='rtp'></section><section class='screen' data-screen='provider-health'></section><section class='screen' data-screen='promotions'>
+          <div class='section-title'><div><h2 style='margin:0'>Promotions</h2><p style='margin:5px 0 0;color:var(--muted);font-size:13px'>Atur promo yang tampil di web member: kategori, banner, judul, keterangan, periode, urutan, detail artikel, dan status aktif.</p></div><div class='grow'></div><div class='toolbar'><button class='btn ghost' id='promoRefreshBtn' type='button'>Refresh</button><button class='btn primary' id='promoNewBtn' type='button'>+ Promo Baru</button></div></div>
+          <div class='promo-admin-status' id='promoAdminStatus'><i></i><span>Menunggu sinkronisasi backend.</span></div>
+          <div class='promo-admin-grid'>
+            <div class='panel' style='margin-top:0'>
+              <h2 id='promoFormTitle'>Tambah / Edit Promo</h2><p>Semua teks disimpan sebagai data, bukan HTML, sehingga aman untuk ditampilkan pada member web.</p>
+              <form id='promoAdminForm'>
+                <input id='promoId' type='hidden'/>
+                <div class='promo-form-grid'>
+                  <div class='field'><label>Judul Promo</label><input id='promoTitle' maxlength='100' required='required' placeholder='Contoh: Welcome Member'/></div>
+                  <div class='field'><label>Kategori</label><select id='promoCategory'><option value='member'>Member Baru</option><option value='reward'>Reward</option><option value='vip'>VIP</option><option value='tournament'>Turnamen</option><option value='general'>Umum</option></select></div>
+                  <div class='field'><label>Badge / Label</label><input id='promoBadge' maxlength='40' placeholder='MEMBER PROGRAM'/></div>
+                  <div class='field'><label>Status</label><select id='promoActive'><option value='true'>Aktif</option><option value='false'>Nonaktif</option></select></div>
+                  <div class='field full'><label>Ringkasan pada Card</label><textarea id='promoSummary' maxlength='240' placeholder='Deskripsi singkat yang terlihat pada banner promo.'></textarea></div>
+                  <div class='field'><label>Judul Baris Bawah</label><input id='promoMetaTitle' maxlength='100' placeholder='Program Member Baru'/></div>
+                  <div class='field'><label>Keterangan Singkat</label><input id='promoMetaDescription' maxlength='160' placeholder='Baca syarat dan ketentuan lengkap.'/></div>
+                  <div class='field full'><label>URL Banner Promo</label><input id='promoImageUrl' maxlength='2000' placeholder='https://...'/><small>Kosongkan untuk memakai artwork gradient bawaan Brandalbet. URL harus HTTPS.</small></div>
+                  <div class='field'><label>Mulai</label><input id='promoStartAt' type='datetime-local'/></div>
+                  <div class='field'><label>Berakhir</label><input id='promoEndAt' type='datetime-local'/></div>
+                  <div class='field'><label>Urutan Tampil</label><input id='promoSortOrder' min='0' max='9999' type='number' value='100'/></div>
+                  <div class='field'><label>CTA Detail</label><input id='promoCtaLabel' maxlength='40' value='Lanjutkan'/></div>
+                  <div class='field full'><label>Tujuan CTA Member</label><select id='promoCtaRoute'><option value='route-bonus'>Bonus</option><option value='route-cashback'>Cashback</option><option value='route-vip'>VIP</option><option value='route-referral'>Referral</option><option value='route-tournament'>Turnamen</option><option value='route-home'>Home</option></select></div>
+                  <div class='field full'><label>Pengantar Detail Promo</label><textarea id='promoDetailIntro' maxlength='500' placeholder='Ringkasan artikel saat user menekan Lihat Detail.'></textarea></div>
+                  <div class='field full'><label>Mekanisme</label><textarea id='promoMechanism' maxlength='1500' placeholder='Jelaskan cara promo bekerja.'></textarea></div>
+                  <div class='field full'><label>Syarat &amp; Ketentuan</label><textarea id='promoTerms' maxlength='1500' placeholder='Tuliskan syarat dan ketentuan promo.'></textarea></div>
+                  <div class='field full'><label>Keterangan Tambahan</label><textarea id='promoNote' maxlength='1500' placeholder='Catatan, batasan, atau informasi tambahan.'></textarea></div>
+                </div>
+                <div class='promo-form-actions'><button class='btn primary' type='submit'>Simpan Promo</button><button class='btn ghost' id='promoResetBtn' type='button'>Reset Form</button></div>
+              </form>
+              <div class='promo-help'>Web member hanya membaca promo <b>Aktif</b> dan masih berada dalam periode yang berlaku. Edit/delete wajib melalui endpoint backoffice yang sudah diverifikasi Firebase ID Token + RBAC.</div>
+            </div>
+            <div class='panel' style='margin-top:0'><h2>Promo Tersimpan</h2><p>Urutan mengikuti nilai sort order. Klik Edit untuk memuat data kembali ke form.</p><div class='promo-admin-list' id='promoAdminList'><div class='promo-empty'>Belum ada data promo dari backend.</div></div></div>
+          </div>
+        </section><section class='screen' data-screen='rewards'></section><section class='screen' data-screen='payment'></section><section class='screen' data-screen='reports'></section><section class='screen' data-screen='website'></section><section class='screen' data-screen='audit'></section><section class='screen' data-screen='security'></section>
+      </main></section>
+  </div>
+  <div class='loader' id='loader'><div class='spinner'></div></div><b:section id='blogger-system' showaddelement='false' style='display:none'/>
+  <script type='module'>
+//<![CDATA[
+    import { initializeApp } from 'https://www.gstatic.com/firebasejs/12.4.0/firebase-app.js';
+    import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut } from 'https://www.gstatic.com/firebasejs/12.4.0/firebase-auth.js';
+    const firebaseConfig={apiKey:'AIzaSyAdndUMKN1KQjoMw0ZRL-2h-m32E_q6ris',authDomain:'brandal-bet.firebaseapp.com',projectId:'brandal-bet',storageBucket:'brandal-bet.firebasestorage.app',messagingSenderId:'38183964058',appId:'1:38183964058:web:2b128da5582e6932c73e23'};
+    const API_BASE='https://verdant-tiramisu-efb2f9.netlify.app'; const app=initializeApp(firebaseConfig); const auth=getAuth(app); const $=q=>document.querySelector(q); const $$=q=>[...document.querySelectorAll(q)]; const loader=$('#loader'); let user=null,authRevision=0;
+    const titles={dashboard:'Dashboard',members:'Members',finance:'Finance Ops',deposits:'Deposits',withdrawals:'Withdrawals',ledger:'Wallet / Ledger',reconciliation:'Reconciliation',catalog:'Game Catalog',providers:'Provider Operations',rtp:'RTP / Game Controls','provider-health':'Provider Health',promotions:'Promotions',rewards:'Bonus / VIP / Referral',payment:'Payment Gateway',reports:'Reports',website:'Website Settings',audit:'Audit Log',security:'Roles & Security'};
+    function busy(v){loader.classList.toggle('show',!!v)} function notice(m,ok=false){$('#loginNotice').innerHTML=m?`<div class="notice ${ok?'ok':''}">${String(m).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}</div>`:''}
+    function generic(name){return `<div class="section-title"><div><h2 style="margin:0">${titles[name]}</h2><p style="margin:5px 0 0;color:var(--muted);font-size:13px">Modul UI siap. Data live menunggu endpoint bisnis server-side agar tidak ada data palsu atau mutasi dari browser.</p></div><div class="grow"></div></div><div class="panel"><div class="table"><div class="tr head"><div>Item</div><div>Status</div><div>Source</div><div>Action</div></div><div class="empty">Belum ada data live. Backend module belum diaktifkan.</div></div></div>`}
+    $$('[data-screen]').filter(x=>x.tagName==='SECTION').forEach(s=>{if(!['dashboard','promotions'].includes(s.dataset.screen))s.innerHTML=generic(s.dataset.screen)});
+    function screen(name){$$('.screen').forEach(s=>s.classList.toggle('active',s.dataset.screen===name));$$('#nav button').forEach(b=>b.classList.toggle('active',b.dataset.screen===name));$('#screenTitle').textContent=titles[name]||'Backoffice';$('#sidebar').classList.remove('open');$('#drawerBackdrop').classList.remove('show');if(name==='promotions'&&user)loadPromotions();if(name==='security'&&user)loadReadiness();if(name==='payment'&&user)loadPayments()}
+    $('#nav').addEventListener('click',e=>{const b=e.target.closest('[data-screen]');if(b)screen(b.dataset.screen)});$('#menuBtn').addEventListener('click',()=>{$('#sidebar').classList.add('open');$('#drawerBackdrop').classList.add('show')});$('#drawerBackdrop').addEventListener('click',()=>{$('#sidebar').classList.remove('open');$('#drawerBackdrop').classList.remove('show')});
+    function isCurrent(current,revision){return user===current&&auth.currentUser===current&&revision===authRevision}
+    function hideAdmin(){
+      $('#adminShell').classList.add('hidden');$('#loginShell').classList.remove('hidden');
+      $('#roleBadge').textContent='AUTH';$('#sidebar').classList.remove('open');$('#drawerBackdrop').classList.remove('show');
+    }
+    async function accessRequest(current,path,method='GET'){
+      const token=await current.getIdToken();
+      const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),15000);
+      try{
+        const r=await fetch(API_BASE+'/.netlify/functions/'+path,{method,headers:{Authorization:`Bearer ${token}`,Accept:'application/json'},signal:controller.signal,cache:'no-store',redirect:'error'});
+        let body;try{body=await r.json()}catch{throw new Error('invalid_server_response')}
+        if(!r.ok)throw Object.assign(new Error(body?.error||`HTTP ${r.status}`),{status:r.status});
+        if(!body||body.ok!==true)throw new Error('invalid_server_response');
+        return body;
+      }finally{clearTimeout(timer)}
+    }
+    async function authorize(current){return accessRequest(current,'backoffice-health')}
+    async function bootstrap(current){const body=await accessRequest(current,'bootstrap-superadmin','POST');await current.getIdToken(true);return body}
+    async function enter(current,revision){
+      hideAdmin();busy(true);
+      try{
+        try{await authorize(current);}catch(first){
+          if(!isCurrent(current,revision))return;
+          if(first.status!==403)throw first;
+          await bootstrap(current);
+          if(!isCurrent(current,revision))return;
+          await authorize(current);
+        }
+        if(!isCurrent(current,revision))return;
+        const result=await current.getIdTokenResult(true);
+        if(!isCurrent(current,revision))return;
+        $('#roleBadge').textContent=String(result.claims.role||'backoffice').toUpperCase();
+        $('#backendState').textContent='Akses akun telah diverifikasi oleh server.';
+        $('#loginShell').classList.add('hidden');$('#adminShell').classList.remove('hidden');notice('');
+      }catch(err){
+        if(!isCurrent(current,revision))return;
+        hideAdmin();
+        const messages={403:'Akun ini tidak memiliki akses backoffice.',404:'Akses admin belum tersedia.',503:'Layanan autentikasi server belum tersedia.'};
+        notice(messages[err.status]||'Akses belum dapat diverifikasi. Periksa koneksi lalu coba kembali.');
+        await signOut(auth);
+      }finally{if(revision===authRevision)busy(false)}
+    }
+
+    async function loadReadiness(){
+      const root=document.querySelector('section[data-screen="security"]');
+      root.innerHTML='<div class="panel"><h2>Status Konfigurasi</h2><p id="readinessMessage">Memeriksa konfigurasi server…</p><div id="readinessRows" class="table"></div></div>';
+      try{
+        const token=await user.getIdToken();
+        const response=await fetch(API_BASE+'/.netlify/functions/backoffice-readiness',{headers:{Authorization:'Bearer '+token},cache:'no-store'});
+        const body=await response.json();if(!response.ok)throw new Error(response.status===403?'Hanya admin/superadmin yang dapat memeriksa konfigurasi.':body.error||'Pemeriksaan gagal');
+        const data=body.readiness;document.getElementById('readinessMessage').textContent='Provider: GoldslotPalase. Belum siap transaksi uang nyata. Keberadaan konfigurasi belum membuktikan koneksi berhasil.';
+        const rows=document.getElementById('readinessRows');
+        for(const entry of data.configuration){const row=document.createElement('div');row.className='tr';for(const value of [entry.name,entry.present?'Terisi di server':'Belum terisi']){const cell=document.createElement('div');cell.textContent=value;row.appendChild(cell)}rows.appendChild(row)}
+        const warning=document.createElement('p');warning.textContent=data.bootstrapEnabled?'Bootstrap admin masih aktif: nonaktifkan setelah akun admin berhasil dibuat.':'Bootstrap admin tidak aktif.';root.firstElementChild.appendChild(warning);
+      }catch(error){document.getElementById('readinessMessage').textContent=error.message||'Gagal memeriksa konfigurasi.'}
+    }
+
+    let paymentCache=[],paymentProviders=[],paymentPresets=[],paymentSavedFields=[];
+    let paymentDefaults=[{id:'merchantId',label:'Merchant ID',kind:'text'},{id:'privateKey',label:'Private Key',kind:'multiline'},{id:'apiKey',label:'API Key',kind:'secret'},{id:'publicKey',label:'Public Key',kind:'multiline'},{id:'webhookSecret',label:'Webhook Secret',kind:'secret'}];
+    let paymentSchema=paymentDefaults.map(f=>({...f}));
+    function paymentNotice(message){const node=$('#paymentNotice');if(node)node.textContent=message}
+    async function paymentRequest(method='GET',payload){
+      if(!user)throw new Error('Silakan login kembali.');
+      const token=await user.getIdToken();
+      const response=await fetch(API_BASE+'/.netlify/functions/backoffice-payment-connections',{
+        method,headers:{Authorization:'Bearer '+token,'Content-Type':'application/json'},
+        cache:'no-store',body:payload===undefined?undefined:JSON.stringify(payload)});
+      let data={};try{data=await response.json()}catch{}
+      if(!response.ok){const messages={recent_login_required:'Silakan keluar dan login kembali sebelum mengganti konfigurasi.',payment_vault_unconfigured:'Penyimpanan kredensial belum diaktifkan pada server.',payment_revision_conflict:'Konfigurasi telah berubah. Muat ulang sebelum menyimpan.',forbidden:'Pengaturan pembayaran hanya dapat diakses admin/superadmin.',credential_field_in_use:'Kolom yang memiliki nilai tersimpan harus dipertahankan.',invalid_credential_field_id:'Nama teknis kolom tidak valid atau duplikat.',invalid_credential_schema:'Definisi kolom tidak valid. Maksimal 30 kolom.',invalid_payment_url:'URL harus menggunakan HTTPS tanpa username/password di dalam URL.',invalid_payment_credentials:'Periksa nama kolom dan panjang nilainya.'};throw new Error(messages[data.error]||'Konfigurasi belum dapat diproses. Silakan muat ulang.')}
+      return data;
+    }
+    function paymentValues(){const result={};for(const input of document.querySelectorAll('#paymentFields [data-credential]')){if(input.value.trim())result[input.dataset.credential]=input.value}return result}
+    function renderPaymentFields(values={}){
+      const root=$('#paymentFields');root.replaceChildren();
+      for(const field of paymentSchema){
+        const wrapper=document.createElement('div');wrapper.className='field full';
+        const label=document.createElement('label');label.htmlFor='paymentValue_'+field.id;label.textContent=field.label+(paymentSavedFields.includes(field.id)?' — sudah tersimpan':'');
+        const input=document.createElement(field.kind==='multiline'?'textarea':'input');input.id='paymentValue_'+field.id;input.dataset.credential=field.id;input.maxLength=12000;input.autocomplete='off';input.spellcheck=false;
+        if(field.kind!=='multiline')input.type=field.kind==='secret'?'password':field.kind==='url'?'url':'text';
+        input.value=values[field.id]||'';input.placeholder=paymentSavedFields.includes(field.id)?'Kosongkan untuk mempertahankan nilai lama':'';
+        const remove=document.createElement('button');remove.type='button';remove.className='btn ghost';remove.textContent='Hapus Kolom';remove.disabled=paymentSavedFields.includes(field.id)||paymentSchema.length===1;
+        remove.addEventListener('click',()=>{const current=paymentValues();delete current[field.id];paymentSchema=paymentSchema.filter(f=>f.id!==field.id);renderPaymentFields(current)});
+        wrapper.append(label,input,remove);root.appendChild(wrapper);
+      }
+    }
+    function addPaymentField(field){
+      if(paymentSchema.length>=30){paymentNotice('Maksimal 30 kolom per koneksi.');return}
+      if(!/^[A-Za-z][A-Za-z0-9_]{0,49}$/.test(field.id)||['constructor','prototype','__proto__'].includes(field.id.toLowerCase())||paymentSchema.some(f=>f.id.toLowerCase()===field.id.toLowerCase())){paymentNotice('Nama teknis harus unik, diawali huruf, dan hanya memakai huruf, angka, atau underscore.');return}
+      if(!field.label.trim()||field.label.length>80){paymentNotice('Isi label kolom, maksimal 80 karakter.');return}
+      const values=paymentValues();paymentSchema.push(field);renderPaymentFields(values);paymentNotice('Kolom ditambahkan. Simpan Konfigurasi untuk menyimpan perubahan.');
+    }
+    function resetPaymentForm(){
+      $('#paymentForm').reset();$('#paymentId').value='';$('#paymentRevision').value='0';$('#paymentProvider').disabled=false;$('#paymentMode').disabled=false;
+      $('#paymentFormTitle').textContent='Tambah Merchant';paymentSavedFields=[];paymentSchema=paymentDefaults.map(f=>({...f}));renderPaymentFields();
+    }
+    function renderPaymentConnections(){
+      const root=$('#paymentList');root.replaceChildren();
+      if(!paymentCache.length){root.textContent='Belum ada merchant tersimpan.';return}
+      for(const connection of paymentCache){
+        const schema=connection.credentialSchema||paymentDefaults;
+        const row=document.createElement('div');row.className='promo-admin-item';const info=document.createElement('div');const title=document.createElement('h3');title.textContent=connection.label;
+        const summary=document.createElement('p');summary.textContent=connection.provider+' · '+connection.mode+' · '+(connection.adapterAvailable?'Konfigurasi tersimpan; koneksi belum diuji':'Layanan belum tersedia untuk transaksi');
+        const fields=document.createElement('p');fields.textContent='Terisi: '+(connection.credentialFields.map(id=>schema.find(f=>f.id===id)?.label||id).join(', ')||'belum ada kredensial');info.append(title,summary,fields);
+        const button=document.createElement('button');button.type='button';button.className='btn ghost';button.textContent='Edit';button.addEventListener('click',()=>{
+          resetPaymentForm();$('#paymentId').value=connection.id;$('#paymentRevision').value=String(connection.revision);$('#paymentLabel').value=connection.label;$('#paymentProvider').value=connection.provider;$('#paymentMode').value=connection.mode;$('#paymentProvider').disabled=true;$('#paymentMode').disabled=true;$('#paymentFormTitle').textContent='Edit Merchant';paymentSavedFields=[...connection.credentialFields];paymentSchema=schema.map(f=>({...f}));renderPaymentFields();$('#paymentLabel').focus();
+        });row.append(info,button);root.appendChild(row);
+      }
+    }
+    async function refreshPaymentConnections(){
+      const data=await paymentRequest();paymentCache=data.connections||[];paymentProviders=data.supportedProviders||[];paymentPresets=data.fieldPresets||[];paymentDefaults=data.defaultCredentialSchema||paymentDefaults;
+      const choices=$('#paymentProviderChoices');choices.replaceChildren();for(const provider of paymentProviders){const option=document.createElement('option');option.value=provider.id;option.label=provider.label;choices.appendChild(option)}
+      const select=$('#paymentPreset');select.replaceChildren();for(const field of paymentPresets){const option=document.createElement('option');option.value=field.id;option.textContent=field.label;select.appendChild(option)}
+      renderPaymentConnections();$('#paymentSave').disabled=!data.vaultConfigured;
+      paymentNotice(data.vaultConfigured?'Sesuaikan kolom dengan dokumentasi layanan. Semua nilai disimpan terenkripsi.':'Penyimpanan kredensial belum diaktifkan pada server. Form dapat disimpan setelah pengaturan server selesai.');
+    }
+    async function loadPayments(){
+      const root=document.querySelector('section[data-screen="payment"]');
+      root.innerHTML=`<div class="section-title"><div><h2>Payment Gateway</h2><p>Banyak layanan dan merchant, dengan kolom sesuai kebutuhan masing-masing.</p></div><div class="grow"></div><button class="btn ghost" id="paymentRefresh" type="button">Muat Ulang</button></div>
+      <div class="notice" id="paymentNotice" role="status">Memuat konfigurasi…</div>
+      <div class="promo-admin-grid"><div class="panel" style="margin-top:0"><h2 id="paymentFormTitle">Tambah Merchant</h2>
+      <form id="paymentForm" autocomplete="off"><input id="paymentId" type="hidden"/><input id="paymentRevision" type="hidden" value="0"/>
+      <div class="promo-form-grid"><div class="field"><label for="paymentLabel">Nama Koneksi</label><input id="paymentLabel" required="required" maxlength="80" placeholder="Merchant utama"/></div>
+      <div class="field"><label for="paymentProvider">Layanan Gateway</label><input list="paymentProviderChoices" id="paymentProvider" required="required" maxlength="50" pattern="[a-z][a-z0-9_-]{1,49}" placeholder="nama-layanan"/><datalist id="paymentProviderChoices"></datalist></div>
+      <div class="field full"><label for="paymentMode">Mode</label><select id="paymentMode"><option value="sandbox">Sandbox / Pengujian</option><option value="production">Produksi</option></select><small>Mode produksi tetap memerlukan verifikasi koneksi sebelum transaksi diaktifkan.</small></div></div>
+      <div id="paymentFields" class="promo-form-grid"></div>
+      <details><summary>Tambah kolom konfigurasi</summary><div class="field"><label for="paymentPreset">Kolom umum</label><select id="paymentPreset"></select></div><button class="btn ghost" id="paymentAddPreset" type="button">Tambah Kolom Umum</button>
+      <div class="field"><label for="paymentCustomLabel">Nama kolom khusus</label><input id="paymentCustomLabel" maxlength="80" placeholder="Contoh: Partner ID"/></div>
+      <div class="field"><label for="paymentCustomId">Nama teknis sesuai dokumentasi</label><input id="paymentCustomId" maxlength="50" placeholder="Contoh: partner_id"/></div>
+      <div class="field"><label for="paymentCustomKind">Jenis isian</label><select id="paymentCustomKind"><option value="secret">Rahasia / Password</option><option value="text">Teks</option><option value="multiline">Teks panjang / PEM</option><option value="url">URL HTTPS</option></select></div><button class="btn ghost" id="paymentAddCustom" type="button">Tambah Kolom Khusus</button></details>
+      <p class="promo-help">Kolom kosong saat edit mempertahankan nilai lama. Kolom yang sudah berisi data tersimpan tidak dapat dihapus. Menambahkan kolom tidak otomatis mengaktifkan integrasi layanan.</p>
+      <div class="promo-form-actions"><button class="btn primary" id="paymentSave" type="submit" disabled="disabled">Simpan Konfigurasi</button><button class="btn ghost" id="paymentNew" type="button">Merchant Baru</button></div></form></div>
+      <div class="panel" style="margin-top:0"><h2>Daftar Merchant</h2><div class="promo-admin-list" id="paymentList"></div></div></div>`;
+      resetPaymentForm();
+      $('#paymentRefresh').addEventListener('click',()=>refreshPaymentConnections().catch(e=>paymentNotice(e.message)));
+      $('#paymentNew').addEventListener('click',resetPaymentForm);
+      $('#paymentAddPreset').addEventListener('click',()=>{const field=paymentPresets.find(f=>f.id===$('#paymentPreset').value);if(field)addPaymentField({...field})});
+      $('#paymentAddCustom').addEventListener('click',()=>addPaymentField({id:$('#paymentCustomId').value.trim(),label:$('#paymentCustomLabel').value.trim(),kind:$('#paymentCustomKind').value}));
+      $('#paymentProvider').addEventListener('change',()=>{const provider=paymentProviders.find(p=>p.id===$('#paymentProvider').value);if(!provider)return;for(const id of provider.requiredCredentials)if(!paymentSchema.some(f=>f.id===id))addPaymentField({...paymentPresets.find(f=>f.id===id)||{id,label:id,kind:'secret'}})});
+      $('#paymentForm').addEventListener('submit',async event=>{
+        event.preventDefault();const button=$('#paymentSave');button.disabled=true;
+        const credentials=paymentValues();const payload={id:$('#paymentId').value||undefined,expectedRevision:Number($('#paymentRevision').value),label:$('#paymentLabel').value,provider:$('#paymentProvider').value,mode:$('#paymentMode').value,credentialSchema:paymentSchema.map(f=>({...f})),credentials};
+        try{await paymentRequest('POST',payload);resetPaymentForm();await refreshPaymentConnections();paymentNotice('Konfigurasi dan susunan kolom tersimpan. Transaksi belum diaktifkan.')}catch(error){paymentNotice(error.message)}finally{for(const input of document.querySelectorAll('#paymentFields [data-credential]'))input.value='';for(const field of Object.keys(credentials))delete credentials[field];button.disabled=false}
+      });
+      try{await refreshPaymentConnections()}catch(error){paymentNotice(error.message)}
+    }
+
+    const PROMO_ADMIN_ENDPOINT=API_BASE+'/.netlify/functions/backoffice-promotions';let promoCache=[];
+    const promoStatus=(text,ok=false)=>{const el=$('#promoAdminStatus');if(!el)return;el.classList.toggle('ok',!!ok);el.querySelector('span').textContent=text};
+    const esc=value=>String(value??'').replace(/[&<>\"']/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;',"'":'&#39;'}[ch]));
+    const localValue=iso=>{if(!iso)return '';const d=new Date(iso);if(Number.isNaN(d.getTime()))return '';const pad=n=>String(n).padStart(2,'0');return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`};
+    const isoValue=value=>{if(!value)return null;const d=new Date(value);return Number.isNaN(d.getTime())?null:d.toISOString()};
+    async function promoRequest(options={}){if(!user)throw new Error('not_authenticated');const token=await user.getIdToken();const r=await fetch(PROMO_ADMIN_ENDPOINT,{...options,headers:{Accept:'application/json','Content-Type':'application/json',Authorization:`Bearer ${token}`,...(options.headers||{})},cache:'no-store'});let body={};try{body=await r.json()}catch{};if(!r.ok)throw Object.assign(new Error(body.error||`HTTP ${r.status}`),{status:r.status,body});return body}
+    function resetPromoForm(){const f=$('#promoAdminForm');if(!f)return;f.reset();$('#promoId').value='';$('#promoSortOrder').value='100';$('#promoCtaLabel').value='Lanjutkan';$('#promoCtaRoute').value='route-bonus';$('#promoActive').value='true';$('#promoFormTitle').textContent='Tambah / Edit Promo'}
+    function promoSectionsFromForm(){return [{title:'Mekanisme',body:$('#promoMechanism').value.trim()},{title:'Syarat & Ketentuan',body:$('#promoTerms').value.trim()},{title:'Keterangan',body:$('#promoNote').value.trim()}].filter(x=>x.body)}
+    function promoPayload(){return {id:$('#promoId').value.trim()||undefined,title:$('#promoTitle').value.trim(),category:$('#promoCategory').value,badge:$('#promoBadge').value.trim(),active:$('#promoActive').value==='true',summary:$('#promoSummary').value.trim(),metaTitle:$('#promoMetaTitle').value.trim(),metaDescription:$('#promoMetaDescription').value.trim(),imageUrl:$('#promoImageUrl').value.trim(),startAt:isoValue($('#promoStartAt').value),endAt:isoValue($('#promoEndAt').value),sortOrder:Number($('#promoSortOrder').value||100),ctaLabel:$('#promoCtaLabel').value.trim()||'Lanjutkan',ctaRoute:$('#promoCtaRoute').value,detailIntro:$('#promoDetailIntro').value.trim(),sections:promoSectionsFromForm()}}
+    function renderPromoAdmin(){const root=$('#promoAdminList');if(!root)return;if(!promoCache.length){root.innerHTML='<div class="promo-empty">Belum ada promo. Klik <b>Promo Baru</b> untuk membuat.</div>';return}root.innerHTML=promoCache.map(p=>`<div class="promo-admin-item"><div><h3>${esc(p.title||'Promo')}</h3><p>${esc(p.summary||p.metaDescription||'Tanpa keterangan singkat')}</p><div class="promo-admin-tags"><span class="promo-admin-tag">${esc(p.category||'general')}</span><span class="promo-admin-tag ${p.active?'active':''}">${p.active?'AKTIF':'NONAKTIF'}</span><span class="promo-admin-tag">ORDER ${Number(p.sortOrder||0)}</span></div></div><div class="promo-admin-actions"><button data-promo-edit="${esc(p.id)}" type="button">Edit</button><button class="danger" data-promo-delete="${esc(p.id)}" type="button">Hapus</button></div></div>`).join('')}
+    async function loadPromotions(){promoStatus('Memuat promo dari backend…');try{const body=await promoRequest({method:'GET'});promoCache=Array.isArray(body.promotions)?body.promotions:[];renderPromoAdmin();promoStatus(`Sinkron: ${promoCache.length} promo tersimpan.`,true)}catch(err){promoCache=[];renderPromoAdmin();promoStatus(err.status===404?'Endpoint promotions belum dipasang di backend.':'Gagal memuat promo: '+(err.message||'unknown'))}}
+    function editPromo(id){const p=promoCache.find(x=>String(x.id)===String(id));if(!p)return;$('#promoId').value=p.id||'';$('#promoTitle').value=p.title||'';$('#promoCategory').value=p.category||'general';$('#promoBadge').value=p.badge||'';$('#promoActive').value=String(p.active!==false);$('#promoSummary').value=p.summary||'';$('#promoMetaTitle').value=p.metaTitle||'';$('#promoMetaDescription').value=p.metaDescription||'';$('#promoImageUrl').value=p.imageUrl||'';$('#promoStartAt').value=localValue(p.startAt);$('#promoEndAt').value=localValue(p.endAt);$('#promoSortOrder').value=Number(p.sortOrder||100);$('#promoCtaLabel').value=p.ctaLabel||'Lanjutkan';$('#promoCtaRoute').value=p.ctaRoute||'route-bonus';$('#promoDetailIntro').value=p.detailIntro||'';const sections=Array.isArray(p.sections)?p.sections:[];const body=title=>sections.find(x=>String(x.title||'').toLowerCase()===title.toLowerCase())?.body||'';$('#promoMechanism').value=body('Mekanisme');$('#promoTerms').value=body('Syarat & Ketentuan');$('#promoNote').value=body('Keterangan');$('#promoFormTitle').textContent='Edit Promo';window.scrollTo({top:0,behavior:'smooth'})}
+    $('#promoAdminForm')?.addEventListener('submit',async e=>{e.preventDefault();busy(true);promoStatus('Menyimpan promo…');try{const body=await promoRequest({method:'POST',body:JSON.stringify({action:'upsert',promotion:promoPayload(),expectedRevision:promoCache.find(p=>p.id===$('#promoId').value)?.revision||0})});promoStatus('Promo berhasil disimpan dan siap dibaca member web.',true);resetPromoForm();await loadPromotions()}catch(err){promoStatus('Gagal menyimpan promo: '+(err.message||'unknown'))}finally{busy(false)}});
+    $('#promoAdminList')?.addEventListener('click',async e=>{const edit=e.target.closest('[data-promo-edit]');if(edit){editPromo(edit.dataset.promoEdit);return}const del=e.target.closest('[data-promo-delete]');if(del){if(!confirm('Hapus promo ini?'))return;busy(true);try{await promoRequest({method:'POST',body:JSON.stringify({action:'delete',id:del.dataset.promoDelete,expectedRevision:promoCache.find(p=>p.id===del.dataset.promoDelete)?.revision||0})});promoStatus('Promo dihapus.',true);await loadPromotions()}catch(err){promoStatus('Gagal menghapus promo: '+(err.message||'unknown'))}finally{busy(false)}}});
+    $('#promoRefreshBtn')?.addEventListener('click',loadPromotions);$('#promoNewBtn')?.addEventListener('click',()=>{resetPromoForm();$('#promoTitle')?.focus()});$('#promoResetBtn')?.addEventListener('click',resetPromoForm);
+
+    $('#loginForm').addEventListener('submit',async e=>{e.preventDefault();notice('');busy(true);try{const c=await signInWithEmailAndPassword(auth,$('#email').value.trim(),$('#password').value);}catch(err){if(!auth.currentUser)notice('Login gagal. Periksa email/password Firebase Authentication.');}finally{$('#password').value='';busy(false)}});$('#logoutBtn').addEventListener('click',async()=>{authRevision++;user=null;hideAdmin();busy(false);try{await signOut(auth)}catch{notice('Keluar belum berhasil. Coba kembali sebelum meninggalkan perangkat ini.')}});onAuthStateChanged(auth,async current=>{const revision=++authRevision;user=current;hideAdmin();paymentCache=[];document.querySelector('section[data-screen="payment"]')?.replaceChildren();if(current)await enter(current,revision);else busy(false)});
+  //]]>
+</script>
+</body>
+</html>

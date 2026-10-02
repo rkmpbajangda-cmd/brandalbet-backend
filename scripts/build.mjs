@@ -11,16 +11,26 @@ const functions = await zipFunctions('netlify/functions', '.netlify/validation-f
 const actual = functions.map((item) => item.name).sort();
 const expected = [
   'backoffice-health',
+  'backoffice-payment-connections',
+  'backoffice-promotions',
+  'backoffice-readiness',
   'bootstrap-superadmin',
+  'game-launch',
+  'game-wallet-reconcile',
+  'game-wallet-transfer',
+  'games',
   'health',
   'me',
   'member-bank-account',
   'member-onboarding',
   'member-profile',
   'member-session',
+  'promotions',
+  'transactions',
   'wallet',
 ];
 if (JSON.stringify(actual) !== JSON.stringify(expected)) {
   throw new Error('Unexpected deployable functions: ' + actual.join(', '));
 }
 console.log('Netlify bundling passed: ' + actual.join(', ') + ' (Node.js 22, esbuild).');
+
