@@ -14,6 +14,7 @@ export function createHandler({
   verifyIdToken,
   loadProfile = getOrCreateProfile,
   saveProfile = updateProfile,
+  env = process.env,
 } = {}) {
   return async (event) => {
     let cors = {};
@@ -25,7 +26,7 @@ export function createHandler({
         return json(405, { ok: false, error: 'method_not_allowed' }, { ...cors, Allow: 'GET, PUT, OPTIONS' });
       }
 
-      actor = await authenticateRequest(event, { verifyIdToken });
+      actor = await authenticateRequest(event, { verifyIdToken, requireMemberSession: true, env });
       const profile = event.httpMethod === 'GET'
         ? await loadProfile(actor)
         : await saveProfile(actor, parseBody(event));
