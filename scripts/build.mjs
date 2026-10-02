@@ -17,6 +17,7 @@ const expected = [
   'bootstrap-superadmin',
   'game-launch',
   'game-wallet-reconcile',
+  'game-wallet-status',
   'game-wallet-transfer',
   'games',
   'health',
