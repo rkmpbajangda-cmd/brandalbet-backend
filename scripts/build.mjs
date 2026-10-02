@@ -32,6 +32,7 @@ const expected = [
   'health',
   'me',
   'member-bank-account',
+  'member-device-session',
   'member-onboarding',
   'member-profile',
   'member-session',
