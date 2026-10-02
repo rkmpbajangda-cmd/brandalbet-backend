@@ -13,7 +13,7 @@ export function extractBearerToken(headers = {}) {
     throw new AuthHttpError(401, 'missing_bearer_token');
   }
 
-  const match = entry[1].match(/^Bearer\\s+([^\\s;]+)(?:;\\s*BrandalSession=[A-Za-z0-9_-]{43,128})?$/i);
+  const match = entry[1].match(/^Bearer\s+([^\s;]+)(?:;\s*BrandalSession=[A-Za-z0-9_-]{43,128})?$/i);
   if (!match) throw new AuthHttpError(401, 'invalid_authorization_header');
   return match[1];
 }
