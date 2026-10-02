@@ -24,6 +24,18 @@ test('invalid token fails closed with 401', async () => {
   );
 });
 
+test('device-session suffix does not alter the Firebase bearer token', async () => {
+  let observed;
+  const sessionId = 'a'.repeat(43);
+  const actor = await authenticateRequest({
+    headers: { Authorization: `Bearer firebase-token;BrandalSession=${sessionId}` },
+  }, {
+    verifyIdToken: async token => { observed = token; return { uid: 'member-1' }; },
+  });
+  assert.equal(observed, 'firebase-token');
+  assert.equal(actor.uid, 'member-1');
+});
+
 test('backoffice requires both claim and an allowed role', () => {
   assert.equal(canAccessBackoffice({ role: 'member', backoffice: true }), false);
   assert.equal(canAccessBackoffice({ role: 'admin', backoffice: false }), false);
