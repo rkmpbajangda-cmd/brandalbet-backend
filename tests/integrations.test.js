@@ -4,6 +4,8 @@ import { createGoldslotClient } from '../src/game/goldslotpalase.js';
 import { normalizeGoldslotGames, normalizeGoldslotProviders, loadPublicGameCatalog, clearCatalogCacheForTest } from '../src/game/catalog.js';
 import { providerUsernameForUid } from '../src/game/player.js';
 import { launchGoldslotGame } from '../src/game/launch.js';
+import { executeGoldslotTransfer, reconcileGoldslotTransfer } from '../src/game/transfer.js';
+import { transactionDb } from './helpers/transaction-db.js';
 import { configurationReadiness } from '../src/config/readiness.js';
 import { createHandler as readinessHandler } from '../netlify/functions/backoffice-readiness.js';
 import { createHandler as transactionsHandler } from '../netlify/functions/transactions.js';
@@ -161,4 +163,137 @@ test('launch service rejects unsafe provider launch URL', async () => {
     loadWallet: async () => ({ status: 'active' }),
     ensurePlayer: async () => ({ userCode: 1 }),
   }), { code: 'provider_invalid_launch_url' });
+});
+
+
+const transferEnv = {
+  GOLDSLOTPALASE_TRANSFER_ENABLED: 'true',
+  GOLDSLOTPALASE_IDR_SCALE: '1',
+};
+
+function transferDb({ balance = 1000, available = balance, providerBalance = 0 } = {}) {
+  return transactionDb({
+    'wallets/u1': { uid: 'u1', currency: 'IDR', balanceMinor: balance, availableMinor: available, status: 'active' },
+    'providerPlayers/u1': { uid: 'u1', provider: 'goldslotpalase', providerUsername: 'bb_fixture', userCode: 77, activeTransferId: null },
+  });
+}
+
+const transferActor = { uid: 'u1', email: 'member@example.invalid' };
+const ensureFixturePlayer = async () => ({ provider: 'goldslotpalase', providerUsername: 'bb_fixture', userCode: 77 });
+
+test('game transfer-in reserves then settles internal wallet exactly once', async () => {
+  const db = transferDb();
+  let deposits = 0;
+  const client = {
+    userInfo: async () => ({ balance: 0 }),
+    walletDeposit: async ({ userCode, amount }) => {
+      deposits++;
+      assert.equal(userCode, 77);
+      assert.equal(amount, 400);
+      return { balance: 400, amount: 400 };
+    },
+  };
+  const input = { direction: 'in', requestId: 'req-in-0001', amountMinor: 400 };
+  const first = await executeGoldslotTransfer(transferActor, input, {
+    env: transferEnv, db, client, ensurePlayer: ensureFixturePlayer,
+  });
+  assert.equal(first.status, 'succeeded');
+  assert.equal(db.read('wallets/u1').balanceMinor, 600);
+  assert.equal(db.read('wallets/u1').availableMinor, 600);
+  assert.equal(db.read('providerPlayers/u1').activeTransferId, null);
+  assert.equal(db.entries().filter(([path, row]) => path.startsWith('ledger/') && row.source === 'game_transfer_in').length, 1);
+
+  const duplicate = await executeGoldslotTransfer(transferActor, input, {
+    env: transferEnv, db, client, ensurePlayer: ensureFixturePlayer,
+  });
+  assert.equal(duplicate.status, 'succeeded');
+  assert.equal(deposits, 1);
+  assert.equal(db.read('wallets/u1').balanceMinor, 600);
+});
+
+test('game withdraw-all credits provider balance back to internal wallet once', async () => {
+  const db = transferDb({ balance: 600, available: 600 });
+  let withdrawals = 0;
+  const client = {
+    userInfo: async () => ({ balance: 500 }),
+    walletWithdrawAll: async ({ userCode }) => {
+      withdrawals++;
+      assert.equal(userCode, 77);
+      return { balance: 0, amount: 500 };
+    },
+  };
+  const result = await executeGoldslotTransfer(transferActor, {
+    direction: 'out_all', requestId: 'req-outall-0001',
+  }, { env: transferEnv, db, client, ensurePlayer: ensureFixturePlayer });
+  assert.equal(result.status, 'succeeded');
+  assert.equal(result.providerAmount, 500);
+  assert.equal(db.read('wallets/u1').balanceMinor, 1100);
+  assert.equal(db.read('wallets/u1').availableMinor, 1100);
+  assert.equal(db.read('providerPlayers/u1').activeTransferId, null);
+  assert.equal(withdrawals, 1);
+});
+
+test('ambiguous provider deposit keeps funds held until balance reconciliation proves success', async () => {
+  const db = transferDb();
+  const ambiguous = Object.assign(new Error('redacted'), { code: 'provider_unavailable', ambiguous: true });
+  const client = {
+    userInfo: async () => ({ balance: 0 }),
+    walletDeposit: async () => { throw ambiguous; },
+  };
+  const pending = await executeGoldslotTransfer(transferActor, {
+    direction: 'in', requestId: 'req-in-ambiguous-0001', amountMinor: 400,
+  }, { env: transferEnv, db, client, ensurePlayer: ensureFixturePlayer });
+
+  assert.equal(pending.status, 'ambiguous');
+  assert.equal(db.read('wallets/u1').balanceMinor, 1000);
+  assert.equal(db.read('wallets/u1').availableMinor, 600);
+  assert.equal(db.read('providerPlayers/u1').activeTransferId, pending.id);
+
+  const reconciled = await reconcileGoldslotTransfer(transferActor, { transferId: pending.id }, {
+    env: transferEnv,
+    db,
+    client: { userInfo: async () => ({ balance: 400 }) },
+  });
+  assert.equal(reconciled.status, 'succeeded');
+  assert.equal(db.read('wallets/u1').balanceMinor, 600);
+  assert.equal(db.read('wallets/u1').availableMinor, 600);
+  assert.equal(db.read('providerPlayers/u1').activeTransferId, null);
+});
+
+test('explicit provider rejection releases transfer-in hold without debiting balance', async () => {
+  const db = transferDb();
+  const rejected = Object.assign(new Error('provider_rejected'), { code: 'provider_rejected', ambiguous: false });
+  const result = await executeGoldslotTransfer(transferActor, {
+    direction: 'in', requestId: 'req-in-reject-0001', amountMinor: 400,
+  }, {
+    env: transferEnv,
+    db,
+    client: {
+      userInfo: async () => ({ balance: 0 }),
+      walletDeposit: async () => { throw rejected; },
+    },
+    ensurePlayer: ensureFixturePlayer,
+  });
+  assert.equal(result.status, 'failed');
+  assert.equal(db.read('wallets/u1').balanceMinor, 1000);
+  assert.equal(db.read('wallets/u1').availableMinor, 1000);
+  assert.equal(db.read('providerPlayers/u1').activeTransferId, null);
+});
+
+test('local settlement failure after provider success never releases reserved funds', async () => {
+  const db = transferDb();
+  const result = await executeGoldslotTransfer(transferActor, {
+    direction: 'in', requestId: 'req-in-badsettle-0001', amountMinor: 400,
+  }, {
+    env: transferEnv,
+    db,
+    client: {
+      userInfo: async () => ({ balance: 0 }),
+      walletDeposit: async () => ({ balance: 400, amount: 399 }),
+    },
+    ensurePlayer: ensureFixturePlayer,
+  });
+  assert.equal(result.status, 'ambiguous');
+  assert.equal(db.read('wallets/u1').balanceMinor, 1000);
+  assert.equal(db.read('wallets/u1').availableMinor, 600);
 });
