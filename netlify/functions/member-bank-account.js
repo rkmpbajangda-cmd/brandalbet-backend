@@ -14,6 +14,7 @@ export function createHandler({
   verifyIdToken,
   loadBankAccount = getBankAccount,
   saveMemberBankAccount = saveBankAccount,
+  env = process.env,
 } = {}) {
   return async (event) => {
     let cors = {};
@@ -25,7 +26,7 @@ export function createHandler({
         return json(405, { ok: false, error: 'method_not_allowed' }, { ...cors, Allow: 'GET, PUT, OPTIONS' });
       }
 
-      actor = await authenticateRequest(event, { verifyIdToken });
+      actor = await authenticateRequest(event, { verifyIdToken, requireMemberSession: true, env });
       const bankAccount = event.httpMethod === 'GET'
         ? await loadBankAccount(actor.uid)
         : await saveMemberBankAccount(actor.uid, parseBody(event));
