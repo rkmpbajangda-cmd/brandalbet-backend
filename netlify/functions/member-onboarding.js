@@ -11,7 +11,9 @@ function parseBody(event) {
   catch { throw new OnboardingValidationError('invalid_json'); }
 }
 
-export function createHandler({ verifyIdToken, onboard = completeMemberOnboarding } = {}) {
+export function createHandler({ verifyIdToken, onboard = completeMemberOnboarding
+  env = process.env,
+} = {}) {
   return async (event) => {
     let cors = {};
     let actor = null;
@@ -22,7 +24,7 @@ export function createHandler({ verifyIdToken, onboard = completeMemberOnboardin
         return json(405, { ok: false, error: 'method_not_allowed' }, { ...cors, Allow: 'POST, OPTIONS' });
       }
 
-      actor = await authenticateRequest(event, { verifyIdToken });
+      actor = await authenticateRequest(event, { verifyIdToken, requireMemberSession: true, env });
       const result = await onboard(actor, parseBody(event));
       auditSecurityEvent({ event, actor, action: 'member.onboarding.complete', outcome: 'allowed' });
       return json(200, { ok: true, ...result }, cors);
