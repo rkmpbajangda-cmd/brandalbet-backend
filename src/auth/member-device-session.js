@@ -10,6 +10,13 @@ function header(headers = {}, wanted) {
   return key ? headers[key] : undefined;
 }
 
+function sessionIdFromEvent(event) {
+  const authorization = header(event?.headers ?? {}, 'authorization');
+  if (typeof authorization !== 'string') return null;
+  const match = authorization.match(/^Bearer\s+[^\s;]+;\s*BrandalSession=([A-Za-z0-9_-]{43,128})$/i);
+  return match ? match[1] : null;
+}
+
 function normalizeSessionId(value) {
   if (typeof value !== 'string' || !SESSION_ID_PATTERN.test(value)) {
     throw new ServiceError('invalid_member_session', 400);
@@ -81,7 +88,7 @@ export async function assertMemberDeviceSession(actor, event, { db = getAdminDb(
   const current = snapshot.data() ?? {};
   if (current.active !== true) throw new ServiceError('member_session_required', 401);
 
-  const raw = header(event?.headers ?? {}, 'x-brandal-session');
+  const raw = sessionIdFromEvent(event);
   if (!raw) throw new ServiceError('member_session_required', 401);
   const hash = sessionHash(normalizeSessionId(raw));
   if (!equalHash(current.sessionHash, hash)) throw new ServiceError('member_session_replaced', 401);
@@ -94,7 +101,7 @@ export async function assertMemberDeviceSession(actor, event, { db = getAdminDb(
 
 export async function endMemberDeviceSession(actor, event, { db = getAdminDb() } = {}) {
   if (!actor?.uid) return { ended: false };
-  const raw = header(event?.headers ?? {}, 'x-brandal-session');
+  const raw = sessionIdFromEvent(event);
   if (!raw) return { ended: false };
 
   let hash;
