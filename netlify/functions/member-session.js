@@ -12,6 +12,7 @@ export function createHandler({
   loadProfile = getOrCreateProfile,
   loadBankAccount = getBankAccount,
   loadWallet = getOrCreateWallet,
+  env = process.env,
 } = {}) {
   return async (event) => {
     let cors = {};
@@ -21,7 +22,7 @@ export function createHandler({
       if (event.httpMethod === 'OPTIONS') return empty(204, cors);
       if (event.httpMethod !== 'GET') return json(405, { ok: false, error: 'method_not_allowed' }, { ...cors, Allow: 'GET, OPTIONS' });
 
-      actor = await authenticateRequest(event, { verifyIdToken });
+      actor = await authenticateRequest(event, { verifyIdToken, requireMemberSession: true, env });
       const [profile, bankAccount, wallet] = await Promise.all([
         loadProfile(actor),
         loadBankAccount(actor.uid),
