@@ -3,7 +3,13 @@ export function transactionDb(initial = {}) {
   let state = new Map(Object.entries(initial)); let queue = Promise.resolve(); let auto = 0;
   const db = {
     failCommit: false,
-    collection: name => ({ doc: id => ({ path: name + '/' + (id || 'auto-' + ++auto) }) }),
+    collection: name => ({ doc: id => {
+      const path = name + '/' + (id || 'auto-' + ++auto);
+      return {
+        path,
+        get: async () => ({ exists: state.has(path), data: () => state.get(path) }),
+      };
+    } }),
     read: path => state.get(path),
     entries: () => [...state.entries()],
     runTransaction: fn => {
