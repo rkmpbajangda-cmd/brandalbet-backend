@@ -44,10 +44,24 @@ test('warm in-memory player cache avoids repeated Firestore/provider work', asyn
   assert.equal(createCalls, 0);
 });
 
-test('stale provider player mapping is revalidated once', async () => {
+test('provider player mapping stays reusable throughout the seven-day refresh window', async () => {
   clearGoldslotPlayerCacheForTest();
-  const now = Date.parse('2026-10-03T12:00:00.000Z');
-  const db = existingDb(new Date(now - 7 * 60 * 60 * 1000));
+  const now = Date.parse('2026-10-10T12:00:00.000Z');
+  const db = existingDb(new Date(now - 6 * 24 * 60 * 60 * 1000));
+  let createCalls = 0;
+  const player = await ensureGoldslotPlayer(actor, {
+    db,
+    now: () => now,
+    client: { createUser: async () => { createCalls++; return { user_code: 99 }; } },
+  });
+  assert.equal(player.userCode, 77);
+  assert.equal(createCalls, 0);
+});
+
+test('provider player mapping older than seven days is revalidated once', async () => {
+  clearGoldslotPlayerCacheForTest();
+  const now = Date.parse('2026-10-12T12:00:00.000Z');
+  const db = existingDb(new Date(now - 8 * 24 * 60 * 60 * 1000));
   let createCalls = 0;
   const player = await ensureGoldslotPlayer(actor, {
     db,
