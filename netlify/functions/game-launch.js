@@ -3,14 +3,25 @@ import { launchGoldslotGame } from '../../src/game/launch.js';
 import { parseJsonBody } from '../../src/utils/body.js';
 import { protectedHandler } from '../../src/utils/protected-handler.js';
 import { auditSecurityEvent } from '../../src/audit/logger.js';
+import { loadMasterControl } from '../../src/backoffice/master-control.js';
+import { ServiceError } from '../../src/utils/errors.js';
 
-export function createHandler({ verifyIdToken, env = process.env, clientFactory = createGoldslotClient, launch = launchGoldslotGame } = {}) {
+export function createHandler({
+  verifyIdToken,
+  env = process.env,
+  clientFactory = createGoldslotClient,
+  launch = launchGoldslotGame,
+  loadControl = loadMasterControl,
+} = {}) {
   return protectedHandler({
     scope: 'member',
     methods: ['POST'],
     verifyIdToken,
     env,
     run: async (actor, event) => {
+      const control = await loadControl();
+      if (control.maintenanceMode === true) throw new ServiceError('maintenance_mode', 503);
+      if (control.gameLaunchEnabled === false) throw new ServiceError('game_launch_disabled', 503);
       const input = parseJsonBody(event, 4096);
       const result = await launch(actor, input, { client: clientFactory({ env }) });
       auditSecurityEvent({ event, actor, action: 'game.launch', outcome: 'allowed' });
