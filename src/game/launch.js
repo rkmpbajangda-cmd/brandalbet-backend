@@ -4,6 +4,9 @@ import { getOrCreateWallet } from '../wallet/service.js';
 import { ensureGoldslotPlayer } from './player.js';
 import { ensurePlayableGoldslotBalance, normalizeLaunchRequestId } from './wallet-bridge.js';
 
+const LAUNCH_GUARD_MS = 8_000;
+const recentLaunches = new Map();
+
 function validateGameInput(input) {
   if (!input || typeof input !== 'object' || Array.isArray(input)) throw new ServiceError('invalid_game_launch');
   const providerId = input.providerId;
@@ -31,6 +34,27 @@ function launchUrl(data) {
   }
 }
 
+function launchGuardKey(actor, game) {
+  return `${actor.uid}::${game.providerId}::${game.gameSymbol}`;
+}
+
+function acquireLaunchGuard(actor, game, now = Date.now()) {
+  const key = launchGuardKey(actor, game);
+  const activeUntil = Number(recentLaunches.get(key) || 0);
+  if (activeUntil > now) throw new ServiceError('game_launch_rate_limited', 429);
+  recentLaunches.set(key, now + LAUNCH_GUARD_MS);
+  if (recentLaunches.size > 5000) {
+    for (const [itemKey, until] of recentLaunches) {
+      if (until <= now) recentLaunches.delete(itemKey);
+    }
+  }
+  return key;
+}
+
+export function clearLaunchGuardForTest() {
+  recentLaunches.clear();
+}
+
 export async function launchGoldslotGame(actor, input, {
   client,
   env = process.env,
@@ -45,36 +69,45 @@ export async function launchGoldslotGame(actor, input, {
   if (profile.onboardingCompleted !== true || !profile.username) throw new ServiceError('member_onboarding_required', 409);
   if (wallet.status !== 'active') throw new ServiceError('wallet_locked', 409);
 
-  const player = await ensurePlayer(actor, { client, db });
+  // Guard is acquired before any provider call. Concurrent double taps for the
+  // same member/game therefore collapse to one provider launch attempt. Failed
+  // attempts release the guard immediately so a deliberate retry can proceed.
+  const guardKey = acquireLaunchGuard(actor, game);
+  try {
+    const player = await ensurePlayer(actor, { client, db });
 
-  // Production Goldslot clients always expose userInfo. The guard only preserves
-  // compatibility with minimal isolated unit-test doubles; it is not reachable
-  // through browser input because the client is constructed server-side.
-  const walletBridge = typeof client?.userInfo === 'function'
-    ? await prepareBalance(actor, {
-      wallet,
-      player,
-      client,
-      env,
-      db,
-      launchRequestId: game.launchRequestId,
-    })
-    : null;
+    // Production Goldslot clients always expose userInfo. The guard only preserves
+    // compatibility with minimal isolated unit-test doubles; it is not reachable
+    // through browser input because the client is constructed server-side.
+    const walletBridge = typeof client?.userInfo === 'function'
+      ? await prepareBalance(actor, {
+        wallet,
+        player,
+        client,
+        env,
+        db,
+        launchRequestId: game.launchRequestId,
+      })
+      : null;
 
-  const data = await client.launch({
-    userCode: player.userCode,
-    providerId: game.providerId,
-    gameSymbol: game.gameSymbol,
-    language: 9,
-  });
+    const data = await client.launch({
+      userCode: player.userCode,
+      providerId: game.providerId,
+      gameSymbol: game.gameSymbol,
+      language: 9,
+    });
 
-  return Object.freeze({
-    provider: 'goldslotpalase',
-    providerId: game.providerId,
-    gameSymbol: game.gameSymbol,
-    launchUrl: launchUrl(data),
-    expiresInSeconds: 600,
-    oneTimeUse: true,
-    walletBridge,
-  });
+    return Object.freeze({
+      provider: 'goldslotpalase',
+      providerId: game.providerId,
+      gameSymbol: game.gameSymbol,
+      launchUrl: launchUrl(data),
+      expiresInSeconds: 600,
+      oneTimeUse: true,
+      walletBridge,
+    });
+  } catch (error) {
+    recentLaunches.delete(guardKey);
+    throw error;
+  }
 }
