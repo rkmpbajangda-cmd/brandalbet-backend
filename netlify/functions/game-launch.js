@@ -22,8 +22,9 @@ export function createHandler({
       const control = await loadControl();
       if (control.maintenanceMode === true) throw new ServiceError('maintenance_mode', 503);
       if (control.gameLaunchEnabled === false) throw new ServiceError('game_launch_disabled', 503);
+      if (control.memberWalletEnabled === false) throw new ServiceError('member_wallet_disabled', 503);
       const input = parseJsonBody(event, 4096);
-      const result = await launch(actor, input, { client: clientFactory({ env }) });
+      const result = await launch(actor, input, { env, client: clientFactory({ env }) });
       auditSecurityEvent({ event, actor, action: 'game.launch', outcome: 'allowed' });
       return { game: result };
     },
