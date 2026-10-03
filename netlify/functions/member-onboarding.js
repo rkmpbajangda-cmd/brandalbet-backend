@@ -3,6 +3,7 @@ import { authenticateRequest, AuthHttpError } from '../../src/auth/authenticate.
 import { auditSecurityEvent } from '../../src/audit/logger.js';
 import { corsHeaders, CorsError } from '../../src/security/cors.js';
 import { completeMemberOnboarding, OnboardingValidationError } from '../../src/member/onboarding.js';
+import { loadMasterControl } from '../../src/backoffice/master-control.js';
 import { empty, json } from '../../src/utils/http.js';
 
 function parseBody(event) {
@@ -13,16 +14,21 @@ function parseBody(event) {
 
 export function createHandler({ verifyIdToken, onboard = completeMemberOnboarding,
   env = process.env,
+  loadControl = loadMasterControl,
 } = {}) {
   return async (event) => {
     let cors = {};
     let actor = null;
     try {
-      cors = corsHeaders(event, 'member');
+      cors = corsHeaders(event, 'member', env);
       if (event.httpMethod === 'OPTIONS') return empty(204, cors);
       if (event.httpMethod !== 'POST') {
         return json(405, { ok: false, error: 'method_not_allowed' }, { ...cors, Allow: 'POST, OPTIONS' });
       }
+
+      const control = await loadControl();
+      if (control.maintenanceMode === true) throw new ServiceError('maintenance_mode', 503);
+      if (control.registrationEnabled === false) throw new ServiceError('registration_closed', 503);
 
       actor = await authenticateRequest(event, { verifyIdToken, requireMemberSession: true, env });
       const result = await onboard(actor, parseBody(event));
@@ -37,4 +43,3 @@ export function createHandler({ verifyIdToken, onboard = completeMemberOnboardin
 }
 
 export const handler = createHandler();
-
