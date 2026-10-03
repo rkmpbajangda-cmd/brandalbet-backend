@@ -4,5 +4,15 @@
   "main": "cloudflare-worker.js",
   "compatibility_date": "2026-10-03",
   "workers_dev": true,
-  "keep_vars": true
+  "keep_vars": true,
+  "vars": {
+    "FIREBASE_PROJECT_ID": "brandal-bet",
+    "ALLOWED_MEMBER_ORIGINS": "https://brandalbet.blogspot.com",
+    "ALLOWED_BACKOFFICE_ORIGINS": "https://backoffic.blogspot.com",
+    "MEMBER_SINGLE_SESSION_ENABLED": "true",
+    "BOOTSTRAP_ENABLED": "false",
+    "GOLDSLOTPALASE_API_URL": "https://agent.goldslotpalase.com",
+    "GOLDSLOTPALASE_TRANSFER_ENABLED": "false",
+    "GOLDSLOTPALASE_BALANCE_RECONCILIATION_ENABLED": "false"
+  }
 }
