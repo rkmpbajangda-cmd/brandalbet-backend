@@ -149,9 +149,12 @@ export function responseFromNetlify(result) {
     for (const value of values) headers.append(key, String(value));
   }
 
-  const body = result?.isBase64Encoded
-    ? bytesFromBase64(String(result?.body ?? ''))
-    : String(result?.body ?? '');
+  const bodyForbidden = status === 204 || status === 205 || status === 304;
+  const body = bodyForbidden
+    ? null
+    : (result?.isBase64Encoded
+      ? bytesFromBase64(String(result?.body ?? ''))
+      : String(result?.body ?? ''));
 
   return new Response(body, { status, headers });
 }
