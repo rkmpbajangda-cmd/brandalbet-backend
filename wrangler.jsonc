@@ -3,5 +3,6 @@
   "name": "brandalbet-backend",
   "main": "cloudflare-worker.js",
   "compatibility_date": "2026-10-03",
-  "workers_dev": true
+  "workers_dev": true,
+  "keep_vars": true
 }
