@@ -11,8 +11,10 @@
     "dev": "netlify dev",
     "check": "node scripts/check.mjs",
     "test": "node --test",
-    "build": "node scripts/build.mjs",
-    "validate": "npm run check && npm test && npm run build"
+    "build": "npm run build:cloudflare",
+    "build:cloudflare": "node scripts/build-cloudflare.mjs",
+    "build:netlify": "node scripts/build.mjs",
+    "validate": "npm run check && npm test && npm run build:netlify && npm run build:cloudflare"
   },
   "dependencies": {
     "firebase-admin": "14.5.0"
