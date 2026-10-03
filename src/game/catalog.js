@@ -1,8 +1,13 @@
+import { getAdminDb } from '../firebase/admin.js';
 import { ServiceError } from '../utils/errors.js';
 
 const MAX_GAMES = 10000;
 const DEFAULT_CATALOG_TTL_MS = 5 * 60 * 1000;
 const STALE_IF_ERROR_MS = 30 * 60 * 1000;
+const SNAPSHOT_COLLECTION = 'providerCatalogSnapshots';
+const SNAPSHOT_DOC = 'goldslotpalase';
+const SNAPSHOT_CHUNK_SIZE = 200;
+const SNAPSHOT_FRESH_MS = 7 * 24 * 60 * 60 * 1000;
 
 function safeText(value, max = 240) {
   if (typeof value !== 'string') return '';
@@ -108,9 +113,29 @@ export function providerSummaryFromGames(games, providers = []) {
   return [...map.values()].sort((a, b) => a.providerId - b.providerId);
 }
 
+function catalogValue(providerData, gameData, current) {
+  const providerRows = normalizeGoldslotProviders(providerData);
+  const providerNames = new Map(providerRows.map(item => [item.providerId, item.providerName]));
+  const games = normalizeGoldslotGames(gameData, providerNames);
+  return Object.freeze({
+    provider: 'goldslotpalase',
+    games,
+    providers: providerSummaryFromGames(games, providerRows),
+    syncedAt: new Date(current).toISOString(),
+  });
+}
+
 let cache = null;
 let inflight = null;
+let snapshotCache = null;
+let snapshotInflight = null;
+let syncInflight = null;
 
+/**
+ * Live provider loader kept for explicit administrative/provider operations.
+ * Member-facing requests must use loadStoredGameCatalog() instead so opening or
+ * reloading the website never fans out into Goldslot catalog requests.
+ */
 export async function loadPublicGameCatalog({ client, now = Date.now, ttlMs = DEFAULT_CATALOG_TTL_MS } = {}) {
   if (!client?.allGames || !client?.providers) throw new ServiceError('provider_unconfigured', 503);
   const current = now();
@@ -120,15 +145,7 @@ export async function loadPublicGameCatalog({ client, now = Date.now, ttlMs = DE
   inflight = (async () => {
     try {
       const [providerData, gameData] = await Promise.all([client.providers(), client.allGames()]);
-      const providerRows = normalizeGoldslotProviders(providerData);
-      const providerNames = new Map(providerRows.map(item => [item.providerId, item.providerName]));
-      const games = normalizeGoldslotGames(gameData, providerNames);
-      const value = Object.freeze({
-        provider: 'goldslotpalase',
-        games,
-        providers: providerSummaryFromGames(games, providerRows),
-        syncedAt: new Date(current).toISOString(),
-      });
+      const value = catalogValue(providerData, gameData, current);
       cache = {
         expiresAt: current + ttlMs,
         staleUntil: current + ttlMs + STALE_IF_ERROR_MS,
@@ -146,7 +163,155 @@ export async function loadPublicGameCatalog({ client, now = Date.now, ttlMs = DE
   return inflight;
 }
 
+function snapshotRef(db) {
+  return db.collection(SNAPSHOT_COLLECTION).doc(SNAPSHOT_DOC);
+}
+
+function validStoredGame(row) {
+  return row && typeof row === 'object' && !Array.isArray(row)
+    && Number.isSafeInteger(row.providerId) && row.providerId > 0
+    && typeof row.gameCode === 'string' && row.gameCode.length > 0 && row.gameCode.length <= 200;
+}
+
+async function writeCatalogSnapshot(value, { db, current, chunkSize = SNAPSHOT_CHUNK_SIZE } = {}) {
+  const ref = snapshotRef(db);
+  const previous = await ref.get();
+  const oldChunkCount = previous.exists && Number.isSafeInteger(previous.data()?.chunkCount)
+    ? previous.data().chunkCount
+    : 0;
+  const revision = current;
+  const chunks = [];
+  for (let offset = 0; offset < value.games.length; offset += chunkSize) {
+    chunks.push(value.games.slice(offset, offset + chunkSize).map(game => ({ ...game })));
+  }
+
+  const batch = db.batch();
+  chunks.forEach((games, index) => {
+    batch.set(ref.collection('chunks').doc(String(index).padStart(4, '0')), {
+      revision,
+      index,
+      games,
+    }, { merge: false });
+  });
+  for (let index = chunks.length; index < oldChunkCount; index += 1) {
+    batch.delete(ref.collection('chunks').doc(String(index).padStart(4, '0')));
+  }
+  batch.set(ref, {
+    provider: 'goldslotpalase',
+    providers: value.providers.map(provider => ({ ...provider })),
+    syncedAt: value.syncedAt,
+    syncedAtMs: current,
+    revision,
+    totalGames: value.games.length,
+    chunkCount: chunks.length,
+    chunkSize,
+  }, { merge: false });
+  await batch.commit();
+
+  return Object.freeze({
+    ...value,
+    snapshotRevision: revision,
+    snapshotStale: false,
+  });
+}
+
+/**
+ * Explicit admin-only synchronization path. This is the only catalog path that
+ * should contact Goldslot in normal production operation.
+ */
+export async function syncStoredGameCatalog({ client, db = getAdminDb(), now = Date.now } = {}) {
+  if (!client?.allGames || !client?.providers) throw new ServiceError('provider_unconfigured', 503);
+  if (syncInflight) return syncInflight;
+  const current = now();
+  syncInflight = (async () => {
+    try {
+      const [providerData, gameData] = await Promise.all([client.providers(), client.allGames()]);
+      const value = catalogValue(providerData, gameData, current);
+      const stored = await writeCatalogSnapshot(value, { db, current });
+      cache = {
+        expiresAt: current + DEFAULT_CATALOG_TTL_MS,
+        staleUntil: current + DEFAULT_CATALOG_TTL_MS + STALE_IF_ERROR_MS,
+        value,
+      };
+      snapshotCache = { value: stored, expiresAt: current + SNAPSHOT_FRESH_MS };
+      return stored;
+    } finally {
+      syncInflight = null;
+    }
+  })();
+  return syncInflight;
+}
+
+/**
+ * Persistent member/backoffice catalog reader. Never contacts Goldslot.
+ * A stale snapshot is intentionally still served until an administrator syncs
+ * again so provider outages cannot make the member catalog disappear.
+ */
+export async function loadStoredGameCatalog({ db = getAdminDb(), now = Date.now, ttlMs = SNAPSHOT_FRESH_MS } = {}) {
+  const current = now();
+  if (snapshotCache && current < snapshotCache.expiresAt) return snapshotCache.value;
+  if (snapshotInflight) return snapshotInflight;
+
+  snapshotInflight = (async () => {
+    try {
+      const ref = snapshotRef(db);
+      const metaSnapshot = await ref.get();
+      if (!metaSnapshot.exists) throw new ServiceError('catalog_not_initialized', 503);
+      const meta = metaSnapshot.data() ?? {};
+      const chunkCount = Number(meta.chunkCount);
+      const totalGames = Number(meta.totalGames);
+      if (!Number.isSafeInteger(chunkCount) || chunkCount < 0 || chunkCount > 100
+        || !Number.isSafeInteger(totalGames) || totalGames < 0 || totalGames > MAX_GAMES) {
+        throw new ServiceError('catalog_snapshot_corrupt', 503);
+      }
+
+      const refs = Array.from({ length: chunkCount }, (_, index) => ref.collection('chunks').doc(String(index).padStart(4, '0')));
+      const snapshots = refs.length
+        ? (typeof db.getAll === 'function' ? await db.getAll(...refs) : await Promise.all(refs.map(item => item.get())))
+        : [];
+      const games = [];
+      for (const chunk of snapshots) {
+        if (!chunk.exists) throw new ServiceError('catalog_snapshot_corrupt', 503);
+        const rows = chunk.data()?.games;
+        if (!Array.isArray(rows)) throw new ServiceError('catalog_snapshot_corrupt', 503);
+        for (const row of rows) {
+          if (!validStoredGame(row)) throw new ServiceError('catalog_snapshot_corrupt', 503);
+          games.push(Object.freeze({ ...row }));
+        }
+      }
+      if (games.length !== totalGames) throw new ServiceError('catalog_snapshot_corrupt', 503);
+
+      const providers = Array.isArray(meta.providers)
+        ? meta.providers.filter(row => row && Number.isSafeInteger(row.providerId) && row.providerId > 0).map(row => Object.freeze({ ...row }))
+        : providerSummaryFromGames(games, []);
+      const syncedAtMs = Number(meta.syncedAtMs);
+      const syncedAt = typeof meta.syncedAt === 'string' && Number.isFinite(Date.parse(meta.syncedAt))
+        ? meta.syncedAt
+        : (Number.isFinite(syncedAtMs) ? new Date(syncedAtMs).toISOString() : null);
+      if (!syncedAt) throw new ServiceError('catalog_snapshot_corrupt', 503);
+      const revision = Number.isSafeInteger(meta.revision) ? meta.revision : syncedAtMs;
+      const value = Object.freeze({
+        provider: 'goldslotpalase',
+        games: Object.freeze(games),
+        providers: Object.freeze(providers),
+        syncedAt,
+        snapshotRevision: revision,
+        snapshotStale: Number.isFinite(syncedAtMs) ? current - syncedAtMs > SNAPSHOT_FRESH_MS : true,
+      });
+      snapshotCache = { value, expiresAt: current + ttlMs };
+      return value;
+    } finally {
+      snapshotInflight = null;
+    }
+  })();
+
+  return snapshotInflight;
+}
+
 export function clearCatalogCacheForTest() {
   cache = null;
   inflight = null;
+  snapshotCache = null;
+  snapshotInflight = null;
+  syncInflight = null;
 }
