@@ -5,7 +5,6 @@ import { loadStoredGameCatalog, syncStoredGameCatalog } from '../../src/game/cat
 import { loadGameDisplaySettings, updateGameDisplaySettings } from '../../src/game/display-settings.js';
 
 const CATALOG_SYNC_ROLES = new Set(['admin', 'superadmin']);
-const SNAPSHOT_READ_CACHE_MS = 5 * 60 * 1000;
 
 function parseBody(event) {
   if (!event.body || event.body.length > 120 * 1024) throw new ServiceError('invalid_game_display_request', 400);
@@ -70,10 +69,9 @@ export function createHandler({
 
       // Opening the backoffice catalog is read-only against the persistent
       // snapshot. It does not contact GoldslotPalase. Only POST action=sync
-      // performs provider catalog calls. The short snapshot read cache lets a
-      // sync performed on another serverless instance become visible quickly.
+      // performs provider catalog calls.
       const [catalog, display] = await Promise.all([
-        loadCatalog({ ttlMs: SNAPSHOT_READ_CACHE_MS }),
+        loadCatalog(),
         loadDisplay(),
       ]);
       return { ...catalogView(catalog), display };
