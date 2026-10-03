@@ -105,6 +105,7 @@ test('onboarding payload validates account, username and bank data', () => {
 test('onboarding handler maps username conflict to 409', async () => {
   const handler = createOnboardingHandler({
     verifyIdToken: verify,
+    loadControl: async () => ({ maintenanceMode: false, registrationEnabled: true }),
     onboard: async () => { throw new OnboardingValidationError('username_taken', 409); },
   });
   const response = await handler(event('POST', {
