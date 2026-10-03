@@ -3,6 +3,8 @@ import { applyGameDisplaySettings, loadGameDisplaySettings } from '../../src/gam
 import { corsHeaders, CorsError } from '../../src/security/cors.js';
 import { empty, json } from '../../src/utils/http.js';
 
+const SNAPSHOT_READ_CACHE_MS = 5 * 60 * 1000;
+
 export function createHandler({
   env = process.env,
   loadCatalog = loadStoredGameCatalog,
@@ -20,8 +22,11 @@ export function createHandler({
       // Member traffic reads only the persistent server snapshot. It never
       // contacts GoldslotPalase merely because a member opens/reloads/searches
       // the game page. Provider synchronization is an explicit admin action.
+      // The five-minute read cache is deliberately much shorter than the
+      // seven-day catalog freshness window so an admin sync propagates quickly
+      // across warm serverless instances without creating provider traffic.
       const [catalog, displaySettings] = await Promise.all([
-        loadCatalog(),
+        loadCatalog({ ttlMs: SNAPSHOT_READ_CACHE_MS }),
         Promise.resolve().then(() => loadDisplay()).catch(() => ({})),
       ]);
       const view = applyGameDisplaySettings(catalog, displaySettings);
