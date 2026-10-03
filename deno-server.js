@@ -1,70 +1,62 @@
-import { handler as backofficeAudit } from './netlify/functions/backoffice-audit.js';
-import { handler as backofficeDashboard } from './netlify/functions/backoffice-dashboard.js';
-import { handler as backofficeFinance } from './netlify/functions/backoffice-finance.js';
-import { handler as backofficeGameCatalog } from './netlify/functions/backoffice-game-catalog.js';
-import { handler as backofficeHealth } from './netlify/functions/backoffice-health.js';
-import { handler as backofficeLedger } from './netlify/functions/backoffice-ledger.js';
-import { handler as backofficeMasterControl } from './netlify/functions/backoffice-master-control.js';
-import { handler as backofficeMembers } from './netlify/functions/backoffice-members.js';
-import { handler as backofficePaymentConnections } from './netlify/functions/backoffice-payment-connections.js';
-import { handler as backofficePromotions } from './netlify/functions/backoffice-promotions.js';
-import { handler as backofficeProvider } from './netlify/functions/backoffice-provider.js';
-import { handler as backofficeReadiness } from './netlify/functions/backoffice-readiness.js';
-import { handler as backofficeReports } from './netlify/functions/backoffice-reports.js';
-import { handler as backofficeWebsiteSettings } from './netlify/functions/backoffice-website-settings.js';
-import { handler as bootstrapSuperadmin } from './netlify/functions/bootstrap-superadmin.js';
-import { handler as gameLaunch } from './netlify/functions/game-launch.js';
-import { handler as gameWalletReconcile } from './netlify/functions/game-wallet-reconcile.js';
-import { handler as gameWalletStatus } from './netlify/functions/game-wallet-status.js';
-import { handler as gameWalletTransfer } from './netlify/functions/game-wallet-transfer.js';
-import { handler as games } from './netlify/functions/games.js';
-import { handler as health } from './netlify/functions/health.js';
-import { handler as me } from './netlify/functions/me.js';
-import { handler as memberBankAccount } from './netlify/functions/member-bank-account.js';
-import { handler as memberConfig } from './netlify/functions/member-config.js';
-import { handler as memberDeviceSession } from './netlify/functions/member-device-session.js';
-import { handler as memberOnboarding } from './netlify/functions/member-onboarding.js';
-import { handler as memberProfile } from './netlify/functions/member-profile.js';
-import { handler as memberSession } from './netlify/functions/member-session.js';
-import { handler as promotions } from './netlify/functions/promotions.js';
-import { handler as transactions } from './netlify/functions/transactions.js';
-import { handler as wallet } from './netlify/functions/wallet.js';
-
 const MAX_BODY_BYTES = 128 * 1024;
 
-export const handlers = Object.freeze({
-  'backoffice-audit': backofficeAudit,
-  'backoffice-dashboard': backofficeDashboard,
-  'backoffice-finance': backofficeFinance,
-  'backoffice-game-catalog': backofficeGameCatalog,
-  'backoffice-health': backofficeHealth,
-  'backoffice-ledger': backofficeLedger,
-  'backoffice-master-control': backofficeMasterControl,
-  'backoffice-members': backofficeMembers,
-  'backoffice-payment-connections': backofficePaymentConnections,
-  'backoffice-promotions': backofficePromotions,
-  'backoffice-provider': backofficeProvider,
-  'backoffice-readiness': backofficeReadiness,
-  'backoffice-reports': backofficeReports,
-  'backoffice-website-settings': backofficeWebsiteSettings,
-  'bootstrap-superadmin': bootstrapSuperadmin,
-  'game-launch': gameLaunch,
-  'game-wallet-reconcile': gameWalletReconcile,
-  'game-wallet-status': gameWalletStatus,
-  'game-wallet-transfer': gameWalletTransfer,
-  games,
-  health,
-  me,
-  'member-bank-account': memberBankAccount,
-  'member-config': memberConfig,
-  'member-device-session': memberDeviceSession,
-  'member-onboarding': memberOnboarding,
-  'member-profile': memberProfile,
-  'member-session': memberSession,
-  promotions,
-  transactions,
-  wallet,
+// Load only the handler needed for the current request. This keeps Cloudflare
+// startup lightweight and prevents one optional integration dependency from
+// making unrelated routes (such as /api/health) unavailable.
+const handlerLoaders = Object.freeze({
+  'backoffice-audit': () => import('./netlify/functions/backoffice-audit.js'),
+  'backoffice-dashboard': () => import('./netlify/functions/backoffice-dashboard.js'),
+  'backoffice-finance': () => import('./netlify/functions/backoffice-finance.js'),
+  'backoffice-game-catalog': () => import('./netlify/functions/backoffice-game-catalog.js'),
+  'backoffice-health': () => import('./netlify/functions/backoffice-health.js'),
+  'backoffice-ledger': () => import('./netlify/functions/backoffice-ledger.js'),
+  'backoffice-master-control': () => import('./netlify/functions/backoffice-master-control.js'),
+  'backoffice-members': () => import('./netlify/functions/backoffice-members.js'),
+  'backoffice-payment-connections': () => import('./netlify/functions/backoffice-payment-connections.js'),
+  'backoffice-promotions': () => import('./netlify/functions/backoffice-promotions.js'),
+  'backoffice-provider': () => import('./netlify/functions/backoffice-provider.js'),
+  'backoffice-readiness': () => import('./netlify/functions/backoffice-readiness.js'),
+  'backoffice-reports': () => import('./netlify/functions/backoffice-reports.js'),
+  'backoffice-website-settings': () => import('./netlify/functions/backoffice-website-settings.js'),
+  'bootstrap-superadmin': () => import('./netlify/functions/bootstrap-superadmin.js'),
+  'game-launch': () => import('./netlify/functions/game-launch.js'),
+  'game-wallet-reconcile': () => import('./netlify/functions/game-wallet-reconcile.js'),
+  'game-wallet-status': () => import('./netlify/functions/game-wallet-status.js'),
+  'game-wallet-transfer': () => import('./netlify/functions/game-wallet-transfer.js'),
+  games: () => import('./netlify/functions/games.js'),
+  health: () => import('./netlify/functions/health.js'),
+  me: () => import('./netlify/functions/me.js'),
+  'member-bank-account': () => import('./netlify/functions/member-bank-account.js'),
+  'member-config': () => import('./netlify/functions/member-config.js'),
+  'member-device-session': () => import('./netlify/functions/member-device-session.js'),
+  'member-onboarding': () => import('./netlify/functions/member-onboarding.js'),
+  'member-profile': () => import('./netlify/functions/member-profile.js'),
+  'member-session': () => import('./netlify/functions/member-session.js'),
+  promotions: () => import('./netlify/functions/promotions.js'),
+  transactions: () => import('./netlify/functions/transactions.js'),
+  wallet: () => import('./netlify/functions/wallet.js'),
 });
+
+const handlerCache = new Map();
+
+async function resolveHandler(name) {
+  if (handlerCache.has(name)) return handlerCache.get(name);
+  const loader = handlerLoaders[name];
+  if (!loader) return null;
+
+  const promise = loader().then((module) => {
+    if (typeof module?.handler !== 'function') {
+      throw new TypeError(`Handler export is unavailable for ${name}`);
+    }
+    return module.handler;
+  }).catch((error) => {
+    handlerCache.delete(name);
+    throw error;
+  });
+
+  handlerCache.set(name, promise);
+  return promise;
+}
 
 function functionNameFromPath(pathname) {
   const netlifyPrefix = '/.netlify/functions/';
@@ -175,6 +167,15 @@ function json(status, body, extraHeaders = {}) {
   });
 }
 
+function logHandlerLoadFailure(name, error) {
+  console.error(JSON.stringify({
+    event: 'backend_handler_load_failed',
+    route: name,
+    name: error?.name || 'Error',
+    message: typeof error?.message === 'string' ? error.message.slice(0, 300) : 'unknown',
+  }));
+}
+
 export async function handleDenoRequest(request) {
   const url = new URL(request.url);
   if (url.pathname === '/') {
@@ -186,8 +187,15 @@ export async function handleDenoRequest(request) {
   }
 
   const name = functionNameFromPath(url.pathname);
-  const handler = name ? handlers[name] : null;
-  if (!handler) return json(404, { ok: false, error: 'not_found' });
+  if (!name || !handlerLoaders[name]) return json(404, { ok: false, error: 'not_found' });
+
+  let handler;
+  try {
+    handler = await resolveHandler(name);
+  } catch (error) {
+    logHandlerLoadFailure(name, error);
+    return json(503, { ok: false, error: 'backend_handler_unavailable' });
+  }
 
   try {
     const event = await netlifyEventFromRequest(request);
