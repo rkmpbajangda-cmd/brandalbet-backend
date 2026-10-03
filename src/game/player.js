@@ -4,7 +4,7 @@ import { getAdminDb } from '../firebase/admin.js';
 import { ServiceError } from '../utils/errors.js';
 
 const PROVIDER = 'goldslotpalase';
-const DEFAULT_REFRESH_MS = 6 * 60 * 60 * 1000;
+const DEFAULT_REFRESH_MS = 7 * 24 * 60 * 60 * 1000;
 const MEMORY_TTL_MS = 15 * 60 * 1000;
 const MAX_MEMORY_ENTRIES = 1000;
 const memoryCache = new Map();
@@ -103,7 +103,8 @@ export async function ensureGoldslotPlayer(actor, {
 
   const providerUsername = providerUsernameForUid(actor.uid);
   // The provider documents createUser(name) as idempotent for an existing name.
-  // Revalidation is periodic instead of happening on every game click.
+  // Revalidation is intentionally weekly instead of happening on every game
+  // click; the stable Firestore mapping remains the source between checks.
   const upstream = await client.createUser(providerUsername);
   const userCode = userCodeFromResponse(upstream);
   const serverNow = FieldValue.serverTimestamp();
