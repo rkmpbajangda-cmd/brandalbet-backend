@@ -76,3 +76,15 @@ test('public health exposes CORS on canonical backoffice GET without auth', asyn
   assert.equal(response.headers.get('access-control-allow-origin'), 'https://backoffic.blogspot.com');
   assert.deepEqual(await response.json(), { ok: true, service: 'brandalbet-backend' });
 });
+
+
+test('Deno adapter preserves bodyless 204 responses without throwing', () => {
+  const response = responseFromNetlify({
+    statusCode: 204,
+    headers: { 'Access-Control-Allow-Origin': 'https://backoffic.blogspot.com' },
+    body: '',
+  });
+  assert.equal(response.status, 204);
+  assert.equal(response.body, null);
+  assert.equal(response.headers.get('access-control-allow-origin'), 'https://backoffic.blogspot.com');
+});
