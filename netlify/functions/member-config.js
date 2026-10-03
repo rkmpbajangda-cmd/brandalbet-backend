@@ -1,16 +1,27 @@
 import { loadMasterControl, publicMasterControl } from '../../src/backoffice/master-control.js';
+import { loadPublicSiteSettings } from '../../src/member/public-config.js';
 import { corsHeaders, CorsError } from '../../src/security/cors.js';
 import { empty, json } from '../../src/utils/http.js';
 
-export function createHandler({ env = process.env, load = loadMasterControl } = {}) {
+export function createHandler({
+  env = process.env,
+  loadControl = loadMasterControl,
+  loadSite = loadPublicSiteSettings,
+} = {}) {
   return async event => {
     let cors = {};
     try {
       cors = corsHeaders(event, 'member', env);
       if (event.httpMethod === 'OPTIONS') return empty(204, cors);
       if (event.httpMethod !== 'GET') return json(405, { ok: false, error: 'method_not_allowed' }, { ...cors, Allow: 'GET, OPTIONS' });
-      const control = publicMasterControl(await load());
-      return json(200, { ok: true, control }, {
+      const [controlRaw, website] = await Promise.all([loadControl(), loadSite()]);
+      const control = publicMasterControl(controlRaw);
+      return json(200, {
+        ok: true,
+        configVersion: 2,
+        control,
+        website,
+      }, {
         ...cors,
         'Cache-Control': 'public, max-age=30, s-maxage=60, stale-while-revalidate=300',
       });
