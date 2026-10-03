@@ -1,6 +1,8 @@
 import { ServiceError } from '../utils/errors.js';
 
 const MAX_GAMES = 10000;
+const DEFAULT_CATALOG_TTL_MS = 5 * 60 * 1000;
+const STALE_IF_ERROR_MS = 30 * 60 * 1000;
 
 function safeText(value, max = 240) {
   if (typeof value !== 'string') return '';
@@ -107,25 +109,44 @@ export function providerSummaryFromGames(games, providers = []) {
 }
 
 let cache = null;
-export async function loadPublicGameCatalog({ client, now = Date.now, ttlMs = 60000 } = {}) {
+let inflight = null;
+
+export async function loadPublicGameCatalog({ client, now = Date.now, ttlMs = DEFAULT_CATALOG_TTL_MS } = {}) {
   if (!client?.allGames || !client?.providers) throw new ServiceError('provider_unconfigured', 503);
   const current = now();
   if (cache && current < cache.expiresAt) return cache.value;
+  if (inflight) return inflight;
 
-  const [providerData, gameData] = await Promise.all([client.providers(), client.allGames()]);
-  const providerRows = normalizeGoldslotProviders(providerData);
-  const providerNames = new Map(providerRows.map(item => [item.providerId, item.providerName]));
-  const games = normalizeGoldslotGames(gameData, providerNames);
-  const value = Object.freeze({
-    provider: 'goldslotpalase',
-    games,
-    providers: providerSummaryFromGames(games, providerRows),
-    syncedAt: new Date(current).toISOString(),
-  });
-  cache = { expiresAt: current + ttlMs, value };
-  return value;
+  inflight = (async () => {
+    try {
+      const [providerData, gameData] = await Promise.all([client.providers(), client.allGames()]);
+      const providerRows = normalizeGoldslotProviders(providerData);
+      const providerNames = new Map(providerRows.map(item => [item.providerId, item.providerName]));
+      const games = normalizeGoldslotGames(gameData, providerNames);
+      const value = Object.freeze({
+        provider: 'goldslotpalase',
+        games,
+        providers: providerSummaryFromGames(games, providerRows),
+        syncedAt: new Date(current).toISOString(),
+      });
+      cache = {
+        expiresAt: current + ttlMs,
+        staleUntil: current + ttlMs + STALE_IF_ERROR_MS,
+        value,
+      };
+      return value;
+    } catch (error) {
+      if (cache && current < cache.staleUntil) return cache.value;
+      throw error;
+    } finally {
+      inflight = null;
+    }
+  })();
+
+  return inflight;
 }
 
 export function clearCatalogCacheForTest() {
   cache = null;
+  inflight = null;
 }
