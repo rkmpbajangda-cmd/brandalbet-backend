@@ -4,6 +4,7 @@ import { handler as backofficeFinance } from './netlify/functions/backoffice-fin
 import { handler as backofficeGameCatalog } from './netlify/functions/backoffice-game-catalog.js';
 import { handler as backofficeHealth } from './netlify/functions/backoffice-health.js';
 import { handler as backofficeLedger } from './netlify/functions/backoffice-ledger.js';
+import { handler as backofficeMasterControl } from './netlify/functions/backoffice-master-control.js';
 import { handler as backofficeMembers } from './netlify/functions/backoffice-members.js';
 import { handler as backofficePaymentConnections } from './netlify/functions/backoffice-payment-connections.js';
 import { handler as backofficePromotions } from './netlify/functions/backoffice-promotions.js';
@@ -20,6 +21,7 @@ import { handler as games } from './netlify/functions/games.js';
 import { handler as health } from './netlify/functions/health.js';
 import { handler as me } from './netlify/functions/me.js';
 import { handler as memberBankAccount } from './netlify/functions/member-bank-account.js';
+import { handler as memberConfig } from './netlify/functions/member-config.js';
 import { handler as memberDeviceSession } from './netlify/functions/member-device-session.js';
 import { handler as memberOnboarding } from './netlify/functions/member-onboarding.js';
 import { handler as memberProfile } from './netlify/functions/member-profile.js';
@@ -37,6 +39,7 @@ export const handlers = Object.freeze({
   'backoffice-game-catalog': backofficeGameCatalog,
   'backoffice-health': backofficeHealth,
   'backoffice-ledger': backofficeLedger,
+  'backoffice-master-control': backofficeMasterControl,
   'backoffice-members': backofficeMembers,
   'backoffice-payment-connections': backofficePaymentConnections,
   'backoffice-promotions': backofficePromotions,
@@ -53,6 +56,7 @@ export const handlers = Object.freeze({
   health,
   me,
   'member-bank-account': memberBankAccount,
+  'member-config': memberConfig,
   'member-device-session': memberDeviceSession,
   'member-onboarding': memberOnboarding,
   'member-profile': memberProfile,
