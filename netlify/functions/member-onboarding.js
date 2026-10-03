@@ -28,7 +28,7 @@ export function createHandler({ verifyIdToken, onboard = completeMemberOnboardin
 
       const control = await loadControl();
       if (control.maintenanceMode === true) throw new ServiceError('maintenance_mode', 503);
-      if (control.registrationEnabled === false) throw new ServiceError('registration_closed', 503);
+      if (control.registrationEnabled === false) throw new ServiceError('registration_disabled', 503);
 
       actor = await authenticateRequest(event, { verifyIdToken, requireMemberSession: true, env });
       const result = await onboard(actor, parseBody(event));
