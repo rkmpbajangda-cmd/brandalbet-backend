@@ -21,7 +21,10 @@ export function createHandler({
 
       const [catalog, displaySettings] = await Promise.all([
         loadCatalog({ client: clientFactory({ env }) }),
-        loadDisplay(),
+        // Display curation is an enhancement over the provider catalog. If the
+        // settings store is temporarily unavailable, fail open to the provider
+        // catalog instead of taking the member game page offline.
+        Promise.resolve().then(() => loadDisplay()).catch(() => ({})),
       ]);
       const view = applyGameDisplaySettings(catalog, displaySettings);
 
