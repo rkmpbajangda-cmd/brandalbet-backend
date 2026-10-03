@@ -1,13 +1,11 @@
-import { createGoldslotClient } from '../../src/game/goldslotpalase.js';
-import { loadPublicGameCatalog } from '../../src/game/catalog.js';
+import { loadStoredGameCatalog } from '../../src/game/catalog.js';
 import { applyGameDisplaySettings, loadGameDisplaySettings } from '../../src/game/display-settings.js';
 import { corsHeaders, CorsError } from '../../src/security/cors.js';
 import { empty, json } from '../../src/utils/http.js';
 
 export function createHandler({
   env = process.env,
-  clientFactory = createGoldslotClient,
-  loadCatalog = loadPublicGameCatalog,
+  loadCatalog = loadStoredGameCatalog,
   loadDisplay = loadGameDisplaySettings,
 } = {}) {
   return async (event) => {
@@ -19,11 +17,11 @@ export function createHandler({
         return json(405, { ok: false, error: 'method_not_allowed' }, { ...cors, Allow: 'GET, OPTIONS' });
       }
 
+      // Member traffic reads only the persistent server snapshot. It never
+      // contacts GoldslotPalase merely because a member opens/reloads/searches
+      // the game page. Provider synchronization is an explicit admin action.
       const [catalog, displaySettings] = await Promise.all([
-        loadCatalog({ client: clientFactory({ env }) }),
-        // Display curation is an enhancement over the provider catalog. If the
-        // settings store is temporarily unavailable, fail open to the provider
-        // catalog instead of taking the member game page offline.
+        loadCatalog(),
         Promise.resolve().then(() => loadDisplay()).catch(() => ({})),
       ]);
       const view = applyGameDisplaySettings(catalog, displaySettings);
@@ -35,13 +33,15 @@ export function createHandler({
         games: view.games,
         total: view.games.length,
         syncedAt: view.syncedAt,
+        snapshotRevision: catalog.snapshotRevision ?? null,
+        snapshotStale: catalog.snapshotStale === true,
         display: view.display,
       }, {
         ...cors,
-        // Member catalog is public/non-personalized. Browser/CDN caching keeps
-        // Deno + provider traffic low while admin display changes naturally
-        // propagate after the short cache window.
-        'Cache-Control': 'public, max-age=120, s-maxage=300, stale-while-revalidate=600',
+        // Short HTTP freshness keeps admin display changes reasonably quick,
+        // while the underlying provider catalog itself remains a persistent
+        // snapshot and therefore creates zero Goldslot calls on cache misses.
+        'Cache-Control': 'public, max-age=120, s-maxage=300, stale-while-revalidate=86400',
       });
     } catch (error) {
       const known = error instanceof CorsError || (error && Number.isInteger(error.statusCode) && typeof error.code === 'string');
