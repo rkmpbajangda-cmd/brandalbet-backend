@@ -1,18 +1,21 @@
+function present(env, name) {
+  return typeof env[name] === 'string' && env[name].trim().length > 0;
+}
+
 export function configurationReadiness(env = process.env) {
-  const required = [
-    'FIREBASE_PROJECT_ID',
-    'FIREBASE_CLIENT_EMAIL',
-    'FIREBASE_PRIVATE_KEY',
-    'ALLOWED_MEMBER_ORIGINS',
-    'ALLOWED_BACKOFFICE_ORIGINS',
-    'GOLDSLOTPALASE_API_TOKEN',
-    'GOLDSLOTPALASE_API_URL',
-    'PAYMENT_CONFIG_ENCRYPTION_KEY',
+  const firebaseBundled = present(env, 'FIREBASE_SERVICE_ACCOUNT_JSON');
+  const firebaseSplit = present(env, 'FIREBASE_PROJECT_ID')
+    && present(env, 'FIREBASE_CLIENT_EMAIL')
+    && present(env, 'FIREBASE_PRIVATE_KEY');
+
+  const configuration = [
+    { name: 'FIREBASE_ADMIN_CREDENTIALS', present: firebaseBundled || firebaseSplit },
+    { name: 'ALLOWED_MEMBER_ORIGINS', present: present(env, 'ALLOWED_MEMBER_ORIGINS') },
+    { name: 'ALLOWED_BACKOFFICE_ORIGINS', present: present(env, 'ALLOWED_BACKOFFICE_ORIGINS') },
+    { name: 'GOLDSLOTPALASE_API_TOKEN', present: present(env, 'GOLDSLOTPALASE_API_TOKEN') },
+    { name: 'GOLDSLOTPALASE_API_URL', present: present(env, 'GOLDSLOTPALASE_API_URL') },
+    { name: 'PAYMENT_CONFIG_ENCRYPTION_KEY', present: present(env, 'PAYMENT_CONFIG_ENCRYPTION_KEY') },
   ];
-  const configuration = required.map(name => ({
-    name,
-    present: typeof env[name] === 'string' && env[name].trim().length > 0,
-  }));
 
   const providerTransfer = {
     enabled: env.GOLDSLOTPALASE_TRANSFER_ENABLED === 'true',
