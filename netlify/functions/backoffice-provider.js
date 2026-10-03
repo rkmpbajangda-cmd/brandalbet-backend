@@ -4,6 +4,7 @@ import { createGoldslotClient } from '../../src/game/goldslotpalase.js';
 import { loadStoredGameCatalog } from '../../src/game/catalog.js';
 
 const LIVE_CHECK_ROLES = new Set(['admin', 'superadmin']);
+const SNAPSHOT_READ_CACHE_MS = 5 * 60 * 1000;
 
 function parseBody(event) {
   if (!event.body) return {};
@@ -27,7 +28,7 @@ function capabilities(env) {
 
 async function snapshotStatus({ loadCatalog }) {
   try {
-    const catalog = await loadCatalog();
+    const catalog = await loadCatalog({ ttlMs: SNAPSHOT_READ_CACHE_MS });
     return {
       status: catalog.snapshotStale === true ? 'snapshot_stale' : 'snapshot_ready',
       gamesCount: catalog.games.length,
