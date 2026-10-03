@@ -6,7 +6,7 @@ const ADMINS = new Set(['admin', 'superadmin']);
 const MAX_POPULAR = 24;
 const MAX_NEWEST = 24;
 const MAX_PINNED = 60;
-const MAX_HIDDEN_GAMES = 2000;
+const MAX_HIDDEN_GAMES = 250;
 const MAX_PROVIDERS = 250;
 const DEFAULT_TTL_MS = 5 * 60 * 1000;
 
@@ -71,7 +71,7 @@ function fromSnapshot(snapshot) {
   return Object.freeze({
     ...normalized,
     revision: Number.isSafeInteger(row.revision) && row.revision >= 0 ? row.revision : 0,
-    updatedAt: row.updatedAt?.toDate instanceof Function ? row.updatedAt.toDate().toISOString() : null,
+    updatedAt: typeof row.updatedAt?.toDate === 'function' ? row.updatedAt.toDate().toISOString() : null,
     updatedBy: typeof row.updatedBy === 'string' ? row.updatedBy : null,
   });
 }
