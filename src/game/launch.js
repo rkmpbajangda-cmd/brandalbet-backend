@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { ServiceError } from '../utils/errors.js';
 import { getOrCreateProfile } from '../member/profile.js';
 import { getOrCreateWallet } from '../wallet/service.js';
@@ -5,6 +6,7 @@ import { ensureGoldslotPlayer } from './player.js';
 import { ensurePlayableGoldslotBalance, normalizeLaunchRequestId } from './wallet-bridge.js';
 
 const LAUNCH_GUARD_MS = 8_000;
+const LAUNCH_GUARD_COLLECTION = 'gameLaunchGuards';
 const recentLaunches = new Map();
 
 function validateGameInput(input) {
@@ -51,6 +53,54 @@ function acquireLaunchGuard(actor, game, now = Date.now()) {
   return key;
 }
 
+function distributedGuardRef(db, uid) {
+  const id = createHash('sha256').update(String(uid)).digest('hex');
+  return db.collection(LAUNCH_GUARD_COLLECTION).doc(id);
+}
+
+async function acquireDistributedLaunchGuard(actor, game, { db, now = Date.now() } = {}) {
+  if (!db?.collection || typeof db.runTransaction !== 'function') return null;
+  const ref = distributedGuardRef(db, actor.uid);
+  const leaseId = game.launchRequestId;
+
+  await db.runTransaction(async tx => {
+    const snapshot = await tx.get(ref);
+    const current = snapshot.exists ? snapshot.data() ?? {} : {};
+    const activeUntilMs = Number(current.activeUntilMs || 0);
+    if (Number.isFinite(activeUntilMs) && activeUntilMs > now) {
+      throw new ServiceError('game_launch_rate_limited', 429);
+    }
+    tx.set(ref, {
+      leaseId,
+      providerId: game.providerId,
+      gameSymbol: game.gameSymbol,
+      activeUntilMs: now + LAUNCH_GUARD_MS,
+      updatedAtMs: now,
+    }, { merge: false });
+  });
+
+  return { ref, leaseId };
+}
+
+async function releaseDistributedLaunchGuard(lease, { db, now = Date.now() } = {}) {
+  if (!lease || !db?.collection || typeof db.runTransaction !== 'function') return;
+  try {
+    await db.runTransaction(async tx => {
+      const snapshot = await tx.get(lease.ref);
+      if (!snapshot.exists) return;
+      const current = snapshot.data() ?? {};
+      if (current.leaseId !== lease.leaseId) return;
+      tx.set(lease.ref, {
+        activeUntilMs: 0,
+        updatedAtMs: now,
+      }, { merge: true });
+    });
+  } catch {
+    // Best-effort release only. The lease naturally expires after a few seconds,
+    // so a Firestore release failure must never trigger a second provider call.
+  }
+}
+
 export function clearLaunchGuardForTest() {
   recentLaunches.clear();
 }
@@ -69,11 +119,14 @@ export async function launchGoldslotGame(actor, input, {
   if (profile.onboardingCompleted !== true || !profile.username) throw new ServiceError('member_onboarding_required', 409);
   if (wallet.status !== 'active') throw new ServiceError('wallet_locked', 409);
 
-  // Guard is acquired before any provider call. Concurrent double taps for the
-  // same member/game therefore collapse to one provider launch attempt. Failed
-  // attempts release the guard immediately so a deliberate retry can proceed.
-  const guardKey = acquireLaunchGuard(actor, game);
+  // The process-local guard stops immediate duplicate taps cheaply. The
+  // Firestore lease below extends the same protection across serverless
+  // instances, so two concurrent requests cannot both reach GoldslotPalase.
+  const guardNow = Date.now();
+  const guardKey = acquireLaunchGuard(actor, game, guardNow);
+  let distributedLease = null;
   try {
+    distributedLease = await acquireDistributedLaunchGuard(actor, game, { db, now: guardNow });
     const player = await ensurePlayer(actor, { client, db });
 
     // Production Goldslot clients always expose userInfo. The guard only preserves
@@ -107,7 +160,12 @@ export async function launchGoldslotGame(actor, input, {
       walletBridge,
     });
   } catch (error) {
-    recentLaunches.delete(guardKey);
+    // If the provider timeout is ambiguous, keep both guards until their short
+    // natural expiry. Retrying immediately could duplicate a provider mutation.
+    if (error?.ambiguous !== true) {
+      recentLaunches.delete(guardKey);
+      await releaseDistributedLaunchGuard(distributedLease, { db });
+    }
     throw error;
   }
 }
