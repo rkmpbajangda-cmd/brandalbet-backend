@@ -8,6 +8,7 @@ const SNAPSHOT_COLLECTION = 'providerCatalogSnapshots';
 const SNAPSHOT_DOC = 'goldslotpalase';
 const SNAPSHOT_CHUNK_SIZE = 200;
 const SNAPSHOT_FRESH_MS = 7 * 24 * 60 * 60 * 1000;
+const SNAPSHOT_MEMORY_TTL_MS = 5 * 60 * 1000;
 
 function safeText(value, max = 240) {
   if (typeof value !== 'string') return '';
@@ -233,7 +234,10 @@ export async function syncStoredGameCatalog({ client, db = getAdminDb(), now = D
         staleUntil: current + DEFAULT_CATALOG_TTL_MS + STALE_IF_ERROR_MS,
         value,
       };
-      snapshotCache = { value: stored, expiresAt: current + SNAPSHOT_FRESH_MS };
+      // Seven days describes provider snapshot age, not isolate memory lifetime.
+      // Keeping only a short memory cache lets a manual sync propagate across
+      // Cloudflare isolates quickly without causing any automatic provider call.
+      snapshotCache = { value: stored, expiresAt: current + SNAPSHOT_MEMORY_TTL_MS };
       return stored;
     } finally {
       syncInflight = null;
@@ -247,7 +251,7 @@ export async function syncStoredGameCatalog({ client, db = getAdminDb(), now = D
  * A stale snapshot is intentionally still served until an administrator syncs
  * again so provider outages cannot make the member catalog disappear.
  */
-export async function loadStoredGameCatalog({ db = getAdminDb(), now = Date.now, ttlMs = SNAPSHOT_FRESH_MS } = {}) {
+export async function loadStoredGameCatalog({ db = getAdminDb(), now = Date.now, ttlMs = SNAPSHOT_MEMORY_TTL_MS } = {}) {
   const current = now();
   if (snapshotCache && current < snapshotCache.expiresAt) return snapshotCache.value;
   if (snapshotInflight) return snapshotInflight;
