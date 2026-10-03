@@ -10,7 +10,38 @@ export class FirebaseConfigError extends Error {
   }
 }
 
+function readServiceAccountJson(env) {
+  const raw = env.FIREBASE_SERVICE_ACCOUNT_JSON;
+  if (typeof raw !== 'string' || !raw.trim()) return null;
+
+  let parsed;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    throw new FirebaseConfigError(['FIREBASE_SERVICE_ACCOUNT_JSON_INVALID_JSON']);
+  }
+
+  const projectId = typeof parsed?.project_id === 'string' ? parsed.project_id.trim() : '';
+  const clientEmail = typeof parsed?.client_email === 'string' ? parsed.client_email.trim() : '';
+  const privateKeyRaw = typeof parsed?.private_key === 'string' ? parsed.private_key : '';
+  const missing = [];
+
+  if (!projectId) missing.push('FIREBASE_SERVICE_ACCOUNT_JSON.project_id');
+  if (!clientEmail) missing.push('FIREBASE_SERVICE_ACCOUNT_JSON.client_email');
+  if (!privateKeyRaw) missing.push('FIREBASE_SERVICE_ACCOUNT_JSON.private_key');
+  if (missing.length) throw new FirebaseConfigError(missing);
+
+  return {
+    projectId,
+    clientEmail,
+    privateKey: privateKeyRaw.replace(/\\n/g, '\n'),
+  };
+}
+
 export function readFirebaseConfig(env = process.env) {
+  const bundled = readServiceAccountJson(env);
+  if (bundled) return bundled;
+
   const projectId = env.FIREBASE_PROJECT_ID?.trim();
   const clientEmail = env.FIREBASE_CLIENT_EMAIL?.trim();
   const privateKeyRaw = env.FIREBASE_PRIVATE_KEY;
