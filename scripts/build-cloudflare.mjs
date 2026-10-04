@@ -61,7 +61,12 @@ for (const [name, expected] of Object.entries(requiredSafeVars)) {
   }
 }
 
-for (const file of ['cloudflare-worker.js', 'deno-server.js']) {
+const firebaseAdminSource = await readFile('src/firebase/admin.js', 'utf8');
+if (!/initializeFirestore\s*\([^)]*,\s*\{\s*preferRest\s*:\s*true\s*\}/s.test(firebaseAdminSource)) {
+  throw new Error('Cloudflare Firestore must use initializeFirestore(..., { preferRest: true }) to avoid gRPC transport.');
+}
+
+for (const file of ['cloudflare-worker.js', 'deno-server.js', 'src/firebase/admin.js']) {
   const result = spawnSync(process.execPath, ['--check', file], {
     encoding: 'utf8',
     stdio: 'pipe',
@@ -72,4 +77,4 @@ for (const file of ['cloudflare-worker.js', 'deno-server.js']) {
   }
 }
 
-console.log('Cloudflare build validation passed: entrypoint, adapter, compatibility date, required secrets, secret boundaries, and fail-safe production gates are valid.');
+console.log('Cloudflare build validation passed: entrypoint, adapter, compatibility date, required secrets, Firestore REST transport, secret boundaries, and fail-safe production gates are valid.');
