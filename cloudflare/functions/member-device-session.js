@@ -2,7 +2,6 @@ import { authenticateRequest, AuthHttpError } from '../../src/auth/authenticate.
 import { auditSecurityEvent } from '../../src/audit/logger.js';
 import { corsHeaders, CorsError } from '../../src/security/cors.js';
 import { registerMemberDeviceSession, endMemberDeviceSession } from '../../src/auth/member-device-session.js';
-import { getAdminDb } from '../../src/firebase/admin.js';
 import { ServiceError } from '../../src/utils/errors.js';
 import { empty, json } from '../../src/utils/http.js';
 
@@ -30,14 +29,13 @@ export function createHandler({
 
       actor = await authenticateRequest(event, { verifyIdToken, env });
       const input = parseBody(event);
-      const db = getAdminDb(env);
       if (input?.action === 'end') {
-        const result = await end(actor, event, { db });
+        const result = await end(actor, event);
         auditSecurityEvent({ event, actor, action: 'member.device_session.end', outcome: result.ended ? 'allowed' : 'ignored' });
         return json(200, { ok: true, ...result }, cors);
       }
 
-      const session = await register(actor, input, { db });
+      const session = await register(actor, input);
       auditSecurityEvent({ event, actor, action: 'member.device_session.register', outcome: 'allowed' });
       return json(200, { ok: true, session }, cors);
     } catch (error) {
