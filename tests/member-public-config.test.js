@@ -48,9 +48,11 @@ test('member-config returns master control, Worker static asset metadata and pub
   const body = JSON.parse(result.body);
   assert.equal(body.configVersion, 3);
   assert.equal(body.assets.enabled, true);
-  assert.equal(body.assets.strategy, 'custom-cdn-override');
+  assert.equal(body.assets.strategy, 'cloudflare-workers-static-assets');
+  assert.equal(body.assets.assetPrefix, '/assets');
   assert.equal(body.assets.baseUrl, 'https://brandalbet-backend.example.workers.dev/assets');
   assert.equal(receivedEnv.ASSET_CDN_BASE_URL, 'https://brandalbet-backend.example.workers.dev/assets');
+  assert.equal(receivedEnv.ASSET_CDN_MODE, 'cloudflare-workers-static-assets');
   assert.equal(body.control.revision, 4);
   assert.equal(body.website.siteName, 'Brandalbet');
   assert.match(result.headers['Cache-Control'], /max-age=30/);
