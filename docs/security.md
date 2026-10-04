@@ -1,33 +1,92 @@
-# Security baseline
+# BrandalBet Security Baseline
 
-Status: Firebase Admin / authentication / RBAC foundation implemented. Public health
-remains credential-free. Protected routes verify Firebase ID Tokens, backoffice access
-requires both the backoffice claim and an allowed role, and bootstrap is disabled unless
-explicitly enabled through server-side environment configuration.
+Status: Cloudflare Worker, Firebase Admin authentication, RBAC, member session,
+wallet/ledger foundation, game catalog/launch protection, Goldslot transfer state machine,
+dan backoffice security controls sudah tersedia di source. Financial activation tetap
+fail-closed sampai staging/live evidence PASS.
 
-- Firebase Admin runs only in backend functions; never bundle it into member or backoffice UI.
-- Each authenticated endpoint verifies the Firebase ID Token with Firebase Admin,
-  including revocation for protected routes. Missing/invalid/revoked tokens fail closed.
-- Authorization uses verified Firebase Custom Claims and explicit per-action permissions.
-  Prepared roles: member, operator, finance, admin, superadmin. Unknown/missing roles and
-  unlisted actions are denied. No implicit role hierarchy or hardcoded admin UID bypass.
-- Apply least privilege to service accounts and operators. Firebase Admin bypasses Firestore
-  Rules, so backend authorization and validation remain mandatory. Client database access
-  must be deny-by-default; clients cannot write wallets, ledger, claims, or audit records.
-- Wallet mutations are server-only, transactional, and coupled to immutable append-only ledger
-  entries. Corrections require compensating entries; no ledger edit/delete endpoints.
-- Before enabling payment webhooks or game callbacks, implement provider-documented
-  authentication/signature verification over original request bytes, constant-time comparisons,
-  replay protection, and durable transactional idempotency. Duplicate events cannot credit twice.
-  Fail closed when provider configuration is absent. No fake providers or callbacks exist here.
-- Protected access emits structured security audit events with actor, action, outcome, timestamp,
-  and correlation ID. Before sensitive administrative mutations go live, attach a durable audit
-  sink. Never log tokens, keys, or raw sensitive payloads.
-- Validate inputs, bound payload sizes, apply rate limits, and use explicit origin allowlists.
-  CORS is not authentication. Trust no role, wallet amount, or authorization decision from UI.
-- Secrets come from Netlify environment settings or managed secret storage. Never commit
-  secrets, service-account JSON, private keys, or .env files. No credentials are provisioned here.
+## Runtime dan secret boundary
 
-This stage intentionally has no wallet/payment/game logic or provider callbacks.
-Firebase Admin initializes lazily from server-side environment values only. Structured
-security audit events are emitted without bearer tokens or private keys.
+- Runtime utama adalah **Cloudflare Workers**.
+- Firebase Admin, Goldslot token, payment credential, dan seluruh secret hanya server-side.
+- `FIREBASE_SERVICE_ACCOUNT_JSON` dan `GOLDSLOTPALASE_API_TOKEN` adalah Cloudflare
+  required secrets; jangan simpan nilainya di `wrangler.jsonc`, source, test, log, atau Blogger.
+- Firestore menggunakan Admin credential hanya di backend dan dipaksa memakai HTTP/1.1
+  REST transport (`preferRest: true`) agar tidak bergantung pada gRPC listener di Workers.
+- Client Firestore Rules tetap deny-by-default. Firebase Admin bypass Rules, sehingga semua
+  authorization/validation backend tetap wajib.
+- `.env`, `.dev.vars`, service-account JSON, PEM/private key, dan credential lain wajib
+  diabaikan Git dan tidak boleh dipaste ke source/documentation.
+
+## Authentication dan authorization
+
+- Protected endpoint memverifikasi Firebase ID Token server-side dengan revocation check.
+- Missing, malformed, expired, revoked, atau project-mismatched token fail closed.
+- Backoffice memerlukan `backoffice=true` **dan** role yang diizinkan.
+- Roles: `member`, `operator`, `finance`, `admin`, `superadmin`.
+- Operasi sensitif mempunyai pemeriksaan per-action; role backoffice umum tidak otomatis
+  mendapatkan hak admin.
+- Tidak ada hardcoded UID bypass.
+- Bootstrap superadmin default OFF dan source config validation menolak bootstrap aktif.
+
+## Member session
+
+- Single-device session aktif.
+- Session ID tidak disimpan plaintext; backend menyimpan hash.
+- Login interaktif perangkat baru dapat mengganti session lama.
+- Background restore tidak boleh mencuri session aktif perangkat lain.
+- Logout hanya menutup session yang cocok.
+
+## CORS dan request handling
+
+- CORS authenticated API memakai exact origin allowlist untuk member dan backoffice.
+- Tidak memakai wildcard CORS pada protected API.
+- CORS bukan authentication atau authorization.
+- Adapter membatasi request body 128 KiB; handler JSON dapat menerapkan limit yang lebih kecil.
+- Error response publik tidak membocorkan token/private key/provider payload sensitif.
+
+## Wallet dan ledger
+
+- Wallet mutation hanya server-side.
+- Wallet/ledger menggunakan Firestore transaction dan durable idempotency.
+- Ledger diperlakukan append-only/immutable; koreksi menggunakan compensating entry.
+- Browser tidak dapat mengirim role atau amount lalu langsung mengubah saldo.
+- Concurrent debit, replay, overflow, wallet lock, dan corruption harus fail closed.
+
+## GoldslotPalase
+
+- Provider Bearer token hanya server-side.
+- Provider request memiliki timeout, response-size boundary, redirect rejection, dan redacted errors.
+- Catalog provider tidak dipanggil dari reload/member traffic; member membaca persistent snapshot.
+- Provider catalog sync dan provider health check adalah explicit admin actions.
+- Game launch URL wajib HTTPS dan diperlakukan one-time/short-lived.
+- Duplicate launch dibatasi process-local dan distributed Firestore lease.
+- Provider mutation tidak di-blind-retry setelah timeout/response ambigu.
+- Transfer state machine menggunakan durable request ID dan status
+  `prepared -> succeeded|failed|ambiguous`.
+- `GOLDSLOTPALASE_TRANSFER_ENABLED`, `GOLDSLOTPALASE_IDR_SCALE`, dan reconciliation
+  harus tetap fail-closed sampai staging membuktikan currency/amount contract.
+
+## Payment
+
+- Multi-payment connection manager menyimpan credential encrypted server-side.
+- UI tidak menerima raw credential value.
+- Payment connection configuration **bukan** payment adapter universal.
+- Sebelum transaksi nyata diaktifkan, adapter konkret wajib mempunyai provider-documented:
+  authentication/signature verification, original-body verification bila diperlukan,
+  replay protection, idempotency, amount/currency validation, status query, callback settlement,
+  withdrawal/disbursement, dan timeout reconciliation.
+
+## Audit dan observability
+
+- Protected access dan administrative changes menghasilkan structured security events.
+- Jangan log bearer token, API token, private key, PIN, full bank account, atau raw payment secret.
+- Cloudflare observability aktif untuk deployment diagnostics.
+- Request/correlation ID digunakan untuk menelusuri kegagalan tanpa memasukkan secret.
+
+## Release rule
+
+Deployment Cloudflare yang berhasil tidak otomatis berarti real-money ready.
+`readyForRealMoney` harus tetap false sampai Firebase runtime, Goldslot staging,
+financial reconciliation, payment adapter, browser E2E, backup/restore, dan monitoring
+production semuanya terverifikasi.
