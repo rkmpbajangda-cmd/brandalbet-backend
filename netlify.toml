@@ -9,9 +9,6 @@
 [functions]
   node_bundler = "esbuild"
 
-[functions."rewards-weekly-job"]
-  schedule = "15 */6 * * *"
-
 [dev]
   framework = "#static"
   publish = "public"
