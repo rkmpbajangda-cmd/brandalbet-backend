@@ -2,9 +2,9 @@
 
 ## Tujuan
 
-Logo, ikon, banner, favicon, dan background tidak ditanam sebagai Base64 atau blob besar di XML Blogger. XML hanya memakai URL CDN. Backend API tetap fokus pada auth, wallet, game, dan backoffice.
+Logo, ikon, banner, favicon, dan background tidak ditanam sebagai Base64 atau blob besar di XML Blogger. XML hanya memakai URL aset yang disediakan dari deployment Cloudflare Worker yang sama. Backend API tetap fokus pada auth, wallet, game, dan backoffice.
 
-## Arsitektur
+## Arsitektur produksi
 
 ```text
 Blogger member/backoffice
@@ -13,84 +13,68 @@ Blogger member/backoffice
         v
 Cloudflare Worker API
         |
-        | returns resolved immutable asset URLs
+        | returns resolved asset URLs
         v
-Cloudflare R2 + CDN/custom domain
+Cloudflare Workers Static Assets
+        |
+        v
+/assets/...
 ```
 
-Static objects tidak diproxy melalui Worker API utama. Browser mengambil objek langsung dari Cloudflare CDN/R2.
+Aset statis disimpan di repository pada `public/assets/` dan di-upload otomatis oleh Wrangler bersama deployment Worker. Tidak memakai R2 dan tidak membutuhkan bucket terpisah.
 
-## Environment
+## Base URL
 
-Tambahkan satu variable non-secret di Cloudflare Worker:
+Secara default tidak ada variable tambahan yang wajib dibuat. Backend mengambil origin request Worker saat ini dan memakai:
 
 ```text
-ASSET_CDN_BASE_URL=https://<domain-cdn-anda>
+https://<worker-aktif>/assets
 ```
 
-Gunakan HTTPS. Jangan menambahkan slash akhir. Nilai ini bukan secret.
+`ASSET_CDN_BASE_URL` tetap didukung sebagai override opsional bila suatu saat ada custom domain CDN khusus. Jangan mengaturnya bila belum diperlukan.
 
-Contoh custom domain yang direkomendasikan jika domain BrandalBet sudah tersedia:
+## Struktur repository
 
 ```text
-https://assets.brandalbet.com
+public/
+  _headers
+  assets/
+    brand/
+      logo-header-v1.svg
+      brand-mark-v1.svg
+      favicon-v1.png
+    icons/
+      home-v1.svg
+      promo-v1.svg
+      wallet-v1.svg
+      profile-v1.svg
+      coin-v1.svg
+    banners/
+      banner-01-v1.webp
+      banner-02-v1.webp
+      banner-03-v1.webp
+    backgrounds/
+      auth-v1.webp
+      member-v1.webp
+    seo/
+      cover-v1.webp
 ```
 
-Jangan hardcode domain yang belum benar-benar dibuat.
-
-## Bucket
-
-Gunakan bucket terpisah, misalnya:
-
-```text
-brandalbet-assets
-```
-
-Jangan simpan service-account, token provider, private key, file backup, database export, atau dokumen sensitif di bucket public ini.
-
-## Struktur objek
-
-```text
-brand/
-  logo-header-v1.svg
-  brand-mark-v1.svg
-  favicon-v1.png
-
-icons/
-  home-v1.svg
-  promo-v1.svg
-  wallet-v1.svg
-  profile-v1.svg
-  coin-v1.svg
-
-banners/
-  banner-01-v1.webp
-  banner-02-v1.webp
-  banner-03-v1.webp
-
-backgrounds/
-  auth-v1.webp
-  member-v1.webp
-
-seo/
-  cover-v1.webp
-```
-
-Nama object harus versioned. Jika desain berubah, buat `-v2`, jangan overwrite object immutable yang sudah dipakai browser.
+Nama file harus versioned. Jika desain berubah, buat `-v2`, jangan overwrite nama file immutable yang sedang dipakai browser.
 
 ## Cache
 
-Untuk object versioned, gunakan metadata HTTP:
+`public/_headers` menerapkan cache panjang pada `/assets/*`:
 
 ```text
 Cache-Control: public, max-age=31536000, immutable
 ```
 
-Gunakan Content-Type yang benar, misalnya `image/svg+xml`, `image/webp`, dan `image/png`.
+Karena itu setiap perubahan visual harus menggunakan nama file versi baru.
 
 ## Website settings
 
-Backoffice menyimpan path relatif, bukan URL penuh:
+Backoffice menyimpan path relatif, bukan Base64 dan bukan URL penuh:
 
 ```text
 headerLogoPath = brand/logo-header-v1.svg
@@ -100,21 +84,33 @@ homeIconPath = icons/home-v1.svg
 banner1Path = banners/banner-01-v1.webp
 ```
 
-Backend menggabungkan path dengan `ASSET_CDN_BASE_URL`. Traversal seperti `../`, backslash, query string, fragment, atau path invalid ditolak.
+Backend menyelesaikannya menjadi URL Worker seperti:
 
-Absolute HTTPS fields lama tetap dibaca sebagai fallback untuk migrasi, tetapi produksi baru harus memakai `*Path`.
+```text
+https://<worker-aktif>/assets/brand/logo-header-v1.svg
+```
+
+Traversal seperti `../`, backslash, query string, fragment, atau path invalid ditolak.
+
+Absolute HTTPS fields lama tetap dibaca sebagai fallback migrasi, tetapi aset baru harus memakai `*Path`.
 
 ## XML Blogger
 
-XML tidak perlu mengetahui bucket, account ID, R2 credentials, atau secret apa pun. XML mengambil `member-config`, lalu menggunakan URL yang sudah diselesaikan backend seperti `website.brand.headerLogo`, `website.icons.home`, dan `website.banners`.
+XML tidak perlu mengetahui Cloudflare account ID, credential, bucket, atau secret apa pun. XML mengambil `member-config`, lalu menggunakan nilai seperti:
 
-Aset hero/header yang terlihat langsung jangan memakai lazy loading. Banner di bawah fold dapat memakai `loading="lazy"` dan `decoding="async"`.
+- `website.brand.headerLogo`
+- `website.brand.mark`
+- `website.icons.home`
+- `website.icons.wallet`
+- `website.banners`
+- `website.loading.logo`
+
+Aset header yang terlihat langsung jangan lazy-load. Banner atau background di bawah fold dapat memakai `loading="lazy"` dan `decoding="async"` bila sesuai.
 
 ## Batas keamanan
 
-- R2 public bucket hanya untuk aset publik.
-- Tidak ada directory listing dari aplikasi.
-- Jangan gunakan signed URL untuk logo publik; itu hanya menambah overhead.
+- Hanya aset publik yang boleh masuk `public/assets/`.
+- Jangan simpan token provider, Firebase credential, private key, backup, database export, atau data member di folder public.
 - Secret tetap berada di Cloudflare Worker secrets.
 - Jangan route gambar melalui endpoint wallet/game/auth.
-- Bila memakai custom domain, aktifkan HTTPS dan cache Cloudflare normal.
+- `ASSET_CDN_BASE_URL` hanya override opsional; default produksi adalah Workers Static Assets pada origin Worker aktif.
