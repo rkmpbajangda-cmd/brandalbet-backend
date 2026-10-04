@@ -3,7 +3,6 @@ import { ServiceError } from '../../src/utils/errors.js';
 import { auditSecurityEvent } from '../../src/audit/logger.js';
 import { corsHeaders, CorsError } from '../../src/security/cors.js';
 import { getOrCreateProfile, updateProfile, ProfileValidationError } from '../../src/member/profile.js';
-import { getAdminDb } from '../../src/firebase/admin.js';
 import { empty, json } from '../../src/utils/http.js';
 
 function parseBody(event) {
@@ -29,10 +28,9 @@ export function createHandler({
       }
 
       actor = await authenticateRequest(event, { verifyIdToken, requireMemberSession: true, env });
-      const db = getAdminDb(env);
       const profile = event.httpMethod === 'GET'
-        ? await loadProfile(actor, { db })
-        : await saveProfile(actor, parseBody(event), { db });
+        ? await loadProfile(actor)
+        : await saveProfile(actor, parseBody(event));
 
       auditSecurityEvent({
         event,
