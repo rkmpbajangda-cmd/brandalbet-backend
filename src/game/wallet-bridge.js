@@ -55,8 +55,11 @@ export async function ensurePlayableGoldslotBalance(actor, {
   const before = safeProviderBalance(await client.userInfo(player.userCode));
   const policy = gameWalletTransferPolicy(env);
 
+  // A positive balance is not a documented prerequisite for Goldslot's
+  // /v4/game/game-url endpoint. A member with zero internal and zero provider
+  // balance may therefore open the game shell, while betting naturally remains
+  // unavailable until funds exist. Crucially, this path performs no transfer.
   if (availableMinor <= 0) {
-    if (before <= 0) throw new ServiceError('insufficient_game_balance', 409);
     return Object.freeze({
       mode: 'transfer',
       providerBalanceMinor: before,
@@ -65,6 +68,8 @@ export async function ensurePlayableGoldslotBalance(actor, {
     });
   }
 
+  // Never move a positive internal balance unless the transfer bridge and the
+  // IDR scale have both been explicitly verified and enabled.
   if (!policy.enabled) throw new ServiceError('game_wallet_bridge_disabled', 503);
   if (!policy.idrScaleVerified) throw new ServiceError('game_wallet_scale_unverified', 503);
 

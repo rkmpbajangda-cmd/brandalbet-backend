@@ -12,7 +12,7 @@ export function createHandler({ verifyIdToken, loadWallet = getOrCreateWallet,
     let cors = {};
     let actor = null;
     try {
-      cors = corsHeaders(event, 'member');
+      cors = corsHeaders(event, 'member', env);
       if (event.httpMethod === 'OPTIONS') return empty(204, cors);
       if (event.httpMethod !== 'GET') return json(405, { ok: false, error: 'method_not_allowed' }, { ...cors, Allow: 'GET, OPTIONS' });
 
@@ -29,4 +29,3 @@ export function createHandler({ verifyIdToken, loadWallet = getOrCreateWallet,
 }
 
 export const handler = createHandler();
-

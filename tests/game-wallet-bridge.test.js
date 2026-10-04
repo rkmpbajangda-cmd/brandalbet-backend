@@ -31,7 +31,7 @@ test('wallet bridge transfers all available internal funds before launch', async
   assert.equal(result.transferredMinor, 1000);
 });
 
-test('wallet bridge fails closed instead of launching a zero-balance game', async () => {
+test('wallet bridge fails closed instead of moving positive internal funds while disabled', async () => {
   await assert.rejects(ensurePlayableGoldslotBalance(actor, {
     wallet,
     player,
@@ -51,6 +51,25 @@ test('wallet bridge allows already funded provider balance when internal availab
   });
   assert.equal(result.providerBalanceMinor, 2500);
   assert.equal(result.transferredMinor, 0);
+});
+
+test('zero internal and provider balance may open game without performing a transfer', async () => {
+  let transferCalled = false;
+  const result = await ensurePlayableGoldslotBalance(actor, {
+    wallet: { ...wallet, balanceMinor: 0, availableMinor: 0 },
+    player,
+    env: {},
+    client: { userInfo: async () => ({ balance: 0 }) },
+    loadActiveTransfer: noActive,
+    executeTransfer: async () => {
+      transferCalled = true;
+      throw new Error('unexpected transfer');
+    },
+  });
+  assert.equal(result.providerBalanceMinor, 0);
+  assert.equal(result.transferredMinor, 0);
+  assert.equal(result.internalAvailableMinor, 0);
+  assert.equal(transferCalled, false);
 });
 
 test('wallet bridge blocks launch while a financial transfer is unresolved', async () => {
@@ -95,7 +114,7 @@ test('game launch prepares provider balance before requesting one-time URL', asy
 test('combined game wallet status includes provider funds without hiding internal funds', async () => {
   const status = await getGoldslotWalletStatus(actor, {
     env: transferEnv,
-    client: { userInfo: async ({}) => ({ balance: 700 }) },
+    client: { userInfo: async () => ({ balance: 700 }) },
     loadWallet: async () => ({ ...wallet, balanceMinor: 300, availableMinor: 300 }),
     loadPlayer: async () => player,
     loadActiveTransfer: noActive,
