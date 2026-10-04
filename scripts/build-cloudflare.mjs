@@ -27,13 +27,13 @@ for (const name of forbiddenPlaintextSecrets) {
 }
 
 const requiredSecrets = new Set(config.secrets?.required ?? []);
-for (const name of [
-  'FIREBASE_SERVICE_ACCOUNT_JSON',
-  'GOLDSLOTPALASE_API_TOKEN',
-  'BOOTSTRAP_SUPERADMIN_UID',
-  'PAYMENT_CONFIG_ENCRYPTION_KEY',
-]) {
+for (const name of ['FIREBASE_SERVICE_ACCOUNT_JSON', 'GOLDSLOTPALASE_API_TOKEN']) {
   if (!requiredSecrets.has(name)) throw new Error(`${name} must be declared in wrangler secrets.required.`);
+}
+for (const optionalName of ['BOOTSTRAP_SUPERADMIN_UID', 'PAYMENT_CONFIG_ENCRYPTION_KEY']) {
+  if (requiredSecrets.has(optionalName)) {
+    throw new Error(`${optionalName} is feature-scoped and must not block the base Worker deployment.`);
+  }
 }
 for (const name of requiredSecrets) {
   if (Object.prototype.hasOwnProperty.call(vars, name)) throw new Error(`${name} cannot be declared as both a secret and a plaintext var.`);
@@ -142,4 +142,4 @@ for (const file of [
   }
 }
 
-console.log('Cloudflare build validation passed: complete backend config contract, Firebase project guard, compact provider ledger, bounded cron/subrequest design, verified reward payout gates, index exemptions, secrets, Firestore REST transport, and Cloudflare-only runtime are valid.');
+console.log('Cloudflare build validation passed: base deploy requires only active core secrets; bootstrap/payment secrets remain feature-scoped; Firebase project guard, provider gates, Firestore REST transport, and Cloudflare-only runtime are valid.');
