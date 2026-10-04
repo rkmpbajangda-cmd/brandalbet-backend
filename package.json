@@ -8,21 +8,17 @@
     "node": "22.x"
   },
   "scripts": {
-    "dev": "netlify dev",
+    "dev": "npx --yes wrangler@4.129.1 dev",
     "check": "node scripts/check.mjs",
     "test": "node --test",
     "build": "npm run build:cloudflare",
     "build:cloudflare": "node scripts/build-cloudflare.mjs",
     "bundle:cloudflare": "npx --yes wrangler@4.129.1 deploy --dry-run --outdir .wrangler/dry-run",
     "deploy:cloudflare": "npx --yes wrangler@4.129.1 deploy --yes",
-    "build:netlify": "node scripts/build.mjs",
-    "validate": "npm run check && npm test && npm run build:netlify && npm run build:cloudflare && npm run bundle:cloudflare"
+    "validate": "npm run check && npm test && npm run build:cloudflare && npm run bundle:cloudflare"
   },
   "dependencies": {
     "firebase-admin": "14.5.0"
   },
-  "devDependencies": {
-    "netlify-cli": "27.10.2",
-    "@netlify/zip-it-and-ship-it": "16.2.3"
-  }
+  "devDependencies": {}
 }

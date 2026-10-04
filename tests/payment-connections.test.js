@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { transactionDb } from './helpers/transaction-db.js';
 import { sealCredentials, openCredentials } from '../src/payment/vault.js';
 import { saveConnection, connectionView, listConnections } from '../src/payment/connections.js';
-import { createHandler } from '../netlify/functions/backoffice-payment-connections.js';
+import { createHandler } from '../cloudflare/functions/backoffice-payment-connections.js';
 const now=Date.now();
 const admin={uid:'admin',role:'superadmin',backoffice:true,auth_time:Math.floor(now/1000)};
 const env={PAYMENT_CONFIG_ENCRYPTION_KEY:Buffer.alloc(32,7).toString('base64')};

@@ -13,5 +13,5 @@ async function check(directory) {
     }
   }
 }
-for (const directory of ['netlify/functions', 'src', 'tests', 'scripts']) await check(directory);
+for (const directory of ['cloudflare/functions', 'src', 'tests', 'scripts']) await check(directory);
 console.log('Syntax validation passed on Node.js 22.');

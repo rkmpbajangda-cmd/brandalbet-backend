@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { transactionDb } from './helpers/transaction-db.js';
 import { sanitizePromotion, mutatePromotion, listPromotions } from '../src/promotion/service.js';
-import { createHandler } from '../netlify/functions/backoffice-promotions.js';
+import { createHandler } from '../cloudflare/functions/backoffice-promotions.js';
 const p = { title: 'Promo', category: 'general', active: true, sortOrder: 1, ctaRoute: 'route-home', sections: [], imageUrl: 'https://example.invalid/banner.png' };
 const admin = { uid: 'admin', role: 'admin', backoffice: true };
 

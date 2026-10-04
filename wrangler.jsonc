@@ -6,13 +6,14 @@
   "workers_dev": true,
   "keep_vars": true,
   "triggers": {
-    "crons": ["15 */6 * * *"]
+    "crons": [
+      "15 */6 * * *"
+    ]
   },
   "assets": {
     "directory": "./public",
     "run_worker_first": [
       "/api/*",
-      "/.netlify/functions/*",
       "/health"
     ]
   },

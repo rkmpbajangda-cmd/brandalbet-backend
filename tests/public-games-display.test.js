@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createHandler } from '../netlify/functions/games.js';
+import { createHandler } from '../cloudflare/functions/games.js';
 
 const event = {
   httpMethod: 'GET',

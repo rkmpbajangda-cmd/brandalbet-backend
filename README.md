@@ -4,12 +4,12 @@ Secure server-side backend API untuk BrandalBet.
 
 ## Runtime utama
 
-**Cloudflare Workers adalah runtime production/staging utama.** Repository tetap
-mempertahankan handler bergaya Netlify sebagai kontrak internal/portable adapter,
-tetapi deployment utama menggunakan `cloudflare-worker.js` + `wrangler.jsonc`.
+**Cloudflare Workers adalah satu-satunya runtime backend production/staging.**
+Seluruh API berjalan melalui `cloudflare-worker.js` + `cloudflare-router.js` dan
+konfigurasi deployment berada di `wrangler.jsonc`.
 
 - Worker entrypoint: `cloudflare-worker.js`
-- API adapter: `deno-server.js`
+- Cloudflare API router: `cloudflare-router.js`
 - Production branch: `main`
 - Node.js compatibility: melalui Cloudflare compatibility date `2026-10-03`
 - Firebase Admin: server-side only
@@ -73,9 +73,8 @@ npm run validate
 
 1. syntax validation;
 2. seluruh Node tests;
-3. bundling validation handler lama;
-4. Cloudflare configuration validation;
-5. Wrangler dry-run bundle menggunakan versi Wrangler yang dipin pada script.
+3. Cloudflare configuration/runtime validation;
+4. Wrangler dry-run bundle menggunakan versi Wrangler yang dipin pada script.
 
 Perintah penting:
 
@@ -121,9 +120,7 @@ melalui protected endpoint dengan ID Token yang valid setelah deployment.
 
 ## API routing
 
-Cloudflare menerima alias `/api/<function>` dan kompatibilitas path lama
-`/.netlify/functions/<function>`. Router menggunakan **lazy loading per handler** agar
-satu dependency/integrasi yang bermasalah tidak menjatuhkan endpoint lain.
+Cloudflare menerima API hanya melalui `/api/<function>`. Router menggunakan **lazy loading per handler** agar satu dependency/integrasi yang bermasalah tidak menjatuhkan endpoint lain.
 
 Endpoint utama meliputi:
 
@@ -185,8 +182,7 @@ berikut PASS:
 
 Tidak boleh mengubah gate finansial hanya untuk membuat demo terlihat aktif.
 
-## Legacy portability
+## Cloudflare-only runtime
 
-Folder `netlify/functions/` tetap digunakan sebagai handler module layer dan untuk
-validation portability. Netlify/Deno bukan lagi source of truth runtime BrandalBet.
-Perubahan baru harus diuji terhadap Cloudflare Worker terlebih dahulu.
+Netlify dan Deno tidak digunakan sebagai runtime, deployment target, atau public API alias.
+Folder handler production berada di `cloudflare/functions/`, scheduler menggunakan Cloudflare Cron Triggers, dan semua secret production disimpan sebagai Cloudflare Secrets.

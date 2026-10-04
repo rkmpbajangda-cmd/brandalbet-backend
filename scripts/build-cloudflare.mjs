@@ -1,4 +1,4 @@
-import { readFile } from 'node:fs/promises';
+import { access, readFile } from 'node:fs/promises';
 import { spawnSync } from 'node:child_process';
 
 const config = JSON.parse(await readFile('wrangler.jsonc', 'utf8'));
@@ -61,12 +61,41 @@ for (const [name, expected] of Object.entries(requiredSafeVars)) {
   }
 }
 
+for (const forbiddenPath of ['netlify.toml', 'deno.json', 'deno-server.js', 'netlify']) {
+  try {
+    await access(forbiddenPath);
+    throw new Error(`Legacy runtime artifact must be removed: ${forbiddenPath}`);
+  } catch (error) {
+    if (error?.code !== 'ENOENT') throw error;
+  }
+}
+
+if (!Array.isArray(config.assets?.run_worker_first) || config.assets.run_worker_first.includes('/.netlify/functions/*')) {
+  throw new Error('Legacy Netlify public route must not be exposed by Cloudflare assets routing.');
+}
+if (!config.assets.run_worker_first.includes('/api/*') || !config.assets.run_worker_first.includes('/health')) {
+  throw new Error('Cloudflare API and health routes must run Worker-first.');
+}
+if (!Array.isArray(config.triggers?.crons) || !config.triggers.crons.includes('15 */6 * * *')) {
+  throw new Error('Cloudflare reward cron must remain configured.');
+}
+
+const routerSource = await readFile('cloudflare-router.js', 'utf8');
+if (routerSource.includes('/.netlify/functions/') || routerSource.includes('./netlify/functions/')) {
+  throw new Error('Cloudflare router must not expose or import Netlify function paths.');
+}
+
+const packageConfig = JSON.parse(await readFile('package.json', 'utf8'));
+if (packageConfig.scripts?.['build:netlify'] || /netlify/i.test(String(packageConfig.scripts?.dev ?? ''))) {
+  throw new Error('Netlify build/dev scripts must be removed from the Cloudflare-only backend.');
+}
+
 const firebaseAdminSource = await readFile('src/firebase/admin.js', 'utf8');
 if (!/initializeFirestore\s*\([^)]*,\s*\{\s*preferRest\s*:\s*true\s*\}/s.test(firebaseAdminSource)) {
   throw new Error('Cloudflare Firestore must use initializeFirestore(..., { preferRest: true }) to avoid gRPC transport.');
 }
 
-for (const file of ['cloudflare-worker.js', 'deno-server.js', 'src/firebase/admin.js']) {
+for (const file of ['cloudflare-worker.js', 'cloudflare-router.js', 'src/firebase/admin.js']) {
   const result = spawnSync(process.execPath, ['--check', file], {
     encoding: 'utf8',
     stdio: 'pipe',
