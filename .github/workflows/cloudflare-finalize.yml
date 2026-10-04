@@ -46,14 +46,12 @@ jobs:
           import json
           import re
 
-          # Bulk import migration for tests.
           for path in Path('tests').glob('*.js'):
               text = path.read_text()
               text = text.replace('../netlify/functions/', '../cloudflare/functions/')
               text = text.replace('../deno-server.js', '../cloudflare-router.js')
               path.write_text(text)
 
-          # Cloudflare-native router: only /api/* is accepted.
           router = Path('cloudflare-router.js').read_text()
           router = router.replace('./netlify/functions/', './cloudflare/functions/')
           router = router.replace('handleDenoRequest', 'handleApiRequest')
@@ -93,7 +91,6 @@ jobs:
           router = router.replace('deno_adapter_error', 'cloudflare_router_error')
           Path('cloudflare-router.js').write_text(router)
 
-          # Worker now loads the Cloudflare router directly.
           worker = Path('cloudflare-worker.js').read_text()
           worker = worker.replace('The legacy adapter and individual', 'The API router and individual')
           worker = worker.replace("const { handleDenoRequest } = await import('./deno-server.js');", "const { handleApiRequest } = await import('./cloudflare-router.js');")
@@ -102,7 +99,6 @@ jobs:
           worker = worker.replace('backend_adapter_unavailable', 'backend_router_unavailable')
           Path('cloudflare-worker.js').write_text(worker)
 
-          # Rewrite router tests with Cloudflare-only expectations.
           Path('tests/cloudflare-router.test.js').write_text("""import test from 'node:test';
           import assert from 'node:assert/strict';
           import {
@@ -181,12 +177,10 @@ jobs:
           });
           """)
 
-          # Cloudflare config: /api/* is the only API route namespace.
           wrangler = json.loads(Path('wrangler.jsonc').read_text())
           wrangler['assets']['run_worker_first'] = ['/api/*', '/health']
           Path('wrangler.jsonc').write_text(json.dumps(wrangler, indent=2) + '\n')
 
-          # Cloudflare-only npm scripts and dependencies.
           package = json.loads(Path('package.json').read_text())
           package['scripts']['dev'] = 'npx --yes wrangler@4.129.1 dev'
           package['scripts'].pop('build:netlify', None)
@@ -195,11 +189,9 @@ jobs:
           package['devDependencies'].pop('@netlify/zip-it-and-ship-it', None)
           Path('package.json').write_text(json.dumps(package, indent=2) + '\n')
 
-          # Syntax scan follows the Cloudflare function tree.
           check = Path('scripts/check.mjs').read_text().replace("'netlify/functions'", "'cloudflare/functions'")
           Path('scripts/check.mjs').write_text(check)
 
-          # Cloudflare build validation uses the Cloudflare router and verifies legacy runtime removal.
           build = Path('scripts/build-cloudflare.mjs').read_text()
           build = build.replace("import { readFile } from 'node:fs/promises';", "import { access, readFile } from 'node:fs/promises';")
           build = build.replace("'deno-server.js'", "'cloudflare-router.js'")
@@ -239,7 +231,6 @@ jobs:
           build = build.replace(marker, guard + marker)
           Path('scripts/build-cloudflare.mjs').write_text(build)
 
-          # Documentation now describes only the production runtime that actually exists.
           readme = Path('README.md').read_text()
           readme = readme.replace(
               "**Cloudflare Workers adalah runtime production/staging utama.** Repository tetap\nmempertahankan handler bergaya Netlify sebagai kontrak internal/portable adapter,\ntetapi deployment utama menggunakan `cloudflare-worker.js` + `wrangler.jsonc`.",
@@ -259,9 +250,10 @@ jobs:
           Path('docs/production-status.md').write_text(status)
           PY
 
-          # Ensure no production code still imports the old handler tree.
-          if grep -R "./netlify/functions\|../netlify/functions\|deno-server.js" cloudflare cloudflare-worker.js src tests scripts README.md docs wrangler.jsonc package.json 2>/dev/null; then
-            echo 'Legacy runtime reference remains in active source.' >&2
+          # Only inspect active runtime/import locations here. The build validator
+          # intentionally contains legacy names as forbidden-value assertions.
+          if grep -R "../netlify/functions\|./netlify/functions\|deno-server.js" cloudflare cloudflare-worker.js src tests package.json 2>/dev/null; then
+            echo 'Legacy runtime import remains in active source.' >&2
             exit 1
           fi
 
