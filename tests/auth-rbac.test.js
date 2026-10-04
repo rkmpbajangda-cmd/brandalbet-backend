@@ -17,10 +17,19 @@ test('missing bearer token fails closed with 401', async () => {
   );
 });
 
-test('invalid token fails closed with 401', async () => {
+test('known invalid Firebase token fails closed with 401', async () => {
+  const invalid = new Error('bad token');
+  invalid.code = 'auth/invalid-id-token';
   await assert.rejects(
-    authenticateRequest(eventWithToken(), { verifyIdToken: async () => { throw new Error('bad token'); } }),
+    authenticateRequest(eventWithToken(), { verifyIdToken: async () => { throw invalid; } }),
     (error) => error instanceof AuthHttpError && error.statusCode === 401 && error.code === 'invalid_or_expired_id_token',
+  );
+});
+
+test('unknown Firebase Admin runtime error is reported as backend availability error', async () => {
+  await assert.rejects(
+    authenticateRequest(eventWithToken(), { verifyIdToken: async () => { throw new Error('edge runtime failure'); } }),
+    (error) => error instanceof AuthHttpError && error.statusCode === 503 && error.code === 'auth_verifier_runtime_error',
   );
 });
 
