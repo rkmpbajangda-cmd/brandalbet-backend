@@ -17,6 +17,19 @@ function rootResponse() {
   });
 }
 
+async function runWeeklyRewards(env) {
+  const [{ finalizeRewardWeekBatch, previousRewardWeekKey }, { getAdminDb }] = await Promise.all([
+    import('./src/rewards/service.js'),
+    import('./src/firebase/admin.js'),
+  ]);
+  const weekKey = previousRewardWeekKey();
+  return finalizeRewardWeekBatch(weekKey, {
+    db: getAdminDb(env),
+    batchSize: 100,
+    concurrency: 6,
+  });
+}
+
 /**
  * Cloudflare Workers entrypoint.
  *
@@ -45,5 +58,22 @@ export default {
         error: 'backend_adapter_unavailable',
       });
     }
+  },
+
+  scheduled(_controller, env, ctx) {
+    ctx.waitUntil(runWeeklyRewards(env).then(result => {
+      console.log(JSON.stringify({
+        event: 'weekly_rewards_job_complete',
+        weekKey: result.weekKey,
+        status: result.status,
+        processed: result.processed,
+      }));
+    }).catch(error => {
+      console.error(JSON.stringify({
+        event: 'weekly_rewards_job_failed',
+        code: typeof error?.code === 'string' ? error.code : 'internal_error',
+      }));
+      throw error;
+    }));
   },
 };
