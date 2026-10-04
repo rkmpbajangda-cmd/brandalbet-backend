@@ -22,6 +22,19 @@ export function normalizeAssetPath(value, { maxLength = 512 } = {}) {
   return segments.join('/');
 }
 
+export function staticAssetBaseUrl(event, env = process.env) {
+  const override = normalizeAssetBaseUrl(env);
+  if (override) return override;
+
+  try {
+    const requestUrl = new URL(String(event?.rawUrl ?? ''));
+    if (requestUrl.protocol !== 'https:' || requestUrl.username || requestUrl.password) return '';
+    return `${requestUrl.origin}/assets`;
+  } catch {
+    return '';
+  }
+}
+
 export function buildAssetUrl(path, env = process.env) {
   const baseUrl = normalizeAssetBaseUrl(env);
   const normalizedPath = normalizeAssetPath(path);
@@ -29,11 +42,18 @@ export function buildAssetUrl(path, env = process.env) {
   return new URL(normalizedPath, `${baseUrl}/`).toString();
 }
 
+export function assetEnvForRequest(event, env = process.env) {
+  const baseUrl = staticAssetBaseUrl(event, env);
+  if (!baseUrl || normalizeAssetBaseUrl(env)) return env;
+  return { ...env, ASSET_CDN_BASE_URL: baseUrl };
+}
+
 export function publicAssetCdnConfig(env = process.env) {
   const baseUrl = normalizeAssetBaseUrl(env);
   return Object.freeze({
-    enabled: Boolean(baseUrl),
+    enabled: true,
     baseUrl: baseUrl || null,
-    strategy: 'immutable-versioned-paths',
+    strategy: baseUrl ? 'custom-cdn-override' : 'cloudflare-workers-static-assets',
+    assetPrefix: baseUrl ? null : '/assets',
   });
 }
