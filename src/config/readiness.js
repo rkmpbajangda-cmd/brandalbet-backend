@@ -27,14 +27,14 @@ export function configurationReadiness(env = process.env) {
   };
 
   return {
-    // This flag remains false until live/staging evidence and payment adapters pass.
     readyForRealMoney: false,
     configuration,
     bootstrapEnabled: env.BOOTSTRAP_ENABLED === 'true',
     integrations: {
       assets: {
-        configured: Boolean(assetCdnBaseUrl),
-        strategy: 'cloudflare-r2-cdn-immutable-versioned-paths',
+        configured: true,
+        strategy: assetCdnBaseUrl ? 'custom-cdn-override' : 'cloudflare-workers-static-assets',
+        customBaseUrlConfigured: Boolean(assetCdnBaseUrl),
       },
       gameProvider: 'goldslotpalase',
       game: 'catalog_player_launch_transfer_state_machine_staging_gated',
@@ -44,7 +44,7 @@ export function configurationReadiness(env = process.env) {
       memberWithdrawal: 'adapter_pending',
     },
     checksRequired: [
-      'cloudflare_asset_cdn_domain_and_cache_headers',
+      'cloudflare_static_asset_smoke_test',
       'goldslot_authenticated_staging_connectivity',
       'goldslot_currency_and_idr_scale',
       'goldslot_catalog_launch_transfer_reconciliation',
