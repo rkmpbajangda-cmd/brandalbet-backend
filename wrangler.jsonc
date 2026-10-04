@@ -7,7 +7,8 @@
   "keep_vars": true,
   "triggers": {
     "crons": [
-      "15 */6 * * *"
+      "5 */6 * * *",
+      "35 */6 * * *"
     ]
   },
   "assets": {
@@ -35,6 +36,9 @@
     "BOOTSTRAP_ENABLED": "false",
     "GOLDSLOTPALASE_API_URL": "https://agent.goldslotpalase.com",
     "GOLDSLOTPALASE_TRANSFER_ENABLED": "false",
-    "GOLDSLOTPALASE_BALANCE_RECONCILIATION_ENABLED": "false"
+    "GOLDSLOTPALASE_BALANCE_RECONCILIATION_ENABLED": "false",
+    "GOLDSLOTPALASE_TRANSACTION_SYNC_ENABLED": "false",
+    "REWARDS_PAYOUT_ENABLED": "false",
+    "REWARDS_MANUAL_INGEST_ENABLED": "false"
   }
 }
