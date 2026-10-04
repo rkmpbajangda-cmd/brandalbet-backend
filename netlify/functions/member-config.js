@@ -1,5 +1,6 @@
 import { loadMasterControl, publicMasterControl } from '../../src/backoffice/master-control.js';
 import { loadPublicSiteSettings } from '../../src/member/public-config.js';
+import { publicAssetCdnConfig } from '../../src/config/assets.js';
 import { corsHeaders, CorsError } from '../../src/security/cors.js';
 import { empty, json } from '../../src/utils/http.js';
 
@@ -14,12 +15,13 @@ export function createHandler({
       cors = corsHeaders(event, 'member', env);
       if (event.httpMethod === 'OPTIONS') return empty(204, cors);
       if (event.httpMethod !== 'GET') return json(405, { ok: false, error: 'method_not_allowed' }, { ...cors, Allow: 'GET, OPTIONS' });
-      const [controlRaw, website] = await Promise.all([loadControl(), loadSite()]);
+      const [controlRaw, website] = await Promise.all([loadControl(), loadSite({ env })]);
       const control = publicMasterControl(controlRaw);
       return json(200, {
         ok: true,
-        configVersion: 2,
+        configVersion: 3,
         control,
+        assets: publicAssetCdnConfig(env),
         website,
       }, {
         ...cors,
