@@ -26,9 +26,7 @@
   "secrets": {
     "required": [
       "FIREBASE_SERVICE_ACCOUNT_JSON",
-      "GOLDSLOTPALASE_API_TOKEN",
-      "BOOTSTRAP_SUPERADMIN_UID",
-      "PAYMENT_CONFIG_ENCRYPTION_KEY"
+      "GOLDSLOTPALASE_API_TOKEN"
     ]
   },
   "vars": {
