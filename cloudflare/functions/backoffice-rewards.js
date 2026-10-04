@@ -2,19 +2,21 @@ import { protectedHandler } from '../../src/utils/protected-handler.js';
 import { parseJsonBody } from '../../src/utils/body.js';
 import { ServiceError } from '../../src/utils/errors.js';
 import {
-  backofficeRewardOverview,
-  finalizeRewardWeekBatch,
   ingestSettledGameRound,
   issueReferralCode,
   previousRewardWeekKey,
 } from '../../src/rewards/service.js';
+import {
+  finalizeVerifiedRewardWeekBatch,
+  verifiedBackofficeRewardOverview,
+} from '../../src/rewards/verified-finalization.js';
 
 const ADMIN_ROLES = new Set(['admin', 'superadmin']);
 
 export function createHandler({
   verifyIdToken,
-  overview = backofficeRewardOverview,
-  finalize = finalizeRewardWeekBatch,
+  overview = verifiedBackofficeRewardOverview,
+  finalize = finalizeVerifiedRewardWeekBatch,
   ingest = ingestSettledGameRound,
   issueCode = issueReferralCode,
   env = process.env,
