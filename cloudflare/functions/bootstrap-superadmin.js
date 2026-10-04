@@ -3,9 +3,9 @@ import { auditSecurityEvent } from '../../src/audit/logger.js';
 import { corsHeaders, CorsError } from '../../src/security/cors.js';
 import { json, empty } from '../../src/utils/http.js';
 
-async function defaultGetAdminAuth() {
+async function defaultGetAdminAuth(env) {
   const { getAdminAuth } = await import('../../src/firebase/admin.js');
-  return getAdminAuth();
+  return getAdminAuth(env);
 }
 
 export function createHandler({ verifyIdToken, getAdminAuth = defaultGetAdminAuth, env = process.env } = {}) {
@@ -21,13 +21,13 @@ export function createHandler({ verifyIdToken, getAdminAuth = defaultGetAdminAut
         return json(404, { ok: false, error: 'not_found' }, cors);
       }
 
-      actor = await authenticateRequest(event, { verifyIdToken });
+      actor = await authenticateRequest(event, { verifyIdToken, env });
       if (actor.uid !== env.BOOTSTRAP_SUPERADMIN_UID) {
         auditSecurityEvent({ event, actor, action: 'bootstrap.superadmin', outcome: 'denied' });
         return json(403, { ok: false, error: 'forbidden' }, cors);
       }
 
-      const auth = await getAdminAuth();
+      const auth = await getAdminAuth(env);
       const user = await auth.getUser(actor.uid);
       const currentClaims = user.customClaims ?? {};
       if (currentClaims.backoffice === true && currentClaims.role === 'superadmin') {
