@@ -10,7 +10,7 @@ if (config.name !== 'brandalbet-backend') {
   throw new Error(`Unexpected Cloudflare Worker name: ${config.name ?? 'missing'}`);
 }
 if (config.keep_vars !== true) {
-  throw new Error('Cloudflare keep_vars must remain true so dashboard-managed secrets are not dropped by deploys.');
+  throw new Error('Cloudflare keep_vars must remain true so dashboard-managed secrets and verified runtime vars are not dropped by deploys.');
 }
 
 const compatibilityDate = String(config.compatibility_date ?? '');
@@ -24,6 +24,7 @@ const forbiddenPlaintextSecrets = [
   'FIREBASE_PRIVATE_KEY',
   'FIREBASE_CLIENT_EMAIL',
   'GOLDSLOTPALASE_API_TOKEN',
+  'GOLDSLOTPALASE_CALLBACK_TOKEN',
   'PAYMENT_CONFIG_ENCRYPTION_KEY',
   'BOOTSTRAP_SUPERADMIN_UID',
 ];
@@ -54,6 +55,9 @@ const requiredSafeVars = {
   GOLDSLOTPALASE_API_URL: 'https://agent.goldslotpalase.com',
   GOLDSLOTPALASE_TRANSFER_ENABLED: 'false',
   GOLDSLOTPALASE_BALANCE_RECONCILIATION_ENABLED: 'false',
+  GOLDSLOTPALASE_TRANSACTION_SYNC_ENABLED: 'false',
+  REWARDS_PAYOUT_ENABLED: 'false',
+  REWARDS_MANUAL_INGEST_ENABLED: 'false',
 };
 for (const [name, expected] of Object.entries(requiredSafeVars)) {
   if (vars[name] !== expected) {
@@ -76,8 +80,12 @@ if (!Array.isArray(config.assets?.run_worker_first) || config.assets.run_worker_
 if (!config.assets.run_worker_first.includes('/api/*') || !config.assets.run_worker_first.includes('/health')) {
   throw new Error('Cloudflare API and health routes must run Worker-first.');
 }
-if (!Array.isArray(config.triggers?.crons) || !config.triggers.crons.includes('15 */6 * * *')) {
-  throw new Error('Cloudflare reward cron must remain configured.');
+const crons = new Set(config.triggers?.crons ?? []);
+for (const cron of ['5 */6 * * *', '35 */6 * * *']) {
+  if (!crons.has(cron)) throw new Error(`Cloudflare scheduled task is missing: ${cron}`);
+}
+if (crons.has('15 */6 * * *')) {
+  throw new Error('Legacy combined reward cron must be removed; provider sync and reward payout must remain separated.');
 }
 
 const routerSource = await readFile('cloudflare-router.js', 'utf8');
@@ -95,7 +103,14 @@ if (!/initializeFirestore\s*\([^)]*,\s*\{\s*preferRest\s*:\s*true\s*\}/s.test(fi
   throw new Error('Cloudflare Firestore must use initializeFirestore(..., { preferRest: true }) to avoid gRPC transport.');
 }
 
-for (const file of ['cloudflare-worker.js', 'cloudflare-router.js', 'src/firebase/admin.js']) {
+for (const file of [
+  'cloudflare-worker.js',
+  'cloudflare-router.js',
+  'src/firebase/admin.js',
+  'src/game/goldslotpalase.js',
+  'src/game/provider-ledger.js',
+  'src/rewards/service.js',
+]) {
   const result = spawnSync(process.execPath, ['--check', file], {
     encoding: 'utf8',
     stdio: 'pipe',
@@ -106,4 +121,4 @@ for (const file of ['cloudflare-worker.js', 'cloudflare-router.js', 'src/firebas
   }
 }
 
-console.log('Cloudflare build validation passed: entrypoint, adapter, compatibility date, required secrets, Firestore REST transport, secret boundaries, and fail-safe production gates are valid.');
+console.log('Cloudflare build validation passed: provider transaction sync, reward payout gates, scheduled jobs, secrets, Firestore REST transport, and Cloudflare-only runtime are valid.');
