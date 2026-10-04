@@ -1,0 +1,291 @@
+name: Finalize Cloudflare Runtime
+
+on:
+  push:
+    branches:
+      - feature/rewards-cashback-referral
+
+permissions:
+  contents: write
+
+jobs:
+  migrate-and-validate:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout branch
+        uses: actions/checkout@v4
+        with:
+          ref: feature/rewards-cashback-referral
+          fetch-depth: 0
+
+      - name: Use Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Migrate source to Cloudflare-only layout
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          test -d netlify/functions
+          test -f deno-server.js
+
+          mkdir -p cloudflare
+          mv netlify/functions cloudflare/functions
+          rmdir netlify
+          mv deno-server.js cloudflare-router.js
+          rm -f deno.json netlify.toml scripts/build.mjs
+          mv tests/deno-runtime.test.js tests/cloudflare-router.test.js
+
+          python3 - <<'PY'
+          from pathlib import Path
+          import json
+          import re
+
+          # Bulk import migration for tests.
+          for path in Path('tests').glob('*.js'):
+              text = path.read_text()
+              text = text.replace('../netlify/functions/', '../cloudflare/functions/')
+              text = text.replace('../deno-server.js', '../cloudflare-router.js')
+              path.write_text(text)
+
+          # Cloudflare-native router: only /api/* is accepted.
+          router = Path('cloudflare-router.js').read_text()
+          router = router.replace('./netlify/functions/', './cloudflare/functions/')
+          router = router.replace('handleDenoRequest', 'handleApiRequest')
+          router = router.replace('netlifyEventFromRequest', 'functionEventFromRequest')
+          router = router.replace('responseFromNetlify', 'responseFromFunctionResult')
+          router = router.replace('legacy adapter', 'API router')
+          router = router.replace('Netlify-compatible', 'function-compatible')
+          router = router.replace('Deno adapter', 'Cloudflare router')
+          old_route = """function functionNameFromPath(pathname) {
+            const netlifyPrefix = '/.netlify/functions/';
+            const apiPrefix = '/api/';
+            if (pathname.startsWith(netlifyPrefix)) return pathname.slice(netlifyPrefix.length);
+            if (pathname.startsWith(apiPrefix)) return pathname.slice(apiPrefix.length);
+            return null;
+          }"""
+          new_route = """function functionNameFromPath(pathname) {
+            const apiPrefix = '/api/';
+            if (pathname.startsWith(apiPrefix)) return pathname.slice(apiPrefix.length);
+            return null;
+          }"""
+          if old_route not in router:
+              raise SystemExit('router path block not found')
+          router = router.replace(old_route, new_route)
+          router = re.sub(
+              r"\n\s*if \(url\.pathname === '/'\) \{\n\s*return json\(200, \{\n\s*ok: true,\n\s*service: 'brandalbet-backend',\n\s*runtime: 'deno-deploy',\n\s*\}\);\n\s*\}\n",
+              '\n',
+              router,
+              count=1,
+          )
+          router = re.sub(
+              r"\nif \(globalThis\.Deno\?\.serve\) \{\n\s*Deno\.serve\(handleApiRequest\);\n\}\n?$",
+              '\n',
+              router,
+              count=1,
+          )
+          router = router.replace('backend_handler_load_failed', 'cloudflare_handler_load_failed')
+          router = router.replace('deno_adapter_error', 'cloudflare_router_error')
+          Path('cloudflare-router.js').write_text(router)
+
+          # Worker now loads the Cloudflare router directly.
+          worker = Path('cloudflare-worker.js').read_text()
+          worker = worker.replace('The legacy adapter and individual', 'The API router and individual')
+          worker = worker.replace("const { handleDenoRequest } = await import('./deno-server.js');", "const { handleApiRequest } = await import('./cloudflare-router.js');")
+          worker = worker.replace('return await handleDenoRequest(request, env);', 'return await handleApiRequest(request, env);')
+          worker = worker.replace('cloudflare_adapter_load_failed', 'cloudflare_router_load_failed')
+          worker = worker.replace('backend_adapter_unavailable', 'backend_router_unavailable')
+          Path('cloudflare-worker.js').write_text(worker)
+
+          # Rewrite router tests with Cloudflare-only expectations.
+          Path('tests/cloudflare-router.test.js').write_text("""import test from 'node:test';
+          import assert from 'node:assert/strict';
+          import {
+            handleApiRequest,
+            functionEventFromRequest,
+            responseFromFunctionResult,
+          } from '../cloudflare-router.js';
+
+          test('Cloudflare router exposes the canonical /api health endpoint', async () => {
+            const response = await handleApiRequest(new Request('https://backend.example/api/health'));
+            assert.equal(response.status, 200);
+            assert.deepEqual(await response.json(), { ok: true, service: 'brandalbet-backend' });
+          });
+
+          test('legacy Netlify function paths are not exposed', async () => {
+            const response = await handleApiRequest(new Request('https://backend.example/.netlify/functions/health'));
+            assert.equal(response.status, 404);
+            assert.deepEqual(await response.json(), { ok: false, error: 'not_found' });
+          });
+
+          test('Cloudflare router creates the internal function event safely', async () => {
+            const event = await functionEventFromRequest(new Request('https://backend.example/api/test?a=1', {
+              method: 'POST',
+              headers: {
+                Origin: 'https://brandalbet.blogspot.com',
+                'Content-Type': 'application/json',
+                Authorization: 'Bearer fixture',
+              },
+              body: JSON.stringify({ ok: true }),
+            }));
+            assert.equal(event.httpMethod, 'POST');
+            assert.equal(event.path, '/api/test');
+            assert.equal(event.queryStringParameters.a, '1');
+            assert.equal(JSON.parse(event.body).ok, true);
+            assert.equal(event.isBase64Encoded, false);
+            assert.ok(event.headers['x-request-id']);
+          });
+
+          test('Cloudflare router converts internal function responses', async () => {
+            const response = responseFromFunctionResult({
+              statusCode: 201,
+              headers: { 'Content-Type': 'application/json' },
+              body: '{\"ok\":true}',
+            });
+            assert.equal(response.status, 201);
+            assert.deepEqual(await response.json(), { ok: true });
+          });
+
+          test('Cloudflare router returns generic 404 for unknown routes', async () => {
+            const response = await handleApiRequest(new Request('https://backend.example/nope'));
+            assert.equal(response.status, 404);
+            assert.deepEqual(await response.json(), { ok: false, error: 'not_found' });
+          });
+
+          test('public health supports canonical backoffice CORS preflight', async () => {
+            const response = await handleApiRequest(new Request('https://backend.example/api/health', {
+              method: 'OPTIONS',
+              headers: {
+                Origin: 'https://backoffic.blogspot.com',
+                'Access-Control-Request-Method': 'GET',
+                'Access-Control-Request-Headers': 'authorization',
+              },
+            }));
+            assert.equal(response.status, 204);
+            assert.equal(response.headers.get('access-control-allow-origin'), 'https://backoffic.blogspot.com');
+          });
+
+          test('bodyless 204 function responses remain valid Responses', () => {
+            const response = responseFromFunctionResult({
+              statusCode: 204,
+              headers: { 'Access-Control-Allow-Origin': 'https://backoffic.blogspot.com' },
+              body: '',
+            });
+            assert.equal(response.status, 204);
+            assert.equal(response.body, null);
+          });
+          """)
+
+          # Cloudflare config: /api/* is the only API route namespace.
+          wrangler = json.loads(Path('wrangler.jsonc').read_text())
+          wrangler['assets']['run_worker_first'] = ['/api/*', '/health']
+          Path('wrangler.jsonc').write_text(json.dumps(wrangler, indent=2) + '\n')
+
+          # Cloudflare-only npm scripts and dependencies.
+          package = json.loads(Path('package.json').read_text())
+          package['scripts']['dev'] = 'npx --yes wrangler@4.129.1 dev'
+          package['scripts'].pop('build:netlify', None)
+          package['scripts']['validate'] = 'npm run check && npm test && npm run build:cloudflare && npm run bundle:cloudflare'
+          package['devDependencies'].pop('netlify-cli', None)
+          package['devDependencies'].pop('@netlify/zip-it-and-ship-it', None)
+          Path('package.json').write_text(json.dumps(package, indent=2) + '\n')
+
+          # Syntax scan follows the Cloudflare function tree.
+          check = Path('scripts/check.mjs').read_text().replace("'netlify/functions'", "'cloudflare/functions'")
+          Path('scripts/check.mjs').write_text(check)
+
+          # Cloudflare build validation uses the Cloudflare router and verifies legacy runtime removal.
+          build = Path('scripts/build-cloudflare.mjs').read_text()
+          build = build.replace("import { readFile } from 'node:fs/promises';", "import { access, readFile } from 'node:fs/promises';")
+          build = build.replace("'deno-server.js'", "'cloudflare-router.js'")
+          marker = "const firebaseAdminSource = await readFile('src/firebase/admin.js', 'utf8');"
+          guard = """for (const forbiddenPath of ['netlify.toml', 'deno.json', 'deno-server.js', 'netlify']) {
+            try {
+              await access(forbiddenPath);
+              throw new Error(`Legacy runtime artifact must be removed: ${forbiddenPath}`);
+            } catch (error) {
+              if (error?.code !== 'ENOENT') throw error;
+            }
+          }
+
+          if (!Array.isArray(config.assets?.run_worker_first) || config.assets.run_worker_first.includes('/.netlify/functions/*')) {
+            throw new Error('Legacy Netlify public route must not be exposed by Cloudflare assets routing.');
+          }
+          if (!config.assets.run_worker_first.includes('/api/*') || !config.assets.run_worker_first.includes('/health')) {
+            throw new Error('Cloudflare API and health routes must run Worker-first.');
+          }
+          if (!Array.isArray(config.triggers?.crons) || !config.triggers.crons.includes('15 */6 * * *')) {
+            throw new Error('Cloudflare reward cron must remain configured.');
+          }
+
+          const routerSource = await readFile('cloudflare-router.js', 'utf8');
+          if (routerSource.includes('/.netlify/functions/') || routerSource.includes('./netlify/functions/')) {
+            throw new Error('Cloudflare router must not expose or import Netlify function paths.');
+          }
+
+          const packageConfig = JSON.parse(await readFile('package.json', 'utf8'));
+          if (packageConfig.scripts?.['build:netlify'] || /netlify/i.test(String(packageConfig.scripts?.dev ?? ''))) {
+            throw new Error('Netlify build/dev scripts must be removed from the Cloudflare-only backend.');
+          }
+
+          """
+          if marker not in build:
+              raise SystemExit('Cloudflare build validation marker not found')
+          build = build.replace(marker, guard + marker)
+          Path('scripts/build-cloudflare.mjs').write_text(build)
+
+          # Documentation now describes only the production runtime that actually exists.
+          readme = Path('README.md').read_text()
+          readme = readme.replace(
+              "**Cloudflare Workers adalah runtime production/staging utama.** Repository tetap\nmempertahankan handler bergaya Netlify sebagai kontrak internal/portable adapter,\ntetapi deployment utama menggunakan `cloudflare-worker.js` + `wrangler.jsonc`.",
+              "**Cloudflare Workers adalah satu-satunya runtime backend production/staging.**\nSeluruh API berjalan melalui `cloudflare-worker.js` + `cloudflare-router.js` dan\nkonfigurasi deployment berada di `wrangler.jsonc`."
+          )
+          readme = readme.replace('- API adapter: `deno-server.js`', '- Cloudflare API router: `cloudflare-router.js`')
+          readme = readme.replace('3. bundling validation handler lama;\n4. Cloudflare configuration validation;\n5. Wrangler dry-run bundle menggunakan versi Wrangler yang dipin pada script.', '3. Cloudflare configuration/runtime validation;\n4. Wrangler dry-run bundle menggunakan versi Wrangler yang dipin pada script.')
+          readme = readme.replace('Cloudflare menerima alias `/api/<function>` dan kompatibilitas path lama\n`/.netlify/functions/<function>`. Router menggunakan **lazy loading per handler** agar\nsatu dependency/integrasi yang bermasalah tidak menjatuhkan endpoint lain.', 'Cloudflare menerima API hanya melalui `/api/<function>`. Router menggunakan **lazy loading per handler** agar satu dependency/integrasi yang bermasalah tidak menjatuhkan endpoint lain.')
+          if '## Legacy portability' in readme:
+              readme = readme.split('## Legacy portability')[0].rstrip() + "\n\n## Cloudflare-only runtime\n\nNetlify dan Deno tidak digunakan sebagai runtime, deployment target, atau public API alias.\nFolder handler production berada di `cloudflare/functions/`, scheduler menggunakan Cloudflare Cron Triggers, dan semua secret production disimpan sebagai Cloudflare Secrets.\n"
+          Path('README.md').write_text(readme)
+
+          status = Path('docs/production-status.md').read_text()
+          status = status.replace('API adapter: `deno-server.js`.', 'API router: `cloudflare-router.js`.')
+          status = status.replace('legacy adapter', 'Cloudflare API router')
+          status = status.replace('adapter + health handler', 'Cloudflare router + health handler')
+          Path('docs/production-status.md').write_text(status)
+          PY
+
+          # Ensure no production code still imports the old handler tree.
+          if grep -R "./netlify/functions\|../netlify/functions\|deno-server.js" cloudflare cloudflare-worker.js src tests scripts README.md docs wrangler.jsonc package.json 2>/dev/null; then
+            echo 'Legacy runtime reference remains in active source.' >&2
+            exit 1
+          fi
+
+      - name: Regenerate lockfile without Netlify tooling
+        run: npm install --package-lock-only --ignore-scripts
+
+      - name: Install production and test dependencies
+        run: npm ci
+
+      - name: Audit production dependencies
+        run: npm audit --omit=dev --audit-level=high
+
+      - name: Validate Cloudflare-only backend
+        run: |
+          git diff --check
+          npm run validate
+
+      - name: Commit validated migration
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -f .github/workflows/cloudflare-finalize.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "Finalize Cloudflare-only backend runtime"
+          git push origin HEAD:feature/rewards-cashback-referral
