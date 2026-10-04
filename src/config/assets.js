@@ -43,17 +43,25 @@ export function buildAssetUrl(path, env = process.env) {
 }
 
 export function assetEnvForRequest(event, env = process.env) {
+  const configuredOverride = normalizeAssetBaseUrl(env);
+  if (configuredOverride) return env;
+
   const baseUrl = staticAssetBaseUrl(event, env);
-  if (!baseUrl || normalizeAssetBaseUrl(env)) return env;
-  return { ...env, ASSET_CDN_BASE_URL: baseUrl };
+  if (!baseUrl) return env;
+  return {
+    ...env,
+    ASSET_CDN_BASE_URL: baseUrl,
+    ASSET_CDN_MODE: 'cloudflare-workers-static-assets',
+  };
 }
 
 export function publicAssetCdnConfig(env = process.env) {
   const baseUrl = normalizeAssetBaseUrl(env);
+  const workerStatic = env?.ASSET_CDN_MODE === 'cloudflare-workers-static-assets';
   return Object.freeze({
     enabled: true,
     baseUrl: baseUrl || null,
-    strategy: baseUrl ? 'custom-cdn-override' : 'cloudflare-workers-static-assets',
-    assetPrefix: baseUrl ? null : '/assets',
+    strategy: workerStatic || !baseUrl ? 'cloudflare-workers-static-assets' : 'custom-cdn-override',
+    assetPrefix: workerStatic || !baseUrl ? '/assets' : null,
   });
 }
