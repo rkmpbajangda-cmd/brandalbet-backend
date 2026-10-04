@@ -44,7 +44,8 @@ export async function authenticateRequest(event, {
   } catch (error) {
     if (error instanceof AuthHttpError) throw error;
     const knownCodes = new Set([
-      'firebase_admin_unconfigured', 'app/invalid-credential', 'app/invalid-options',
+      'firebase_admin_unconfigured', 'firebase_admin_project_mismatch',
+      'app/invalid-credential', 'app/invalid-options',
       'auth/invalid-credential', 'auth/insufficient-permission', 'auth/internal-error',
       'auth/project-not-found', 'auth/argument-error', 'auth/invalid-id-token',
       'auth/id-token-expired', 'auth/id-token-revoked', 'auth/user-disabled',
@@ -52,11 +53,15 @@ export async function authenticateRequest(event, {
     ]);
     const sdkCode = knownCodes.has(error?.code) ? error.code : 'unknown';
     const message = typeof error?.message === 'string' ? error.message : '';
-    const reason = /incorrect.*aud|aud.*claim/i.test(message) ? 'project_audience_mismatch'
+    const reason = error?.code === 'firebase_admin_project_mismatch' ? 'service_account_project_mismatch'
+      : /incorrect.*aud|aud.*claim/i.test(message) ? 'project_audience_mismatch'
       : /incorrect.*iss|issuer.*claim/i.test(message) ? 'project_issuer_mismatch'
       : /private key|PEM|DECODER/i.test(message) ? 'private_key_format'
       : 'sdk_error';
     console.error(JSON.stringify({ event: 'firebase_token_verification_failed', sdkCode, reason }));
+    if (error?.code === 'firebase_admin_project_mismatch') {
+      throw new AuthHttpError(503, 'auth_project_mismatch');
+    }
     if (error?.code === 'firebase_admin_unconfigured') {
       throw new AuthHttpError(503, 'auth_service_unconfigured');
     }
