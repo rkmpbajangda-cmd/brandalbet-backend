@@ -37,25 +37,30 @@ const handlerLoaders = Object.freeze({
   wallet: () => import('./netlify/functions/wallet.js'),
 });
 
-const handlerCache = new Map();
+// Cache only imported modules, not environment-bound handlers. Cloudflare env
+// bindings are passed explicitly for each request instead of relying solely on
+// process.env compatibility behavior.
+const moduleCache = new Map();
 
-async function resolveHandler(name) {
-  if (handlerCache.has(name)) return handlerCache.get(name);
+async function resolveHandler(name, env) {
   const loader = handlerLoaders[name];
   if (!loader) return null;
 
-  const promise = loader().then((module) => {
-    if (typeof module?.handler !== 'function') {
-      throw new TypeError(`Handler export is unavailable for ${name}`);
-    }
-    return module.handler;
-  }).catch((error) => {
-    handlerCache.delete(name);
-    throw error;
-  });
+  let promise = moduleCache.get(name);
+  if (!promise) {
+    promise = loader().catch((error) => {
+      moduleCache.delete(name);
+      throw error;
+    });
+    moduleCache.set(name, promise);
+  }
 
-  handlerCache.set(name, promise);
-  return promise;
+  const module = await promise;
+  if (typeof module?.createHandler === 'function') {
+    return module.createHandler({ env });
+  }
+  if (typeof module?.handler === 'function') return module.handler;
+  throw new TypeError(`Handler export is unavailable for ${name}`);
 }
 
 function functionNameFromPath(pathname) {
@@ -176,7 +181,7 @@ function logHandlerLoadFailure(name, error) {
   }));
 }
 
-export async function handleDenoRequest(request) {
+export async function handleDenoRequest(request, env = process.env) {
   const url = new URL(request.url);
   if (url.pathname === '/') {
     return json(200, {
@@ -191,7 +196,7 @@ export async function handleDenoRequest(request) {
 
   let handler;
   try {
-    handler = await resolveHandler(name);
+    handler = await resolveHandler(name, env);
   } catch (error) {
     logHandlerLoadFailure(name, error);
     return json(503, { ok: false, error: 'backend_handler_unavailable' });
