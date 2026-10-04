@@ -28,7 +28,7 @@ test('public site settings expose only safe member-facing fields', () => {
   assert.equal(JSON.stringify(view).includes('must-not-leak'), false);
 });
 
-test('member-config returns master control and public website config together', async () => {
+test('member-config returns master control, asset metadata and public website config together', async () => {
   const handler = createMemberConfigHandler({
     env: {},
     loadControl: async () => ({ maintenanceMode: false, gameLaunchEnabled: true, registrationEnabled: true, promotionsEnabled: true, memberWalletEnabled: true, revision: 4 }),
@@ -37,7 +37,9 @@ test('member-config returns master control and public website config together', 
   const result = await handler({ httpMethod: 'GET', headers: { origin: 'https://brandalbet.blogspot.com' }, queryStringParameters: {} });
   assert.equal(result.statusCode, 200);
   const body = JSON.parse(result.body);
-  assert.equal(body.configVersion, 2);
+  assert.equal(body.configVersion, 3);
+  assert.equal(body.assets.enabled, false);
+  assert.equal(body.assets.baseUrl, null);
   assert.equal(body.control.revision, 4);
   assert.equal(body.website.siteName, 'Brandalbet');
   assert.match(result.headers['Cache-Control'], /max-age=30/);
