@@ -10,6 +10,16 @@ export class FirebaseConfigError extends Error {
   }
 }
 
+export class FirebaseProjectMismatchError extends Error {
+  constructor(expectedProjectId, actualProjectId) {
+    super('Firebase Admin service account project does not match FIREBASE_PROJECT_ID');
+    this.name = 'FirebaseProjectMismatchError';
+    this.code = 'firebase_admin_project_mismatch';
+    this.expectedProjectId = expectedProjectId;
+    this.actualProjectId = actualProjectId;
+  }
+}
+
 function readServiceAccountJson(env) {
   const raw = env.FIREBASE_SERVICE_ACCOUNT_JSON;
   if (typeof raw !== 'string' || !raw.trim()) return null;
@@ -30,6 +40,13 @@ function readServiceAccountJson(env) {
   if (!clientEmail) missing.push('FIREBASE_SERVICE_ACCOUNT_JSON.client_email');
   if (!privateKeyRaw) missing.push('FIREBASE_SERVICE_ACCOUNT_JSON.private_key');
   if (missing.length) throw new FirebaseConfigError(missing);
+
+  const expectedProjectId = typeof env.FIREBASE_PROJECT_ID === 'string'
+    ? env.FIREBASE_PROJECT_ID.trim()
+    : '';
+  if (expectedProjectId && projectId !== expectedProjectId) {
+    throw new FirebaseProjectMismatchError(expectedProjectId, projectId);
+  }
 
   return {
     projectId,
