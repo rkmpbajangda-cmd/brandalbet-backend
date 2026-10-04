@@ -35,6 +35,18 @@ function transferAmount(value) {
   return value;
 }
 
+function boundedLimit(value, { min = 10, max = 2000, code = 'invalid_limit' } = {}) {
+  if (!Number.isSafeInteger(value) || value < min || value > max) throw new ServiceError(code);
+  return value;
+}
+
+function providerUtcTime(value, field) {
+  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}:\d{2}$/.test(value)) {
+    throw new ServiceError('invalid_' + field);
+  }
+  return value.replace('T', ' ');
+}
+
 function providerResultCode(payload) {
   const result = payload?.result;
   const code = payload?.code;
@@ -198,6 +210,41 @@ export function createGoldslotClient({ env = process.env, fetchImpl = fetch, tim
         is_finish_jackpot: true,
       }, true);
     },
+
+    transactionsById: ({ lastId = 0, limit = 2000 } = {}) => post('/v4/game/transaction-id', {
+      last_id: nonNegativeInteger(lastId, 'last_id'),
+      limit: boundedLimit(limit, { code: 'transaction_limit' }),
+    }),
+
+    transactionsByTime: ({ startTime, endTime, offset = 0, limit = 2000 }) => post('/v4/game/transaction', {
+      start_time: providerUtcTime(startTime, 'start_time'),
+      end_time: providerUtcTime(endTime, 'end_time'),
+      offset: nonNegativeInteger(offset, 'offset'),
+      limit: boundedLimit(limit, { code: 'transaction_limit' }),
+    }),
+
+    roundDetails: ({ userCode, roundId, providerId = null, gameSymbol = null }) => {
+      positiveIdentifier(userCode, 'user_code');
+      if (typeof roundId !== 'string' || !roundId || roundId.length > 180 || /[\x00-\x1f]/.test(roundId)) {
+        throw new ServiceError('invalid_round_id');
+      }
+      const payload = { user_code: userCode, round_id: roundId };
+      if (providerId != null) payload.provider_id = positiveIdentifier(providerId, 'provider_id');
+      if (gameSymbol != null) {
+        if (typeof gameSymbol !== 'string' || !gameSymbol || gameSymbol.length > 200 || /[\x00-\x1f]/.test(gameSymbol)) {
+          throw new ServiceError('invalid_game_symbol');
+        }
+        payload.game_code = gameSymbol;
+      }
+      return post('/v4/game/round-details', payload);
+    },
+
+    userStatistics: ({ startTime, endTime, offset = 0, limit = 2000 }) => post('/v4/statistics/user', {
+      start_time: providerUtcTime(startTime, 'start_time'),
+      end_time: providerUtcTime(endTime, 'end_time'),
+      offset: nonNegativeInteger(offset, 'offset'),
+      limit: boundedLimit(limit, { code: 'statistics_limit' }),
+    }),
 
     validateProviderMoney: (value, field = 'provider_amount') => nonNegativeInteger(value, field),
   });

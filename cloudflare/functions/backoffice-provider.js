@@ -1,7 +1,12 @@
 import { protectedHandler } from '../../src/utils/protected-handler.js';
 import { ServiceError } from '../../src/utils/errors.js';
+import { getAdminDb } from '../../src/firebase/admin.js';
 import { createGoldslotClient } from '../../src/game/goldslotpalase.js';
 import { loadStoredGameCatalog } from '../../src/game/catalog.js';
+import {
+  getGoldslotProviderLedgerStatus,
+  syncGoldslotProviderTransactions,
+} from '../../src/game/provider-ledger.js';
 
 const LIVE_CHECK_ROLES = new Set(['admin', 'superadmin']);
 
@@ -18,6 +23,9 @@ function capabilities(env) {
     launch: true,
     walletTransfer: env.GOLDSLOTPALASE_TRANSFER_ENABLED === 'true' && env.GOLDSLOTPALASE_IDR_SCALE === '1',
     balanceReconciliation: env.GOLDSLOTPALASE_BALANCE_RECONCILIATION_ENABLED === 'true',
+    transactionHistory: true,
+    transactionIncrementalSync: env.GOLDSLOTPALASE_TRANSACTION_SYNC_ENABLED === 'true',
+    rewardPayout: env.REWARDS_PAYOUT_ENABLED === 'true',
     rtpGlobal: true,
     rtpPerGame: false,
     rtpPerUser: true,
@@ -58,6 +66,9 @@ export function createHandler({
   env = process.env,
   loadCatalog = loadStoredGameCatalog,
   clientFactory = createGoldslotClient,
+  ledgerStatus = getGoldslotProviderLedgerStatus,
+  syncTransactions = syncGoldslotProviderTransactions,
+  dbFactory = getAdminDb,
 } = {}) {
   return protectedHandler({
     scope: 'backoffice',
@@ -66,31 +77,47 @@ export function createHandler({
     env,
     run: async (actor, event) => {
       const snapshot = await snapshotStatus({ loadCatalog });
+      const db = dbFactory(env);
+      const transactions = await ledgerStatus({ db, env });
+
       if (event.httpMethod === 'GET') {
         return {
           provider: 'goldslotpalase',
           ...snapshot,
+          transactions,
           capabilities: capabilities(env),
           liveChecked: false,
         };
       }
 
       const input = parseBody(event);
-      if (input.action !== 'check') throw new ServiceError('invalid_provider_action', 400);
       if (!LIVE_CHECK_ROLES.has(actor.role)) throw new ServiceError('forbidden', 403);
 
-      // Explicit admin action only: one authenticated provider health request.
-      // Opening/reloading the page never performs this call.
-      await clientFactory({ env }).agentInfo();
-      return {
-        provider: 'goldslotpalase',
-        ...snapshot,
-        status: 'healthy',
-        message: 'GoldslotPalase merespons pemeriksaan manual admin.',
-        capabilities: capabilities(env),
-        liveChecked: true,
-        checkedAt: new Date().toISOString(),
-      };
+      if (input.action === 'check') {
+        // Explicit admin action only: opening/reloading the page never calls the provider.
+        await clientFactory({ env }).agentInfo();
+        return {
+          provider: 'goldslotpalase',
+          ...snapshot,
+          transactions,
+          status: 'healthy',
+          message: 'GoldslotPalase merespons pemeriksaan manual admin.',
+          capabilities: capabilities(env),
+          liveChecked: true,
+          checkedAt: new Date().toISOString(),
+        };
+      }
+
+      if (input.action === 'sync-transactions') {
+        const sync = await syncTransactions({ db, env, clientFactory });
+        return {
+          provider: 'goldslotpalase',
+          transactions: sync,
+          capabilities: capabilities(env),
+        };
+      }
+
+      throw new ServiceError('invalid_provider_action', 400);
     },
   });
 }
