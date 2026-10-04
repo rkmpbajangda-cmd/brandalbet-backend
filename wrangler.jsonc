@@ -9,6 +9,12 @@
     "enabled": true,
     "head_sampling_rate": 1
   },
+  "secrets": {
+    "required": [
+      "FIREBASE_SERVICE_ACCOUNT_JSON",
+      "GOLDSLOTPALASE_API_TOKEN"
+    ]
+  },
   "vars": {
     "FIREBASE_PROJECT_ID": "brandal-bet",
     "ALLOWED_MEMBER_ORIGINS": "https://brandalbet.blogspot.com",
