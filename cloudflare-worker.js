@@ -20,14 +20,12 @@ function rootResponse() {
 /**
  * Cloudflare Workers entrypoint.
  *
- * Keep startup scope deliberately small. The legacy adapter and its complete
- * handler graph are loaded only after a request needs them. This avoids
- * evaluating the full Netlify/Firebase dependency graph during Cloudflare's
- * deployment-time startup validation.
+ * Keep startup scope deliberately small. The legacy adapter and individual
+ * endpoint handlers are loaded lazily. Runtime bindings are passed explicitly
+ * so secrets and variables do not depend solely on process.env compatibility.
  */
 export default {
   async fetch(request, env, ctx) {
-    void env;
     void ctx;
 
     const url = new URL(request.url);
@@ -35,7 +33,7 @@ export default {
 
     try {
       const { handleDenoRequest } = await import('./deno-server.js');
-      return await handleDenoRequest(request);
+      return await handleDenoRequest(request, env);
     } catch (error) {
       console.error(JSON.stringify({
         event: 'cloudflare_adapter_load_failed',
