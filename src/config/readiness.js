@@ -4,6 +4,16 @@ function present(env, name) {
   return typeof env[name] === 'string' && env[name].trim().length > 0;
 }
 
+function firebaseProjectMatch(env) {
+  if (!present(env, 'FIREBASE_SERVICE_ACCOUNT_JSON') || !present(env, 'FIREBASE_PROJECT_ID')) return false;
+  try {
+    const parsed = JSON.parse(env.FIREBASE_SERVICE_ACCOUNT_JSON);
+    return typeof parsed?.project_id === 'string' && parsed.project_id.trim() === env.FIREBASE_PROJECT_ID.trim();
+  } catch {
+    return false;
+  }
+}
+
 export function configurationReadiness(env = process.env) {
   const firebaseBundled = present(env, 'FIREBASE_SERVICE_ACCOUNT_JSON');
   const firebaseSplit = present(env, 'FIREBASE_PROJECT_ID')
@@ -13,10 +23,13 @@ export function configurationReadiness(env = process.env) {
 
   const configuration = [
     { name: 'FIREBASE_ADMIN_CREDENTIALS', present: firebaseBundled || firebaseSplit },
+    { name: 'FIREBASE_ADMIN_PROJECT_MATCH', present: firebaseBundled ? firebaseProjectMatch(env) : firebaseSplit },
+    { name: 'BOOTSTRAP_SUPERADMIN_UID', present: present(env, 'BOOTSTRAP_SUPERADMIN_UID') },
     { name: 'ALLOWED_MEMBER_ORIGINS', present: present(env, 'ALLOWED_MEMBER_ORIGINS') },
     { name: 'ALLOWED_BACKOFFICE_ORIGINS', present: present(env, 'ALLOWED_BACKOFFICE_ORIGINS') },
     { name: 'GOLDSLOTPALASE_API_TOKEN', present: present(env, 'GOLDSLOTPALASE_API_TOKEN') },
     { name: 'GOLDSLOTPALASE_API_URL', present: present(env, 'GOLDSLOTPALASE_API_URL') },
+    { name: 'GOLDSLOTPALASE_IDR_SCALE', present: present(env, 'GOLDSLOTPALASE_IDR_SCALE') },
     { name: 'PAYMENT_CONFIG_ENCRYPTION_KEY', present: present(env, 'PAYMENT_CONFIG_ENCRYPTION_KEY') },
   ];
 
@@ -30,7 +43,13 @@ export function configurationReadiness(env = process.env) {
     readyForRealMoney: false,
     configuration,
     bootstrapEnabled: env.BOOTSTRAP_ENABLED === 'true',
+    bootstrapTargetConfigured: present(env, 'BOOTSTRAP_SUPERADMIN_UID'),
     integrations: {
+      firebase: {
+        credentialsConfigured: firebaseBundled || firebaseSplit,
+        projectMatches: firebaseBundled ? firebaseProjectMatch(env) : firebaseSplit,
+        projectId: present(env, 'FIREBASE_PROJECT_ID') ? env.FIREBASE_PROJECT_ID : null,
+      },
       assets: {
         configured: true,
         strategy: assetCdnBaseUrl ? 'custom-cdn-override' : 'cloudflare-workers-static-assets',
@@ -40,11 +59,14 @@ export function configurationReadiness(env = process.env) {
       game: 'catalog_player_launch_transfer_state_machine_staging_gated',
       providerTransfer,
       payment: 'multi_connection_manager_adapters_pending',
+      paymentVaultConfigured: present(env, 'PAYMENT_CONFIG_ENCRYPTION_KEY'),
       memberDeposit: 'adapter_pending',
       memberWithdrawal: 'adapter_pending',
     },
     checksRequired: [
       'cloudflare_static_asset_smoke_test',
+      'firebase_admin_project_match',
+      'superadmin_bootstrap_target',
       'goldslot_authenticated_staging_connectivity',
       'goldslot_currency_and_idr_scale',
       'goldslot_catalog_launch_transfer_reconciliation',

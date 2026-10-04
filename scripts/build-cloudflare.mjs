@@ -27,7 +27,12 @@ for (const name of forbiddenPlaintextSecrets) {
 }
 
 const requiredSecrets = new Set(config.secrets?.required ?? []);
-for (const name of ['FIREBASE_SERVICE_ACCOUNT_JSON', 'GOLDSLOTPALASE_API_TOKEN']) {
+for (const name of [
+  'FIREBASE_SERVICE_ACCOUNT_JSON',
+  'GOLDSLOTPALASE_API_TOKEN',
+  'BOOTSTRAP_SUPERADMIN_UID',
+  'PAYMENT_CONFIG_ENCRYPTION_KEY',
+]) {
   if (!requiredSecrets.has(name)) throw new Error(`${name} must be declared in wrangler secrets.required.`);
 }
 for (const name of requiredSecrets) {
@@ -41,6 +46,7 @@ const requiredSafeVars = {
   MEMBER_SINGLE_SESSION_ENABLED: 'true',
   BOOTSTRAP_ENABLED: 'false',
   GOLDSLOTPALASE_API_URL: 'https://agent.goldslotpalase.com',
+  GOLDSLOTPALASE_IDR_SCALE: '0',
   GOLDSLOTPALASE_TRANSFER_ENABLED: 'false',
   GOLDSLOTPALASE_BALANCE_RECONCILIATION_ENABLED: 'false',
   GOLDSLOTPALASE_TRANSACTION_SYNC_ENABLED: 'false',
@@ -114,11 +120,15 @@ const firebaseAdminSource = await readFile('src/firebase/admin.js', 'utf8');
 if (!/initializeFirestore\s*\([^)]*,\s*\{\s*preferRest\s*:\s*true\s*\}/s.test(firebaseAdminSource)) {
   throw new Error('Cloudflare Firestore must use initializeFirestore(..., { preferRest: true }) to avoid gRPC transport.');
 }
+if (!firebaseAdminSource.includes('firebase_admin_project_mismatch')) {
+  throw new Error('Firebase Admin must fail closed when service-account project_id does not match FIREBASE_PROJECT_ID.');
+}
 
 for (const file of [
   'cloudflare-worker.js',
   'cloudflare-router.js',
   'src/firebase/admin.js',
+  'src/config/readiness.js',
   'src/game/goldslotpalase.js',
   'src/game/player.js',
   'src/game/provider-ledger.js',
@@ -132,4 +142,4 @@ for (const file of [
   }
 }
 
-console.log('Cloudflare build validation passed: compact provider ledger, bounded cron/subrequest design, verified reward payout gates, index exemptions, secrets, Firestore REST transport, and Cloudflare-only runtime are valid.');
+console.log('Cloudflare build validation passed: complete backend config contract, Firebase project guard, compact provider ledger, bounded cron/subrequest design, verified reward payout gates, index exemptions, secrets, Firestore REST transport, and Cloudflare-only runtime are valid.');
