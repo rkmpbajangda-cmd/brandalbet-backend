@@ -24,6 +24,15 @@ test('invalid token fails closed with 401', async () => {
   );
 });
 
+test('Firebase Admin project mismatch is reported as backend configuration error', async () => {
+  const mismatch = new Error('project mismatch');
+  mismatch.code = 'firebase_admin_project_mismatch';
+  await assert.rejects(
+    authenticateRequest(eventWithToken(), { verifyIdToken: async () => { throw mismatch; } }),
+    (error) => error instanceof AuthHttpError && error.statusCode === 503 && error.code === 'auth_project_mismatch',
+  );
+});
+
 test('device-session suffix does not alter the Firebase bearer token', async () => {
   let observed;
   const sessionId = 'a'.repeat(43);
@@ -62,4 +71,23 @@ test('backoffice endpoint denies member and allows superadmin', async () => {
   const adminResponse = await adminHandler(eventWithToken());
   assert.equal(adminResponse.statusCode, 200);
   assert.deepEqual(JSON.parse(adminResponse.body), { ok: true, service: 'brandalbet-backend', scope: 'backoffice' });
+});
+
+test('backoffice health forwards request-scoped Cloudflare env to token verifier and CORS', async () => {
+  const env = { ALLOWED_BACKOFFICE_ORIGINS: 'https://admin.example.test' };
+  let observedEnv;
+  const handler = createBackofficeHealthHandler({
+    env,
+    verifyIdToken: async (_token, receivedEnv) => {
+      observedEnv = receivedEnv;
+      return { uid: 'admin-1', role: 'superadmin', backoffice: true };
+    },
+  });
+  const response = await handler({
+    httpMethod: 'GET',
+    headers: { Authorization: 'Bearer test-token', Origin: 'https://admin.example.test' },
+  });
+  assert.equal(response.statusCode, 200);
+  assert.equal(response.headers['Access-Control-Allow-Origin'], 'https://admin.example.test');
+  assert.equal(observedEnv, env);
 });
