@@ -25,7 +25,27 @@
         { "fieldPath": "hasSettlement", "order": "ASCENDING" },
         { "fieldPath": "lastProviderAtMs", "order": "ASCENDING" }
       ]
+    },
+    {
+      "collectionGroup": "providerGameRounds",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "provider", "order": "ASCENDING" },
+        { "fieldPath": "status", "order": "ASCENDING" },
+        { "fieldPath": "lastProviderAtMs", "order": "ASCENDING" }
+      ]
     }
   ],
-  "fieldOverrides": []
+  "fieldOverrides": [
+    {
+      "collectionGroup": "providerGameRounds",
+      "fieldPath": "eventDigests",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "rewardTurnover",
+      "fieldPath": "obligations",
+      "indexes": []
+    }
+  ]
 }
