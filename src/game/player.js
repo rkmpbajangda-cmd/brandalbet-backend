@@ -49,6 +49,10 @@ function playerFromRow(uid, data) {
   });
 }
 
+function reverseMappingId(userCode) {
+  return `${PROVIDER}:${userCode}`;
+}
+
 function memoryGet(uid, current) {
   const item = memoryCache.get(uid);
   if (!item || current >= item.expiresAt) {
@@ -102,15 +106,25 @@ export async function ensureGoldslotPlayer(actor, {
   }
 
   const providerUsername = providerUsernameForUid(actor.uid);
-  // The provider documents createUser(name) as idempotent for an existing name.
-  // Revalidation is intentionally weekly instead of happening on every game
-  // click; the stable Firestore mapping remains the source between checks.
+  // GoldslotPalase documents createUser(name) as idempotent for an existing name.
+  // Revalidation remains weekly; browser navigation never recreates the player.
   const upstream = await client.createUser(providerUsername);
   const userCode = userCodeFromResponse(upstream);
+  const reverseRef = db.collection('providerPlayerCodes').doc(reverseMappingId(userCode));
   const serverNow = FieldValue.serverTimestamp();
 
   await db.runTransaction(async tx => {
-    const snapshot = await tx.get(ref);
+    const [snapshot, reverseSnapshot] = await Promise.all([
+      tx.get(ref),
+      tx.get(reverseRef),
+    ]);
+    if (reverseSnapshot.exists) {
+      const reverse = reverseSnapshot.data();
+      if (reverse?.provider !== PROVIDER || reverse?.userCode !== userCode || reverse?.uid !== actor.uid) {
+        throw new ServiceError('provider_player_code_conflict', 409);
+      }
+    }
+
     const record = {
       uid: actor.uid,
       provider: PROVIDER,
@@ -121,6 +135,15 @@ export async function ensureGoldslotPlayer(actor, {
     };
     if (!snapshot.exists) record.createdAt = serverNow;
     tx.set(ref, record, { merge: true });
+    tx.set(reverseRef, {
+      provider: PROVIDER,
+      userCode,
+      uid: actor.uid,
+      providerUsername,
+      verifiedAt: serverNow,
+      updatedAt: serverNow,
+      createdAt: reverseSnapshot.exists ? (reverseSnapshot.data()?.createdAt ?? serverNow) : serverNow,
+    }, { merge: true });
   });
 
   const player = Object.freeze({ provider: PROVIDER, providerUsername, userCode });
