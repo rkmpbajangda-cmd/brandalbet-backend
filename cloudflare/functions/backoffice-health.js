@@ -4,16 +4,16 @@ import { canAccessBackoffice } from '../../src/rbac/roles.js';
 import { corsHeaders, CorsError } from '../../src/security/cors.js';
 import { empty, json } from '../../src/utils/http.js';
 
-export function createHandler(dependencies = {}) {
+export function createHandler({ verifyIdToken, env = process.env } = {}) {
   return async (event) => {
     let cors = {};
     let actor = null;
     try {
-      cors = corsHeaders(event, 'backoffice');
+      cors = corsHeaders(event, 'backoffice', env);
       if (event.httpMethod === 'OPTIONS') return empty(204, cors);
       if (event.httpMethod !== 'GET') return json(405, { ok: false, error: 'method_not_allowed' }, { ...cors, Allow: 'GET, OPTIONS' });
 
-      actor = await authenticateRequest(event, dependencies);
+      actor = await authenticateRequest(event, { verifyIdToken, env });
       if (!canAccessBackoffice(actor)) {
         auditSecurityEvent({ event, actor, action: 'backoffice.health.read', outcome: 'denied' });
         return json(403, { ok: false, error: 'forbidden' }, cors);
