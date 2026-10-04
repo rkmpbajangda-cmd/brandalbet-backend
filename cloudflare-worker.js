@@ -29,12 +29,17 @@ async function runWeeklyRewards(env) {
   if (env.REWARDS_PAYOUT_ENABLED !== 'true') {
     return { status: 'disabled', weekKey: null, processed: 0 };
   }
-  const [{ finalizeRewardWeekBatch, previousRewardWeekKey }, { getAdminDb }] = await Promise.all([
+  const [
+    { previousRewardWeekKey },
+    { finalizeVerifiedRewardWeekBatch },
+    { getAdminDb },
+  ] = await Promise.all([
     import('./src/rewards/service.js'),
+    import('./src/rewards/verified-finalization.js'),
     import('./src/firebase/admin.js'),
   ]);
   const weekKey = previousRewardWeekKey();
-  return finalizeRewardWeekBatch(weekKey, {
+  return finalizeVerifiedRewardWeekBatch(weekKey, {
     db: getAdminDb(env),
     env,
     batchSize: 100,
