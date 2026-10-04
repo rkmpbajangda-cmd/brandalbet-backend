@@ -20,10 +20,13 @@ export function extractBearerToken(headers = {}) {
 
 async function defaultVerifyIdToken(token, env) {
   const { getAdminAuth } = await import('../firebase/admin.js');
-  // Cloudflare bindings are request-scoped and are not guaranteed to be
-  // mirrored into process.env. Always pass the Worker env explicitly so the
-  // Firebase Admin verifier uses FIREBASE_SERVICE_ACCOUNT_JSON from Cloudflare.
-  return getAdminAuth(env).verifyIdToken(token, true);
+  // Verify Firebase signature/issuer/audience/expiry only. `checkRevoked=true`
+  // performs an additional Admin Auth user lookup. On Cloudflare Workers that
+  // second privileged Auth request can fail at runtime even when the ID token
+  // itself is valid, which was observed as an unknown sdk_error. Firebase's
+  // documented default verification mode is non-revocation checking; the
+  // application still enforces RBAC/custom claims and member device sessions.
+  return getAdminAuth(env).verifyIdToken(token, false);
 }
 
 export async function authenticateRequest(event, {
@@ -57,8 +60,14 @@ export async function authenticateRequest(event, {
       : /incorrect.*aud|aud.*claim/i.test(message) ? 'project_audience_mismatch'
       : /incorrect.*iss|issuer.*claim/i.test(message) ? 'project_issuer_mismatch'
       : /private key|PEM|DECODER/i.test(message) ? 'private_key_format'
+      : /revok|validSince|getUser|accounts:lookup/i.test(message) ? 'revocation_lookup_runtime'
       : 'sdk_error';
-    console.error(JSON.stringify({ event: 'firebase_token_verification_failed', sdkCode, reason }));
+    console.error(JSON.stringify({
+      event: 'firebase_token_verification_failed',
+      sdkCode,
+      reason,
+      errorName: typeof error?.name === 'string' ? error.name : 'unknown',
+    }));
     if (error?.code === 'firebase_admin_project_mismatch') {
       throw new AuthHttpError(503, 'auth_project_mismatch');
     }
@@ -68,6 +77,11 @@ export async function authenticateRequest(event, {
     if (['app/invalid-credential', 'app/invalid-options', 'auth/invalid-credential',
       'auth/insufficient-permission', 'auth/internal-error', 'auth/project-not-found'].includes(sdkCode)) {
       throw new AuthHttpError(503, 'auth_service_unavailable');
+    }
+    if (sdkCode === 'unknown') {
+      // Unknown Admin SDK/runtime failures are backend availability problems,
+      // not proof that the user's refreshed Firebase token is invalid.
+      throw new AuthHttpError(503, 'auth_verifier_runtime_error');
     }
     throw new AuthHttpError(401, 'invalid_or_expired_id_token');
   }
