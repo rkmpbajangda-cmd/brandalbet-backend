@@ -81,11 +81,19 @@ if (!config.assets.run_worker_first.includes('/api/*') || !config.assets.run_wor
   throw new Error('Cloudflare API and health routes must run Worker-first.');
 }
 const crons = new Set(config.triggers?.crons ?? []);
-for (const cron of ['5 */6 * * *', '35 */6 * * *']) {
+for (const cron of ['5 * * * *', '35 */6 * * *']) {
   if (!crons.has(cron)) throw new Error(`Cloudflare scheduled task is missing: ${cron}`);
 }
-if (crons.has('15 */6 * * *')) {
-  throw new Error('Legacy combined reward cron must be removed; provider sync and reward payout must remain separated.');
+if (crons.has('15 */6 * * *') || crons.has('5 */6 * * *')) {
+  throw new Error('Legacy combined or six-hour provider sync cron must be removed; provider transaction sync must run hourly and reward payout separately.');
+}
+
+const workerSource = await readFile('cloudflare-worker.js', 'utf8');
+if (!workerSource.includes("import('./src/rewards/verified-finalization.js')") || !workerSource.includes('finalizeVerifiedRewardWeekBatch')) {
+  throw new Error('Cloudflare reward cron must use verified reward finalization and cannot bypass provider-source integrity gates.');
+}
+if (!workerSource.includes("cron === '5 * * * *'") || !workerSource.includes("cron === '35 */6 * * *'")) {
+  throw new Error('Cloudflare Worker cron dispatch must match wrangler scheduled triggers.');
 }
 
 const routerSource = await readFile('cloudflare-router.js', 'utf8');
@@ -110,6 +118,7 @@ for (const file of [
   'src/game/goldslotpalase.js',
   'src/game/provider-ledger.js',
   'src/rewards/service.js',
+  'src/rewards/verified-finalization.js',
 ]) {
   const result = spawnSync(process.execPath, ['--check', file], {
     encoding: 'utf8',
@@ -121,4 +130,4 @@ for (const file of [
   }
 }
 
-console.log('Cloudflare build validation passed: provider transaction sync, reward payout gates, scheduled jobs, secrets, Firestore REST transport, and Cloudflare-only runtime are valid.');
+console.log('Cloudflare build validation passed: hourly provider transaction sync, verified reward payout gates, scheduled jobs, secrets, Firestore REST transport, and Cloudflare-only runtime are valid.');
