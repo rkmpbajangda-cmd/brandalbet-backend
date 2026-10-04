@@ -1,3 +1,5 @@
+import { normalizeAssetBaseUrl } from './assets.js';
+
 function present(env, name) {
   return typeof env[name] === 'string' && env[name].trim().length > 0;
 }
@@ -7,6 +9,7 @@ export function configurationReadiness(env = process.env) {
   const firebaseSplit = present(env, 'FIREBASE_PROJECT_ID')
     && present(env, 'FIREBASE_CLIENT_EMAIL')
     && present(env, 'FIREBASE_PRIVATE_KEY');
+  const assetCdnBaseUrl = normalizeAssetBaseUrl(env);
 
   const configuration = [
     { name: 'FIREBASE_ADMIN_CREDENTIALS', present: firebaseBundled || firebaseSplit },
@@ -29,6 +32,10 @@ export function configurationReadiness(env = process.env) {
     configuration,
     bootstrapEnabled: env.BOOTSTRAP_ENABLED === 'true',
     integrations: {
+      assets: {
+        configured: Boolean(assetCdnBaseUrl),
+        strategy: 'cloudflare-r2-cdn-immutable-versioned-paths',
+      },
       gameProvider: 'goldslotpalase',
       game: 'catalog_player_launch_transfer_state_machine_staging_gated',
       providerTransfer,
@@ -37,6 +44,7 @@ export function configurationReadiness(env = process.env) {
       memberWithdrawal: 'adapter_pending',
     },
     checksRequired: [
+      'cloudflare_asset_cdn_domain_and_cache_headers',
       'goldslot_authenticated_staging_connectivity',
       'goldslot_currency_and_idr_scale',
       'goldslot_catalog_launch_transfer_reconciliation',
