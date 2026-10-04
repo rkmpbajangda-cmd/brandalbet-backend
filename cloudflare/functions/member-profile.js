@@ -3,6 +3,7 @@ import { ServiceError } from '../../src/utils/errors.js';
 import { auditSecurityEvent } from '../../src/audit/logger.js';
 import { corsHeaders, CorsError } from '../../src/security/cors.js';
 import { getOrCreateProfile, updateProfile, ProfileValidationError } from '../../src/member/profile.js';
+import { getAdminDb } from '../../src/firebase/admin.js';
 import { empty, json } from '../../src/utils/http.js';
 
 function parseBody(event) {
@@ -21,16 +22,17 @@ export function createHandler({
     let cors = {};
     let actor = null;
     try {
-      cors = corsHeaders(event, 'member');
+      cors = corsHeaders(event, 'member', env);
       if (event.httpMethod === 'OPTIONS') return empty(204, cors);
       if (!['GET', 'PUT'].includes(event.httpMethod)) {
         return json(405, { ok: false, error: 'method_not_allowed' }, { ...cors, Allow: 'GET, PUT, OPTIONS' });
       }
 
       actor = await authenticateRequest(event, { verifyIdToken, requireMemberSession: true, env });
+      const db = getAdminDb(env);
       const profile = event.httpMethod === 'GET'
-        ? await loadProfile(actor)
-        : await saveProfile(actor, parseBody(event));
+        ? await loadProfile(actor, { db })
+        : await saveProfile(actor, parseBody(event), { db });
 
       auditSecurityEvent({
         event,
