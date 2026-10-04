@@ -33,6 +33,18 @@ for (const name of forbiddenPlaintextSecrets) {
   }
 }
 
+const requiredSecrets = new Set(config.secrets?.required ?? []);
+for (const name of ['FIREBASE_SERVICE_ACCOUNT_JSON', 'GOLDSLOTPALASE_API_TOKEN']) {
+  if (!requiredSecrets.has(name)) {
+    throw new Error(`${name} must be declared in wrangler secrets.required.`);
+  }
+}
+for (const name of requiredSecrets) {
+  if (Object.prototype.hasOwnProperty.call(vars, name)) {
+    throw new Error(`${name} cannot be declared as both a secret and a plaintext var.`);
+  }
+}
+
 const requiredSafeVars = {
   FIREBASE_PROJECT_ID: 'brandal-bet',
   ALLOWED_MEMBER_ORIGINS: 'https://brandalbet.blogspot.com',
@@ -60,4 +72,4 @@ for (const file of ['cloudflare-worker.js', 'deno-server.js']) {
   }
 }
 
-console.log('Cloudflare build validation passed: entrypoint, adapter, compatibility date, secret boundaries, and fail-safe production gates are valid.');
+console.log('Cloudflare build validation passed: entrypoint, adapter, compatibility date, required secrets, secret boundaries, and fail-safe production gates are valid.');
