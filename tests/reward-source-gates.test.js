@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { transactionDb } from './helpers/transaction-db.js';
-import { finalizeRewardWeekBatch } from '../src/rewards/service.js';
+import { finalizeVerifiedRewardWeekBatch } from '../src/rewards/verified-finalization.js';
 
 const closedNow = Date.parse('2026-10-05T01:00:00.000Z');
 const weekKey = '2026-09-28';
@@ -9,7 +9,7 @@ const weekKey = '2026-09-28';
 test('reward payout cannot finalize while payout gate is disabled', async () => {
   const db = transactionDb();
   await assert.rejects(
-    finalizeRewardWeekBatch(weekKey, {
+    finalizeVerifiedRewardWeekBatch(weekKey, {
       db,
       now: closedNow,
       env: {
@@ -24,7 +24,7 @@ test('reward payout cannot finalize while payout gate is disabled', async () => 
 test('reward payout cannot finalize without a verified provider transaction source', async () => {
   const db = transactionDb();
   await assert.rejects(
-    finalizeRewardWeekBatch(weekKey, {
+    finalizeVerifiedRewardWeekBatch(weekKey, {
       db,
       now: closedNow,
       env: {
@@ -47,7 +47,7 @@ test('reward payout cannot finalize when provider sync has not completed after w
     },
   });
   await assert.rejects(
-    finalizeRewardWeekBatch(weekKey, {
+    finalizeVerifiedRewardWeekBatch(weekKey, {
       db,
       now: closedNow,
       env: {
@@ -75,7 +75,7 @@ test('reward payout cannot finalize a week with reconciliation integrity block',
     },
   });
   await assert.rejects(
-    finalizeRewardWeekBatch(weekKey, {
+    finalizeVerifiedRewardWeekBatch(weekKey, {
       db,
       now: closedNow,
       env: {
