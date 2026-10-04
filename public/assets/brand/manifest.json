@@ -1,0 +1,12 @@
+{
+  "brand": "BRANDALBET",
+  "version": 1,
+  "assets": {
+    "primary": "/assets/brand/brandalbet-primary.webp",
+    "compact": "/assets/brand/brandalbet-compact.webp",
+    "iconSquare": "/assets/brand/brandalbet-icon-square.webp",
+    "iconRound": "/assets/brand/brandalbet-icon-round.webp",
+    "light": "/assets/brand/brandalbet-light.webp",
+    "dark": "/assets/brand/brandalbet-dark.webp"
+  }
+}
