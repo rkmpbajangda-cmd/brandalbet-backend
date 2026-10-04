@@ -1,156 +1,192 @@
-# brandalbet-backend
+# BrandalBet Backend
 
-Secure server-side backend API for Brandalbet.
+Secure server-side backend API untuk BrandalBet.
 
-Repository ini berdiri sendiri untuk backend Netlify Functions + Firebase Admin.
-Tahap autentikasi backend menyediakan health-check publik serta endpoint protected
-`me`, `backoffice-health`, dan bootstrap superadmin yang fail-closed. Firebase Admin
-hanya diinisialisasi saat endpoint authenticated memerlukannya dan semua credential
-tetap berasal dari Netlify Environment Variables. Wallet, payment, dan integrasi game
-belum diimplementasikan. Prinsip keamanan ada di `docs/security.md`.
+## Runtime utama
 
-## Runtime dan dependency
+**Cloudflare Workers adalah runtime production/staging utama.** Repository tetap
+mempertahankan handler bergaya Netlify sebagai kontrak internal/portable adapter,
+tetapi deployment utama menggunakan `cloudflare-worker.js` + `wrangler.jsonc`.
 
-- Node.js **22.x**, ditetapkan melalui `.nvmrc`, `package.json`, dan `netlify.toml`.
-- `firebase-admin`: SDK backend; belum digunakan oleh endpoint health.
-- `netlify-cli`: development lokal.
-- `@netlify/zip-it-and-ship-it`: validasi bundling function dengan esbuild.
-- `package-lock.json`: versi dependency terkunci untuk `npm ci`.
+- Worker entrypoint: `cloudflare-worker.js`
+- API adapter: `deno-server.js`
+- Production branch: `main`
+- Node.js compatibility: melalui Cloudflare compatibility date `2026-10-03`
+- Firebase Admin: server-side only
+- Firestore: dipaksa menggunakan HTTP/1.1 REST transport dengan
+  `initializeFirestore(..., { preferRest: true })`; backend tidak memakai
+  `onSnapshot()` sehingga tidak bergantung pada gRPC transport.
 
-## Struktur
+`wrangler.jsonc` adalah source of truth konfigurasi Cloudflare. Secret tidak boleh
+berada di file tersebut.
+
+## Cloudflare secrets wajib
+
+Nilai berikut harus disimpan sebagai **Cloudflare Secret**, bukan plaintext variable:
 
 ```text
-brandalbet-backend/
-├── .gitignore
-├── .nvmrc
-├── README.md
-├── package.json
-├── package-lock.json
-├── netlify.toml
-├── netlify/functions/
-│   ├── health.js
-│   ├── me.js
-│   ├── backoffice-health.js
-│   ├── bootstrap-superadmin.js
-│   └── _shared/
-├── src/
-│   ├── config/
-│   ├── auth/authenticate.js
-│   ├── rbac/roles.js
-│   ├── firebase/admin.js
-│   ├── audit/logger.js
-│   ├── security/cors.js
-│   ├── utils/http.js
-│   ├── wallet/
-│   ├── ledger/
-│   ├── payment/
-│   └── game/
-├── scripts/
-│   ├── check.mjs
-│   └── build.mjs
-├── tests/
-│   ├── health.test.js
-│   └── auth-rbac.test.js
-├── docs/security.md
-└── public/.gitkeep
+FIREBASE_SERVICE_ACCOUNT_JSON
+GOLDSLOTPALASE_API_TOKEN
 ```
 
-Folder kosong disimpan dengan `.gitkeep`. `public/` adalah direktori publish
-kosong agar source backend tidak menjadi file statis yang dapat diunduh.
+Keduanya dideklarasikan melalui `secrets.required`, sehingga Wrangler menolak deploy
+jika secret wajib belum terpasang.
 
-## Local development
+Secret berikut dibutuhkan ketika modul payment nyata diaktifkan:
 
-Gunakan Node.js 22 (misalnya `nvm install` lalu `nvm use`):
+```text
+PAYMENT_CONFIG_ENCRYPTION_KEY
+```
+
+Jangan commit `.env`, `.dev.vars`, service-account JSON, private key, API token,
+payment credential, atau credential lain ke Git.
+
+## Konfigurasi non-secret Cloudflare
+
+Konfigurasi aman yang versioned antara lain:
+
+```text
+FIREBASE_PROJECT_ID=brandal-bet
+ALLOWED_MEMBER_ORIGINS=https://brandalbet.blogspot.com
+ALLOWED_BACKOFFICE_ORIGINS=https://backoffic.blogspot.com
+MEMBER_SINGLE_SESSION_ENABLED=true
+BOOTSTRAP_ENABLED=false
+GOLDSLOTPALASE_API_URL=https://agent.goldslotpalase.com
+GOLDSLOTPALASE_TRANSFER_ENABLED=false
+GOLDSLOTPALASE_BALANCE_RECONCILIATION_ENABLED=false
+```
+
+Transfer Goldslot dan balance reconciliation sengaja **fail-closed**. Jangan aktifkan
+transfer sampai currency/IDR scale dan prosedur reconciliation dibuktikan melalui
+staging provider.
+
+## Build, test, dan deploy
+
+Gunakan Node.js 22:
 
 ```sh
 npm ci
 npm run validate
-npm run dev
 ```
 
-Buka `http://localhost:8888/.netlify/functions/health` atau jalankan:
+`npm run validate` menjalankan:
+
+1. syntax validation;
+2. seluruh Node tests;
+3. bundling validation handler lama;
+4. Cloudflare configuration validation;
+5. Wrangler dry-run bundle menggunakan versi Wrangler yang dipin pada script.
+
+Perintah penting:
 
 ```sh
-curl --fail http://localhost:8888/.netlify/functions/health
+npm run build
+npm run bundle:cloudflare
+npm run deploy:cloudflare
 ```
 
-`GET` menghasilkan status 200 dan JSON:
+`npm run build` sengaja ringan untuk Cloudflare Builds. `npm run bundle:cloudflare`
+melakukan Wrangler dry-run dan dipakai CI untuk menangkap dependency/bundling error
+sebelum deployment. `npm run deploy:cloudflare` adalah jalur deploy reproducible.
+
+## Health checks
+
+Worker-level liveness:
+
+```text
+GET /health
+```
+
+Expected:
+
+```json
+{"ok":true,"service":"brandalbet-backend","runtime":"cloudflare-workers"}
+```
+
+Adapter/API liveness:
+
+```text
+GET /api/health
+```
+
+Expected:
 
 ```json
 {"ok":true,"service":"brandalbet-backend"}
 ```
 
-Metode lain menghasilkan 405. Health tidak memerlukan environment variable atau
-koneksi Firebase, dan hanya menunjukkan proses API hidup, bukan kesiapan database.
-`npm run validate` menjalankan syntax check, contract tests, dan bundling function.
-Output bundling validasi berada di `.netlify/validation-functions/` dan diabaikan Git.
+`/health` hanya membuktikan entrypoint Worker hidup. `/api/health` juga membuktikan
+adapter dan handler API dapat dimuat. Firebase/Auth/Firestore tetap harus diverifikasi
+melalui protected endpoint dengan ID Token yang valid setelah deployment.
 
-## Deploy ke Netlify
+## API routing
 
-1. Import repository GitHub **private** `brandalbet-backend` ke Netlify dengan
-   akses hanya ke repository ini. Gunakan production branch `main`.
-2. Gunakan konfigurasi dari `netlify.toml`: build `npm run validate`, publish
-   `public`, functions `netlify/functions`, dan Node.js 22.
-3. Pastikan runtime Functions mengikuti Node.js 22 dari build dan tidak ada
-   pengaturan runtime situs lama yang menimpanya.
-4. Deploy, lalu akses `/.netlify/functions/health` pada URL situs Netlify.
-5. Verifikasi status 200 dan response JSON persis seperti di atas.
+Cloudflare menerima alias `/api/<function>` dan kompatibilitas path lama
+`/.netlify/functions/<function>`. Router menggunakan **lazy loading per handler** agar
+satu dependency/integrasi yang bermasalah tidak menjatuhkan endpoint lain.
 
-Health dapat dideploy tanpa Firebase. Protected endpoint fail closed sampai Firebase
-Admin dan origin allowlist dikonfigurasi di Netlify Environment Variables.
+Endpoint utama meliputi:
 
-Referensi konfigurasi: https://docs.netlify.com/build/functions/configuration/
+- public/member: `health`, `games`, `promotions`, `member-config`;
+- authenticated member: `me`, profile/onboarding, bank account, wallet,
+  transactions, member session/device session;
+- game: `game-launch`, `game-wallet-status`, `game-wallet-transfer`,
+  `game-wallet-reconcile`;
+- backoffice: dashboard, members, finance, ledger, audit, game catalog,
+  provider, readiness, reports, promotions, payment connections, website settings,
+  dan master control.
 
-## Security principles
+## Security model
 
-- Firebase Admin hanya server-side.
-- Endpoint authenticated memverifikasi Firebase ID Token dengan revocation check.
-- RBAC berdasarkan Firebase Custom Claims dengan role `member`, `operator`,
-  `finance`, `admin`, `superadmin`; default deny dan least privilege.
-- Backoffice memerlukan `backoffice=true` **dan** role backoffice yang dikenal.
-- Tidak ada UID admin yang di-hardcode sebagai bypass atau satu-satunya keamanan.
-- Wallet mutation hanya server-side; ledger append-only dan immutable.
-- Payment webhook dan game callback wajib memiliki verifikasi signature/auth,
-  replay protection, dan idempotency yang durable sebelum diaktifkan.
-- Protected access menghasilkan structured security audit log tanpa token/private key.
-- Secret hanya dari Netlify Environment Variables / managed secret storage.
-- Origin allowlist bukan pengganti authentication/authorization.
+- Firebase ID Token diverifikasi server-side dengan revocation check.
+- Backoffice memakai Firebase Custom Claims + RBAC.
+- Firestore client rules adalah deny-by-default; privileged write/read dilakukan
+  server-side melalui Admin credential.
+- CORS authenticated API memakai exact origin allowlist, bukan wildcard.
+- Single-device session aktif dan session identifier hanya disimpan sebagai hash.
+- Wallet adalah server-authoritative.
+- Ledger dan provider transfer memakai durable idempotency/state machine.
+- Game launch memiliki process-local guard + distributed Firestore lease untuk
+  mencegah duplicate launch antar instance.
+- Provider token, Firebase credential, dan payment secret tidak dikirim ke Blogger.
+- Bootstrap superadmin default OFF dan build validation menolak source config yang
+  mengaktifkannya.
+- Request body adapter dibatasi 128 KiB dan launch URL provider wajib HTTPS.
 
-Kontrol transaksi, wallet, payment, webhook, dan game provider belum diimplementasikan.
+## GoldslotPalase call policy
 
-## Environment variable names
+Katalog provider tidak boleh dipanggil pada setiap reload/member request.
 
-Nama saja, tanpa nilai. Health-check publik tidak memerlukan nilai ini:
+- Member `GET /games` membaca persistent snapshot lokal.
+- Backoffice catalog GET membaca snapshot lokal.
+- Fetch katalog provider hanya melalui explicit admin sync.
+- Provider health call hanya melalui explicit admin check.
+- Game launch adalah realtime saat member menekan Play.
+- Financial/provider balance/transfer tidak memakai cache multi-hari.
+- Transfer mutation tidak di-retry secara buta setelah response ambigu.
 
-```text
-FIREBASE_PROJECT_ID
-FIREBASE_CLIENT_EMAIL
-FIREBASE_PRIVATE_KEY
-ALLOWED_MEMBER_ORIGINS
-ALLOWED_BACKOFFICE_ORIGINS
-BOOTSTRAP_SUPERADMIN_UID
-BOOTSTRAP_ENABLED
-```
+## Production readiness
 
-Masukkan nilai melalui pengaturan environment Netlify atau secret storage;
-jangan menuliskannya di README, source, `netlify.toml`, test, log, atau GitHub.
+Source mempunyai foundation untuk auth, RBAC, member, wallet/ledger, persistent game
+catalog, protected game launch, provider transfer state machine, backoffice, dan
+multi-payment connection manager.
 
-## Larangan secret di Git
+Namun **`readyForRealMoney` tetap sengaja `false`** sampai semua bukti staging/live
+berikut PASS:
 
-Jangan membuat atau commit `.env`, password, token, API key, Firebase private key,
-service-account JSON, payment/game-provider/webhook secret, atau credential lain.
-`.gitignore` menolak pola secret yang diminta. Pengecualian `.env.example` hanya
-tersedia sesuai konfigurasi; file tersebut tidak dibuat pada tahap ini.
-`.gitignore` bukan secret scanner: selalu periksa staged diff sebelum commit dan
-jangan gunakan `git add -f` untuk melewati pengabaian file sensitif.
+- Firebase Auth + Firestore pada runtime Cloudflare;
+- authenticated Goldslot agent connectivity;
+- provider currency dan IDR scale;
+- catalog/player/launch terhadap agent nyata;
+- controlled transfer in/out/out-all dan ambiguous reconciliation;
+- concrete payment adapter + callback verification + deposit settlement + withdrawal;
+- browser end-to-end member dan backoffice;
+- backup/restore serta operational monitoring.
 
-Repository wajib PRIVATE, default branch `main`, dan tanpa file lisensi.
-`private: true` pada package mencegah publikasi npm; privasi GitHub tetap harus
-dikonfirmasi tersendiri melalui pengaturan repository.
+Tidak boleh mengubah gate finansial hanya untuk membuat demo terlihat aktif.
 
-## Protected endpoint contracts
+## Legacy portability
 
-- `GET /.netlify/functions/me` memerlukan Firebase ID Token dan hanya mengembalikan `uid`, role yang dikenal, serta status backoffice.
-- `GET /.netlify/functions/backoffice-health` memerlukan `backoffice=true` dan role `operator`, `finance`, `admin`, atau `superadmin`.
-- `POST /.netlify/functions/bootstrap-superadmin` hanya aktif saat `BOOTSTRAP_ENABLED=true`, UID token sama dengan `BOOTSTRAP_SUPERADMIN_UID`, dan harus dinonaktifkan kembali setelah bootstrap berhasil.
-- Missing/invalid token fail closed. Credential tidak pernah dikembalikan dalam response atau log.
+Folder `netlify/functions/` tetap digunakan sebagai handler module layer dan untuk
+validation portability. Netlify/Deno bukan lagi source of truth runtime BrandalBet.
+Perubahan baru harus diuji terhadap Cloudflare Worker terlebih dahulu.
