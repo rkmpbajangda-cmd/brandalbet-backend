@@ -18,9 +18,12 @@ export function extractBearerToken(headers = {}) {
   return match[1];
 }
 
-async function defaultVerifyIdToken(token) {
+async function defaultVerifyIdToken(token, env) {
   const { getAdminAuth } = await import('../firebase/admin.js');
-  return getAdminAuth().verifyIdToken(token, true);
+  // Cloudflare bindings are request-scoped and are not guaranteed to be
+  // mirrored into process.env. Always pass the Worker env explicitly so the
+  // Firebase Admin verifier uses FIREBASE_SERVICE_ACCOUNT_JSON from Cloudflare.
+  return getAdminAuth(env).verifyIdToken(token, true);
 }
 
 export async function authenticateRequest(event, {
@@ -32,7 +35,9 @@ export async function authenticateRequest(event, {
   const token = extractBearerToken(event?.headers ?? {});
   let decoded;
   try {
-    decoded = await verifyIdToken(token);
+    // Custom verifiers used by tests can ignore the second argument; the
+    // production verifier consumes it to initialize Firebase Admin correctly.
+    decoded = await verifyIdToken(token, env);
     if (!decoded || typeof decoded.uid !== 'string' || decoded.uid.length === 0) {
       throw new AuthHttpError(401, 'invalid_id_token');
     }
