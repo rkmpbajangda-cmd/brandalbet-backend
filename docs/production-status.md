@@ -1,151 +1,163 @@
-# BrandalBet — status integrasi, 2 Oktober 2026
+# BrandalBet — status integrasi, 4 Oktober 2026
 
 Repository: `rkmpbajangda-cmd/brandalbet-backend`  
-Backend canonical: `https://playful-biscuit-33cfee.netlify.app`  
-Provider game: **GoldslotPalase saja**.  
-Working branch: `fix/goldslotpalase-integration-foundation-20261002`.
+Runtime canonical: **Cloudflare Workers**  
+Production branch: `main`  
+Provider game: **GoldslotPalase saja**
 
-Dokumen ini sengaja membedakan **source-complete**, **staging verified**, dan **production verified**. Tidak ada fitur finansial yang dinyatakan siap hanya karena source sudah tersedia.
+Dokumen ini membedakan **source-complete**, **runtime verified**, **staging verified**,
+dan **production/real-money verified**. Tidak ada fitur finansial yang dinyatakan siap
+hanya karena source atau deployment sudah tersedia.
 
-## Source yang sudah tersedia
+## Cloudflare runtime foundation
 
-### Member / wallet
+- Entrypoint: `cloudflare-worker.js`.
+- API adapter: `deno-server.js`.
+- Router menggunakan lazy loading per endpoint.
+- `/health` memverifikasi Worker entrypoint tanpa memuat backend graph penuh.
+- `/api/health` memverifikasi adapter + health handler.
+- Compatibility date `2026-10-03` menggunakan Node.js compatibility default modern.
+- `process.env` digunakan oleh handler lama dan tersedia pada runtime Cloudflare dengan
+  compatibility date tersebut.
+- Firestore Admin dipaksa menggunakan HTTP/1.1 REST transport melalui
+  `initializeFirestore(..., { preferRest: true })`; source tidak menggunakan
+  `onSnapshot()` sehingga backend tidak membutuhkan Firestore gRPC listener.
+- Cloudflare config menyimpan konfigurasi non-secret saja.
+- `FIREBASE_SERVICE_ACCOUNT_JSON` dan `GOLDSLOTPALASE_API_TOKEN` dideklarasikan
+  sebagai required secrets.
+- Cloudflare build validation menolak accidental plaintext secret, bootstrap aktif,
+  transfer aktif, atau reconciliation aktif di source config.
+- CI melakukan syntax tests, Node tests, legacy handler bundling, Cloudflare validation,
+  dan Wrangler dry-run bundle sebelum source dianggap deployable.
 
-- Firebase Admin ID-token verification server-side.
-- RBAC backoffice.
-- Member profile, onboarding, rekening bank/e-wallet masked, session aggregate.
+## Member / auth / wallet source
+
+- Firebase Admin ID-token verification server-side dengan revocation check.
+- RBAC backoffice berbasis Custom Claims.
+- CORS exact allowlist untuk member/backoffice.
+- Firestore client rules deny-by-default.
+- Member profile, onboarding, rekening bank/e-wallet masked, dan session aggregate.
+- Single-device member session dengan session hash dan replacement semantics.
 - Wallet IDR server-authoritative dengan validasi integritas.
-- Ledger immutable/idempotent foundation dan riwayat 50 transaksi terakhir milik UID token.
+- Ledger immutable/idempotent foundation dan transaction history milik UID token.
 - Browser tidak memiliki endpoint untuk menambah saldo secara langsung.
 
-### GoldslotPalase
+## GoldslotPalase source
 
-Kontrak canonical proyek adalah `PROVIDER-02-INTEGRATION-SPEC-v1.5.md`.
+Source menyediakan:
 
-Source sekarang memiliki:
-
-- base URL tetap `https://agent.goldslotpalase.com`;
-- Bearer token hanya server-side;
-- redirect ditolak, timeout dibatasi, response dibatasi 2 MB;
-- tidak ada retry otomatis untuk mutasi provider;
-- envelope sukses menerima integer `result` atau integer `code`; konflik keduanya ditolak;
-- explicit provider rejection diperlakukan definitif, sedangkan timeout/response ambigu tetap fail-closed;
-- agent info, global Agent RTP, callback test;
-- provider catalog, all-games catalog, games-by-provider;
-- deterministic member → provider username mapping;
-- provider user create/re-resolve;
+- base URL `https://agent.goldslotpalase.com`;
+- Bearer token server-side only;
+- timeout/response limits dan redirect rejection;
+- tidak ada blind retry untuk provider mutation;
+- agent info/provider health explicit check;
+- persistent provider catalog snapshot;
+- member game catalog membaca snapshot lokal, bukan provider per reload;
+- admin explicit catalog sync sebagai jalur normal provider catalog fetch;
+- deterministic member → provider player mapping dengan cache/revalidation;
 - protected member game launch;
 - validasi launch URL HTTPS;
-- launch URL ditandai one-time dengan TTL provider 10 menit;
-- per-launch RTP override **tidak dikirim** oleh member workflow;
-- transfer-wallet deposit / withdraw / withdraw-all menggunakan payload provider yang terdokumentasi;
-- transfer state machine `prepared → succeeded|failed|ambiguous`;
-- transfer-in mereservasi `availableMinor` sebelum request provider;
-- provider success baru diselesaikan ke ledger/wallet secara atomik;
-- explicit rejection melepas hold;
-- response ambigu tidak di-retry dan tidak dikredit/debit ulang;
-- settlement lokal yang gagal setelah provider success dipaksa `ambiguous`, bukan dianggap gagal;
-- satu active provider transfer per member melalui `providerPlayers.activeTransferId`;
-- duplicate request ID tidak mengirim ulang mutasi provider.
+- local + distributed Firestore launch guard untuk duplicate/concurrent launch;
+- transfer-wallet deposit / withdraw / withdraw-all state machine;
+- state `prepared → succeeded|failed|ambiguous`;
+- durable request idempotency;
+- satu active provider transfer per member;
+- atomic local wallet/ledger settlement;
+- ambiguous provider response tidak di-retry secara buta;
+- balance/reconciliation gate fail-closed.
 
-### Game catalog / member API
+## Game-call policy
 
-Endpoint source:
+- Member reload, search, filter, scroll, dan navigation tidak boleh fetch provider catalog.
+- `GET /api/games` membaca stored snapshot.
+- Backoffice Game Catalog GET membaca stored snapshot.
+- Catalog provider call hanya melalui explicit admin sync.
+- Provider health call hanya melalui explicit admin check.
+- Launch provider call hanya ketika member menekan Play.
+- Player mapping tidak dibuat ulang pada setiap launch.
+- Financial balance/transfer tetap realtime/authoritative dan tidak memakai cache 7 hari.
 
-- `GET /.netlify/functions/games`
-- `POST /.netlify/functions/game-launch`
-- `POST /.netlify/functions/game-wallet-transfer`
-- `POST /.netlify/functions/game-wallet-reconcile`
+## Multi-payment
 
-Katalog hanya mengeluarkan field yang disanitasi. URL gambar hanya HTTPS. Game disabled/launch-disabled tidak dianggap aktif.
+Source mempunyai multi-payment connection manager:
 
-### Multi-payment
+- sandbox dan production connection dipisahkan;
+- credential values terenkripsi server-side;
+- browser tidak menerima raw credential;
+- optimistic revision mencegah overwrite antar admin.
 
-- Satu manager Payment Gateway untuk banyak provider/merchant.
-- Sandbox dan production connection dipisahkan.
-- Maksimum 30 credential fields per koneksi.
-- Credential values disimpan encrypted AES-256-GCM server-side.
-- Browser hanya menerima nama field/status, bukan credential value.
-- Provider/mode existing tidak dapat dipindahkan ke koneksi lain lewat edit.
-- Optimistic revision mencegah admin saling menimpa perubahan.
-- Registry adapter pembayaran nyata masih **kosong**; mengisi merchant ID/private key belum mengaktifkan deposit/withdraw.
+Namun registry adapter pembayaran nyata masih **belum lengkap**. Merchant ID/private
+key saja tidak cukup untuk membuat universal gateway. Adapter konkret harus mengikuti
+kontrak provider tertentu.
 
-## Environment yang dibaca
+## Environment / secret model
 
-| Variable | Kegunaan |
-|---|---|
-| `FIREBASE_PROJECT_ID` | Firebase project |
-| `FIREBASE_CLIENT_EMAIL` | Firebase Admin service account |
-| `FIREBASE_PRIVATE_KEY` | Firebase Admin private key, server only |
-| `ALLOWED_MEMBER_ORIGINS` | CORS member |
-| `ALLOWED_BACKOFFICE_ORIGINS` | CORS backoffice |
-| `BOOTSTRAP_ENABLED` | Temporary admin bootstrap switch |
-| `BOOTSTRAP_SUPERADMIN_UID` | UID bootstrap |
-| `GOLDSLOTPALASE_API_TOKEN` | GoldslotPalase Agent API Bearer token |
-| `GOLDSLOTPALASE_TRANSFER_ENABLED` | Explicit provider transfer-wallet activation gate |
-| `GOLDSLOTPALASE_IDR_SCALE` | Must equal `1` only after staging proves provider amount = internal IDR integer unit |
-| `GOLDSLOTPALASE_BALANCE_RECONCILIATION_ENABLED` | Optional balance-only reconciliation gate; keep OFF until staging procedure is proven |
-| `PAYMENT_CONFIG_ENCRYPTION_KEY` | 32-byte base64 master key for encrypted multi-payment configuration |
+### Cloudflare Secret wajib sekarang
+
+```text
+FIREBASE_SERVICE_ACCOUNT_JSON
+GOLDSLOTPALASE_API_TOKEN
+```
+
+### Secret saat payment diaktifkan
+
+```text
+PAYMENT_CONFIG_ENCRYPTION_KEY
+```
+
+### Non-secret config utama
+
+```text
+FIREBASE_PROJECT_ID
+ALLOWED_MEMBER_ORIGINS
+ALLOWED_BACKOFFICE_ORIGINS
+MEMBER_SINGLE_SESSION_ENABLED
+BOOTSTRAP_ENABLED
+GOLDSLOTPALASE_API_URL
+GOLDSLOTPALASE_TRANSFER_ENABLED
+GOLDSLOTPALASE_IDR_SCALE
+GOLDSLOTPALASE_BALANCE_RECONCILIATION_ENABLED
+```
 
 ## Transfer-wallet safety gates
 
-Provider OpenAPI represents money as numeric/double. Internal BrandalBet accounting uses safe integers.
+Provider money contract harus dibuktikan sebelum transfer aktif. Default source:
 
-Therefore transfer wallet remains disabled unless:
+```text
+GOLDSLOTPALASE_TRANSFER_ENABLED=false
+GOLDSLOTPALASE_BALANCE_RECONCILIATION_ENABLED=false
+```
 
-1. `GOLDSLOTPALASE_TRANSFER_ENABLED=true`;
-2. staging proves the agent currency/amount scale is exactly compatible with internal integer IDR;
-3. only then set `GOLDSLOTPALASE_IDR_SCALE=1`.
+`GOLDSLOTPALASE_IDR_SCALE=1` hanya boleh diset setelah staging membuktikan bahwa amount
+provider benar-benar kompatibel 1:1 dengan unit integer IDR internal.
 
-Balance-only reconciliation is **not trusted by default** because concurrent game activity could change provider balance and create a false conclusion. `GOLDSLOTPALASE_BALANCE_RECONCILIATION_ENABLED` must remain false until a staging procedure proves it safe, or exact provider transaction identity reconciliation is implemented.
+## Yang masih harus dibuktikan setelah Cloudflare deploy
 
-## Provider facts retained from v1.5
-
-- API Base URL: `https://agent.goldslotpalase.com`.
-- Bearer authentication.
-- Transfer Wallet differs from website payment-gateway deposit/withdraw.
-- Indonesian language code: `9`.
-- Launch URL: one-time, valid approximately 10 minutes.
-- Global Agent RTP endpoint is documented.
-- Per-launch field accepted by provider is `rtp`, but BrandalBet does not expose ordinary per-member RTP control.
-- Callback auth uses `Callback-Token`.
-- Callback commands documented: authenticate, balance, bet, win, cancel, status.
-- Callback retries: 4 attempts, 5-second interval, provider timeout 15 seconds.
-- Provider callback source-IP list is unavailable.
-- Provider transaction history is short-lived; BrandalBet must persist its own ledger.
-
-## Yang masih harus dibuktikan di staging/live
-
-1. Authenticated `agent/info` from the actual Netlify/runtime network.
-2. GoldslotPalase agent currency and exact integer/decimal scale.
-3. Assigned provider + game catalog response against the real agent.
-4. Provider user mapping and launch against a real staging member.
-5. Transfer in/out/out-all with small controlled staging amounts.
-6. Timeout/ambiguous transfer operational reconciliation.
-7. Firestore rules and indexes applied to the real Firebase project.
-8. Concurrent wallet/ledger behavior using emulator/live contention tests.
-9. Browser end-to-end V39: login, register, onboarding, bank, wallet, game catalog, launch, logout/login again.
-10. App Check / distributed abuse controls / admin MFA / backup-restore / monitoring.
-11. A concrete payment gateway adapter, callback verifier, deposit settlement and withdrawal/disbursement adapter.
-
-## Payment status
-
-Multi-payment configuration is structurally ready, but **no universal payment adapter exists** because payment providers do not share one authentication/signature/callback contract.
-
-Do not invent a generic live adapter from merchant ID/private key alone. Once a concrete gateway is selected, its adapter must implement:
-
-- create payment;
-- signature/authentication;
-- callback verification;
-- idempotency;
-- status query;
-- amount/currency validation;
-- deposit settlement to ledger;
-- withdrawal/disbursement;
-- timeout reconciliation.
+1. `/health` PASS pada Worker production URL.
+2. `/api/health` PASS dan adapter dapat dimuat.
+3. Firebase ID-token verification PASS pada `/api/me` dengan token valid.
+4. Firestore read/write/transaction PASS melalui REST transport Cloudflare.
+5. Backoffice RBAC: member biasa DENIED, admin/superadmin ALLOWED.
+6. Single-device session replacement PASS pada dua perangkat.
+7. `GET /api/games` membaca stored snapshot tanpa provider call.
+8. Explicit Goldslot agent health/check PASS dari network Cloudflare.
+9. Explicit admin catalog sync PASS dan snapshot terbaca oleh member.
+10. Real provider player mapping + controlled game launch PASS.
+11. Provider currency dan exact IDR scale dibuktikan.
+12. Controlled transfer in/out/out-all + ambiguous reconciliation PASS sebelum gate transfer diaktifkan.
+13. Concrete payment adapter, callback verification, deposit settlement, withdrawal/disbursement, dan reconciliation PASS.
+14. End-to-end Blogger member + backoffice PASS terhadap Cloudflare base URL.
+15. Backup/restore dan operational monitoring diuji.
 
 ## Current release status
 
-`readyForRealMoney` intentionally remains **false**.
+- Cloudflare architecture/source: **READY FOR DEPLOYMENT VALIDATION**.
+- Auth/RBAC/session source: **SOURCE COMPLETE, RUNTIME TEST REQUIRED**.
+- Game catalog/launch protection source: **SOURCE COMPLETE, PROVIDER TEST REQUIRED**.
+- Wallet/ledger/provider transfer state machine: **SOURCE COMPLETE, FINANCIAL GATES OFF**.
+- Payment real adapter: **PENDING CONCRETE PROVIDER**.
+- `readyForRealMoney`: **false** by design.
 
-Source now contains the member/game workflows and fail-closed financial state machine, but production activation still requires the staging evidence above. Deploying this code alone does not enable provider transfer or payment transactions.
+Cloudflare deployment yang berhasil tidak otomatis mengubah status finansial menjadi
+production verified. Gate transaksi hanya boleh diaktifkan setelah bukti staging di atas
+PASS dan secret lama/terekspos telah dirotasi.
