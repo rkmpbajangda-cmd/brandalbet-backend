@@ -1,6 +1,6 @@
-import { cert, getApps, initializeApp } from 'firebase-admin/app';
+import { cert, getApp, getApps, initializeApp } from 'firebase-admin/app';
 import { getAuth } from 'firebase-admin/auth';
-import { getFirestore } from 'firebase-admin/firestore';
+import { initializeFirestore } from 'firebase-admin/firestore';
 
 export class FirebaseConfigError extends Error {
   constructor(missing) {
@@ -67,14 +67,21 @@ export function ensureAdminApp(env = process.env) {
       projectId,
     });
   }
+  return getApp();
 }
 
+let firestoreInstance = null;
+
 export function getAdminAuth(env = process.env) {
-  ensureAdminApp(env);
-  return getAuth();
+  return getAuth(ensureAdminApp(env));
 }
 
 export function getAdminDb(env = process.env) {
-  ensureAdminApp(env);
-  return getFirestore();
+  const app = ensureAdminApp(env);
+  if (!firestoreInstance) {
+    // Force HTTP/1.1 REST transport. This avoids gRPC transport assumptions and
+    // is the safer server SDK mode for Cloudflare Workers / edge runtimes.
+    firestoreInstance = initializeFirestore(app, { preferRest: true });
+  }
+  return firestoreInstance;
 }
