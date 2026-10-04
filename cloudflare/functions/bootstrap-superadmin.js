@@ -3,6 +3,8 @@ import { auditSecurityEvent } from '../../src/audit/logger.js';
 import { corsHeaders, CorsError } from '../../src/security/cors.js';
 import { json, empty } from '../../src/utils/http.js';
 
+const FIREBASE_UID_PATTERN = /^[A-Za-z0-9_-]{20,128}$/;
+
 async function defaultGetAdminAuth(env) {
   const { getAdminAuth } = await import('../../src/firebase/admin.js');
   return getAdminAuth(env);
@@ -17,12 +19,18 @@ export function createHandler({ verifyIdToken, getAdminAuth = defaultGetAdminAut
       if (event.httpMethod === 'OPTIONS') return empty(204, cors);
       if (event.httpMethod !== 'POST') return json(405, { ok: false, error: 'method_not_allowed' }, { ...cors, Allow: 'POST, OPTIONS' });
 
-      if (env.BOOTSTRAP_ENABLED !== 'true' || !env.BOOTSTRAP_SUPERADMIN_UID) {
+      if (env.BOOTSTRAP_ENABLED !== 'true') {
         return json(404, { ok: false, error: 'not_found' }, cors);
+      }
+      const bootstrapUid = typeof env.BOOTSTRAP_SUPERADMIN_UID === 'string'
+        ? env.BOOTSTRAP_SUPERADMIN_UID.trim()
+        : '';
+      if (!FIREBASE_UID_PATTERN.test(bootstrapUid)) {
+        return json(503, { ok: false, error: 'bootstrap_superadmin_uid_unconfigured' }, cors);
       }
 
       actor = await authenticateRequest(event, { verifyIdToken, env });
-      if (actor.uid !== env.BOOTSTRAP_SUPERADMIN_UID) {
+      if (actor.uid !== bootstrapUid) {
         auditSecurityEvent({ event, actor, action: 'bootstrap.superadmin', outcome: 'denied' });
         return json(403, { ok: false, error: 'forbidden' }, cors);
       }
