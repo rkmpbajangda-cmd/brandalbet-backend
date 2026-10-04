@@ -6,39 +6,47 @@ import {
   rewardWeekBounds,
 } from './service.js';
 
+const PROVIDER = 'goldslotpalase';
 const PROVIDER_SYNC_STATE_ID = 'goldslotpalase-transactions';
 const SETTLEMENT_LAG_MS = 15 * 60 * 1000;
+
+async function pendingClosedWeekRound(db, bounds) {
+  const snapshot = await db.collection('providerGameRounds')
+    .where('provider', '==', PROVIDER)
+    .where('status', '==', 'pending')
+    .where('lastProviderAtMs', '<', bounds.endMs)
+    .orderBy('lastProviderAtMs', 'asc')
+    .limit(1)
+    .get();
+  return snapshot.empty ? null : snapshot.docs[0].data();
+}
 
 export async function assertVerifiedRewardSource(weekKey, {
   env = process.env,
   db = getAdminDb(env),
 } = {}) {
   const bounds = rewardWeekBounds(weekKey);
-  if (env.REWARDS_PAYOUT_ENABLED !== 'true') {
-    throw new ServiceError('reward_payout_disabled', 409);
-  }
-  if (env.GOLDSLOTPALASE_TRANSACTION_SYNC_ENABLED !== 'true') {
-    throw new ServiceError('reward_source_disabled', 409);
-  }
+  if (env.REWARDS_PAYOUT_ENABLED !== 'true') throw new ServiceError('reward_payout_disabled', 409);
+  if (env.GOLDSLOTPALASE_TRANSACTION_SYNC_ENABLED !== 'true') throw new ServiceError('reward_source_disabled', 409);
 
-  const [integritySnapshot, sourceSnapshot] = await Promise.all([
+  const [integritySnapshot, sourceSnapshot, pendingRound] = await Promise.all([
     db.collection('rewardWeekIntegrity').doc(weekKey).get(),
     db.collection('providerSyncStates').doc(PROVIDER_SYNC_STATE_ID).get(),
+    pendingClosedWeekRound(db, bounds),
   ]);
 
   const integrity = integritySnapshot.exists ? integritySnapshot.data() : null;
-  if (integrity?.status === 'blocked') {
-    throw new ServiceError('reward_week_integrity_blocked', 409);
-  }
+  if (integrity?.status === 'blocked') throw new ServiceError('reward_week_integrity_blocked', 409);
 
   const source = sourceSnapshot.exists ? sourceSnapshot.data() : null;
   const requiredSuccessAtMs = bounds.endMs + SETTLEMENT_LAG_MS;
   const sourceReady = source?.status === 'ready'
     && Number.isSafeInteger(source?.lastSuccessAtMs)
     && source.lastSuccessAtMs >= requiredSuccessAtMs
-    && source?.hasMore !== true;
+    && source?.hasMore !== true
+    && pendingRound == null;
 
-  if (!sourceReady) throw new ServiceError('reward_source_not_ready', 409);
+  if (!sourceReady) throw new ServiceError(pendingRound ? 'reward_rounds_not_finalized' : 'reward_source_not_ready', 409);
 
   return Object.freeze({
     bounds,
@@ -64,9 +72,10 @@ export async function verifiedBackofficeRewardOverview(actor, event, {
 } = {}) {
   const base = await backofficeRewardOverview(actor, event, { db, now });
   const weekKey = base.week.weekKey;
-  const [integritySnapshot, sourceSnapshot] = await Promise.all([
+  const [integritySnapshot, sourceSnapshot, pendingRound] = await Promise.all([
     db.collection('rewardWeekIntegrity').doc(weekKey).get(),
     db.collection('providerSyncStates').doc(PROVIDER_SYNC_STATE_ID).get(),
+    pendingClosedWeekRound(db, base.week),
   ]);
   const integrity = integritySnapshot.exists ? integritySnapshot.data() : { weekKey, status: 'clear' };
   const source = sourceSnapshot.exists ? sourceSnapshot.data() : { status: 'not_initialized' };
@@ -76,13 +85,15 @@ export async function verifiedBackofficeRewardOverview(actor, event, {
     && Number.isSafeInteger(source?.lastSuccessAtMs)
     && source.lastSuccessAtMs >= requiredSuccessAtMs
     && source?.hasMore !== true
-    && integrity?.status !== 'blocked';
+    && integrity?.status !== 'blocked'
+    && pendingRound == null;
 
   return {
     ...base,
     payoutEnabled: env.REWARDS_PAYOUT_ENABLED === 'true',
     transactionSyncEnabled: env.GOLDSLOTPALASE_TRANSACTION_SYNC_ENABLED === 'true',
     sourceReady,
+    pendingClosedWeekRound: pendingRound != null,
     sourceReadyAfter: new Date(requiredSuccessAtMs).toISOString(),
     source,
     integrity,
