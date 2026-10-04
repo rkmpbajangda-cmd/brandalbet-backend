@@ -25,6 +25,14 @@ async function runProviderTransactionSync(env) {
   return syncGoldslotProviderTransactions({ db: getAdminDb(env), env });
 }
 
+async function runProviderRoundFinalizer(env) {
+  const [{ finalizeReadyGoldslotRounds }, { getAdminDb }] = await Promise.all([
+    import('./src/game/provider-ledger.js'),
+    import('./src/firebase/admin.js'),
+  ]);
+  return finalizeReadyGoldslotRounds({ db: getAdminDb(env) });
+}
+
 async function runWeeklyRewards(env) {
   if (env.REWARDS_PAYOUT_ENABLED !== 'true') {
     return { status: 'disabled', weekKey: null, processed: 0 };
@@ -47,17 +55,9 @@ async function runWeeklyRewards(env) {
   });
 }
 
-/**
- * Cloudflare Workers entrypoint.
- *
- * Keep startup scope deliberately small. The API router and individual
- * endpoint handlers are loaded lazily. Runtime bindings are passed explicitly
- * so secrets and variables do not depend solely on process.env compatibility.
- */
 export default {
   async fetch(request, env, ctx) {
     void ctx;
-
     const url = new URL(request.url);
     if (url.pathname === '/' || url.pathname === '/health') return rootResponse();
 
@@ -70,10 +70,7 @@ export default {
         name: error?.name || 'Error',
         message: typeof error?.message === 'string' ? error.message.slice(0, 300) : 'unknown',
       }));
-      return json(503, {
-        ok: false,
-        error: 'backend_router_unavailable',
-      });
+      return json(503, { ok: false, error: 'backend_router_unavailable' });
     }
   },
 
@@ -87,14 +84,28 @@ export default {
           provider: result.provider,
           status: result.status,
           processed: result.processed,
+          roundWrites: result.roundWrites,
           lastId: result.lastId,
           hasMore: result.hasMore === true,
         }));
       }).catch(error => {
-        console.error(JSON.stringify({
-          event: 'provider_transaction_sync_failed',
-          code: typeof error?.code === 'string' ? error.code : 'internal_error',
+        console.error(JSON.stringify({ event: 'provider_transaction_sync_failed', code: error?.code ?? 'internal_error' }));
+        throw error;
+      }));
+      return;
+    }
+
+    if (cron === '15,45 * * * *') {
+      ctx.waitUntil(runProviderRoundFinalizer(env).then(result => {
+        console.log(JSON.stringify({
+          event: 'provider_round_finalizer_complete',
+          status: result.status,
+          finalized: result.finalized,
+          cancelled: result.cancelled,
+          memberBatches: result.memberBatches,
         }));
+      }).catch(error => {
+        console.error(JSON.stringify({ event: 'provider_round_finalizer_failed', code: error?.code ?? 'internal_error' }));
         throw error;
       }));
       return;
@@ -109,10 +120,7 @@ export default {
           processed: result.processed,
         }));
       }).catch(error => {
-        console.error(JSON.stringify({
-          event: 'weekly_rewards_job_failed',
-          code: typeof error?.code === 'string' ? error.code : 'internal_error',
-        }));
+        console.error(JSON.stringify({ event: 'weekly_rewards_job_failed', code: error?.code ?? 'internal_error' }));
         throw error;
       }));
     }

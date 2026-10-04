@@ -3,9 +3,12 @@ import assert from 'node:assert/strict';
 import { transactionDb } from './helpers/transaction-db.js';
 import {
   GOLDSLOT_TRANSACTION_TYPES,
+  PROVIDER_LEDGER_STORAGE_POLICY,
   applyGoldslotTransactionToRound,
+  finalizeReadyGoldslotRounds,
   goldslotMoneyToMinor,
   ingestGoldslotProviderTransaction,
+  ingestGoldslotProviderTransactionBatch,
   normalizeGoldslotTransaction,
   syncGoldslotProviderTransactions,
 } from '../src/game/provider-ledger.js';
@@ -30,6 +33,12 @@ function rawTransaction(overrides = {}) {
     ...overrides,
   };
 }
+
+test('free-tier storage policy never persists raw provider transaction history', () => {
+  assert.equal(PROVIDER_LEDGER_STORAGE_POLICY.rawTransactionsPersisted, false);
+  assert.equal(PROVIDER_LEDGER_STORAGE_POLICY.pendingRoundsOnly, true);
+  assert.equal(PROVIDER_LEDGER_STORAGE_POLICY.completedRoundsDeletedAfterAggregation, true);
+});
 
 test('provider money conversion is exact and requires an explicitly verified scale', () => {
   assert.equal(goldslotMoneyToMinor('125.50', { GOLDSLOTPALASE_IDR_SCALE: '100' }), 12550);
@@ -76,7 +85,7 @@ test('round accumulator treats BetCancel as reversal and BonusCall as win', () =
   assert.equal(round.status, 'pending');
 });
 
-test('provider transaction ingestion is idempotent and builds one immutable round aggregate', async () => {
+test('single transaction ingestion is replay-safe without a raw transaction document', async () => {
   const db = transactionDb();
   const resolveUid = async () => 'member-1';
   const bet = rawTransaction();
@@ -85,11 +94,11 @@ test('provider transaction ingestion is idempotent and builds one immutable roun
   assert.equal(first.duplicate, false);
   assert.equal(replay.duplicate, true);
 
-  const providerTransactions = db.entries().filter(([path]) => path.startsWith('providerTransactions/'));
+  assert.equal(db.entries().filter(([path]) => path.startsWith('providerTransactions/')).length, 0);
   const providerRounds = db.entries().filter(([path]) => path.startsWith('providerGameRounds/'));
-  assert.equal(providerTransactions.length, 1);
   assert.equal(providerRounds.length, 1);
   assert.equal(providerRounds[0][1].effectiveBetMinor, 100000);
+  assert.equal(Object.keys(providerRounds[0][1].eventDigests).length, 1);
 
   await assert.rejects(
     ingestGoldslotProviderTransaction({ ...bet, trans_amount: 120000 }, { db, env, resolveUid }),
@@ -97,7 +106,26 @@ test('provider transaction ingestion is idempotent and builds one immutable roun
   );
 });
 
-test('deposit and withdraw history are retained but never marked reward eligible', async () => {
+test('Bet and Win from one sync page compact into one pending round write', async () => {
+  const db = transactionDb();
+  const resolveUid = async () => 'member-1';
+  const result = await ingestGoldslotProviderTransactionBatch([
+    rawTransaction({ trans_id: 3001, trans_type: GOLDSLOT_TRANSACTION_TYPES.BET, trans_amount: 100000 }),
+    rawTransaction({ trans_id: 3002, trans_type: GOLDSLOT_TRANSACTION_TYPES.WIN, trans_amount: 60000, balance: 960000 }),
+  ], { db, env, resolveUid });
+
+  assert.equal(result.consumed, 2);
+  assert.equal(result.roundWrites, 1);
+  assert.equal(result.ignoredNonGame, 0);
+  const rounds = db.entries().filter(([path]) => path.startsWith('providerGameRounds/'));
+  assert.equal(rounds.length, 1);
+  assert.equal(rounds[0][1].effectiveBetMinor, 100000);
+  assert.equal(rounds[0][1].winAmountMinor, 60000);
+  assert.equal(rounds[0][1].hasSettlement, true);
+  assert.equal(Object.keys(rounds[0][1].eventDigests).length, 2);
+});
+
+test('deposit and withdraw provider events are ignored for rewards and consume zero durable storage', async () => {
   const db = transactionDb();
   const resolveUid = async () => 'member-1';
   const deposit = rawTransaction({
@@ -108,10 +136,43 @@ test('deposit and withdraw history are retained but never marked reward eligible
   });
   const result = await ingestGoldslotProviderTransaction(deposit, { db, env, resolveUid });
   assert.equal(result.ignoredForRewards, true);
-  const rows = db.entries().filter(([path]) => path.startsWith('providerTransactions/'));
-  assert.equal(rows.length, 1);
-  assert.equal(rows[0][1].rewardEligibleType, false);
+  assert.equal(result.persisted, false);
+  assert.equal(db.entries().filter(([path]) => path.startsWith('providerTransactions/')).length, 0);
   assert.equal(db.entries().filter(([path]) => path.startsWith('providerGameRounds/')).length, 0);
+});
+
+test('round finalizer aggregates multiple settled rounds once and deletes temporary round documents', async () => {
+  const now = Date.parse('2026-10-05T01:00:00.000Z');
+  const old = now - 60 * 60 * 1000;
+  const db = transactionDb({
+    'providerSyncStates/goldslotpalase-transactions': {
+      provider: 'goldslotpalase', status: 'ready', lastId: 5000, lastSuccessAtMs: now, hasMore: false,
+    },
+    'users/member-1': { uid: 'member-1' },
+    'wallets/member-1': { uid: 'member-1', currency: 'IDR', balanceMinor: 1000000, availableMinor: 1000000, rewardLockedMinor: 0, status: 'active' },
+    'providerGameRounds/r1': {
+      provider: 'goldslotpalase', uid: 'member-1', userCode: 501, roundId: 'r1', providerId: 10,
+      gameSymbol: 'slot-test', effectiveBetMinor: 100000, winAmountMinor: 60000,
+      status: 'pending', hasSettlement: true, anomaly: false, lastProviderAtMs: old, maxTransId: 4001,
+    },
+    'providerGameRounds/r2': {
+      provider: 'goldslotpalase', uid: 'member-1', userCode: 501, roundId: 'r2', providerId: 10,
+      gameSymbol: 'slot-test', effectiveBetMinor: 200000, winAmountMinor: 50000,
+      status: 'pending', hasSettlement: true, anomaly: false, lastProviderAtMs: old + 1000, maxTransId: 4002,
+    },
+  });
+
+  const result = await finalizeReadyGoldslotRounds({ db, now });
+  assert.equal(result.finalized, 2);
+  assert.equal(result.memberBatches, 1);
+  assert.equal(db.read('providerGameRounds/r1'), undefined);
+  assert.equal(db.read('providerGameRounds/r2'), undefined);
+  const aggregates = db.entries().filter(([path]) => path.startsWith('rewardWeeklyMembers/'));
+  assert.equal(aggregates.length, 1);
+  assert.equal(aggregates[0][1].betAmountMinor, 300000);
+  assert.equal(aggregates[0][1].winAmountMinor, 110000);
+  assert.equal(aggregates[0][1].roundCount, 2);
+  assert.equal(db.entries().filter(([path]) => path.startsWith('settledGameRounds/')).length, 0);
 });
 
 test('scheduled provider sync is fail-closed while transaction sync is disabled', async () => {
