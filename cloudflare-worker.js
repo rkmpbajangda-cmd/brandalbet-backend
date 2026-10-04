@@ -75,7 +75,7 @@ export default {
   scheduled(controller, env, ctx) {
     const cron = controller?.cron;
 
-    if (cron === '5 */6 * * *') {
+    if (cron === '5 * * * *') {
       ctx.waitUntil(runProviderTransactionSync(env).then(result => {
         console.log(JSON.stringify({
           event: 'provider_transaction_sync_complete',
