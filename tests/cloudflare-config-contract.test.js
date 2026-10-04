@@ -3,24 +3,25 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { configurationReadiness } from '../src/config/readiness.js';
 
-test('wrangler declares all server-side secrets required by the current backend contract', async () => {
+test('wrangler requires only active core secrets and keeps feature-scoped secrets out of plaintext vars', async () => {
   const config = JSON.parse(await readFile(new URL('../wrangler.jsonc', import.meta.url), 'utf8'));
   const required = new Set(config.secrets?.required ?? []);
-  for (const name of [
-    'FIREBASE_SERVICE_ACCOUNT_JSON',
-    'GOLDSLOTPALASE_API_TOKEN',
-    'BOOTSTRAP_SUPERADMIN_UID',
-    'PAYMENT_CONFIG_ENCRYPTION_KEY',
-  ]) {
-    assert.equal(required.has(name), true, `${name} must remain a Cloudflare secret`);
+
+  for (const name of ['FIREBASE_SERVICE_ACCOUNT_JSON', 'GOLDSLOTPALASE_API_TOKEN']) {
+    assert.equal(required.has(name), true, `${name} must remain a required Cloudflare secret`);
+  }
+
+  for (const name of ['BOOTSTRAP_SUPERADMIN_UID', 'PAYMENT_CONFIG_ENCRYPTION_KEY']) {
+    assert.equal(required.has(name), false, `${name} must not block base Worker deploy`);
     assert.equal(Object.prototype.hasOwnProperty.call(config.vars ?? {}, name), false, `${name} must not be plaintext`);
   }
+
   assert.equal(config.vars.FIREBASE_PROJECT_ID, 'brandal-bet');
   assert.equal(config.vars.BOOTSTRAP_ENABLED, 'false');
   assert.equal(config.vars.GOLDSLOTPALASE_IDR_SCALE, '0');
 });
 
-test('readiness reports Firebase project match and bootstrap target without exposing values', () => {
+test('readiness reports Firebase project match and feature-scoped secret state without exposing values', () => {
   const readiness = configurationReadiness({
     FIREBASE_PROJECT_ID: 'brandal-bet',
     FIREBASE_SERVICE_ACCOUNT_JSON: JSON.stringify({ project_id: 'brandal-bet', client_email: 'svc@example.invalid', private_key: 'hidden' }),
@@ -47,6 +48,22 @@ test('readiness reports Firebase project match and bootstrap target without expo
   assert.equal(JSON.stringify(readiness).includes('admin-target-uid'), false);
   assert.equal(JSON.stringify(readiness).includes('hidden-provider-token'), false);
   assert.equal(JSON.stringify(readiness).includes('hidden-payment-key'), false);
+});
+
+test('base readiness remains valid to inspect when optional bootstrap/payment secrets are absent', () => {
+  const readiness = configurationReadiness({
+    FIREBASE_PROJECT_ID: 'brandal-bet',
+    FIREBASE_SERVICE_ACCOUNT_JSON: JSON.stringify({ project_id: 'brandal-bet', client_email: 'svc@example.invalid', private_key: 'hidden' }),
+    ALLOWED_MEMBER_ORIGINS: 'https://brandalbet.blogspot.com',
+    ALLOWED_BACKOFFICE_ORIGINS: 'https://backoffic.blogspot.com',
+    GOLDSLOTPALASE_API_TOKEN: 'hidden-provider-token',
+    GOLDSLOTPALASE_API_URL: 'https://agent.goldslotpalase.com',
+    GOLDSLOTPALASE_IDR_SCALE: '0',
+    BOOTSTRAP_ENABLED: 'false',
+  });
+  assert.equal(readiness.bootstrapTargetConfigured, false);
+  assert.equal(readiness.integrations.paymentVaultConfigured, false);
+  assert.equal(readiness.integrations.firebase.projectMatches, true);
 });
 
 test('readiness fails Firebase project match when service account belongs to another project', () => {
