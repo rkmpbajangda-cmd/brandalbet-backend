@@ -15,6 +15,16 @@
         { "fieldPath": "weekKey", "order": "ASCENDING" },
         { "fieldPath": "uid", "order": "ASCENDING" }
       ]
+    },
+    {
+      "collectionGroup": "providerGameRounds",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "provider", "order": "ASCENDING" },
+        { "fieldPath": "status", "order": "ASCENDING" },
+        { "fieldPath": "hasSettlement", "order": "ASCENDING" },
+        { "fieldPath": "lastProviderAtMs", "order": "ASCENDING" }
+      ]
     }
   ],
   "fieldOverrides": []
