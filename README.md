@@ -27,23 +27,24 @@ Nilai berikut harus disimpan sebagai **Cloudflare Secret**, bukan plaintext vari
 ```text
 FIREBASE_SERVICE_ACCOUNT_JSON
 GOLDSLOTPALASE_API_TOKEN
-```
-
-Keduanya dideklarasikan melalui `secrets.required`, sehingga Wrangler menolak deploy
-jika secret wajib belum terpasang.
-
-Secret berikut dibutuhkan ketika modul payment nyata diaktifkan:
-
-```text
+BOOTSTRAP_SUPERADMIN_UID
 PAYMENT_CONFIG_ENCRYPTION_KEY
 ```
 
+`BOOTSTRAP_SUPERADMIN_UID` adalah UID Firebase Authentication dari satu akun yang
+ditetapkan sebagai target bootstrap superadmin. Nilainya tidak boleh ditaruh di XML
+Blogger, Firestore client, `wrangler.jsonc`, source Git, atau response API.
+
+`PAYMENT_CONFIG_ENCRYPTION_KEY` dipakai untuk vault kredensial koneksi payment di
+backoffice. Adanya secret ini tidak otomatis mengaktifkan deposit/withdraw karena
+adapter payment produksi tetap harus tersedia dan lolos verifikasi.
+
 Jangan commit `.env`, `.dev.vars`, service-account JSON, private key, API token,
-payment credential, atau credential lain ke Git.
+payment credential, UID bootstrap, atau credential lain ke Git.
 
 ## Konfigurasi non-secret Cloudflare
 
-Konfigurasi aman yang versioned antara lain:
+Konfigurasi aman yang versioned dan dikunci build validation:
 
 ```text
 FIREBASE_PROJECT_ID=brandal-bet
@@ -52,13 +53,41 @@ ALLOWED_BACKOFFICE_ORIGINS=https://backoffic.blogspot.com
 MEMBER_SINGLE_SESSION_ENABLED=true
 BOOTSTRAP_ENABLED=false
 GOLDSLOTPALASE_API_URL=https://agent.goldslotpalase.com
+GOLDSLOTPALASE_IDR_SCALE=0
 GOLDSLOTPALASE_TRANSFER_ENABLED=false
 GOLDSLOTPALASE_BALANCE_RECONCILIATION_ENABLED=false
+GOLDSLOTPALASE_TRANSACTION_SYNC_ENABLED=false
+REWARDS_PAYOUT_ENABLED=false
+REWARDS_MANUAL_INGEST_ENABLED=false
 ```
 
-Transfer Goldslot dan balance reconciliation sengaja **fail-closed**. Jangan aktifkan
-transfer sampai currency/IDR scale dan prosedur reconciliation dibuktikan melalui
-staging provider.
+`GOLDSLOTPALASE_IDR_SCALE=0` berarti skala IDR **belum diverifikasi**. Transfer Goldslot,
+balance reconciliation, transaction sync, dan reward payout sengaja **fail-closed**.
+Jangan mengubah IDR scale menjadi `1` atau mengaktifkan transfer/reconciliation sampai
+currency/scale dan prosedur reconciliation dibuktikan terhadap akun provider nyata.
+
+## Bootstrap superadmin
+
+Bootstrap hanya untuk pemberian claim awal. Runtime normal harus mempertahankan:
+
+```text
+BOOTSTRAP_ENABLED=false
+```
+
+Untuk bootstrap terkontrol, operator Cloudflare harus sementara mengubah
+`BOOTSTRAP_ENABLED=true` sementara secret `BOOTSTRAP_SUPERADMIN_UID` sudah berisi UID
+Firebase Auth target. Endpoint menolak UID lain. Setelah claim berikut terpasang:
+
+```json
+{
+  "backoffice": true,
+  "role": "superadmin"
+}
+```
+
+`BOOTSTRAP_ENABLED` harus dikembalikan ke `false`. Secret UID boleh tetap tersimpan
+server-side agar target bootstrap terdokumentasi di environment tanpa mengeksposnya ke
+frontend.
 
 ## Build, test, dan deploy
 
@@ -118,6 +147,10 @@ Expected:
 adapter dan handler API dapat dimuat. Firebase/Auth/Firestore tetap harus diverifikasi
 melalui protected endpoint dengan ID Token yang valid setelah deployment.
 
+Backoffice admin/superadmin dapat memakai readiness endpoint untuk melihat **boolean
+status** konfigurasi Firebase, bootstrap target, provider, IDR scale, dan payment vault.
+Nilai secret tidak pernah dikembalikan.
+
 ## API routing
 
 Cloudflare menerima API hanya melalui `/api/<function>`. Router menggunakan **lazy loading per handler** agar satu dependency/integrasi yang bermasalah tidak menjatuhkan endpoint lain.
@@ -136,6 +169,8 @@ Endpoint utama meliputi:
 ## Security model
 
 - Firebase ID Token diverifikasi server-side dengan revocation check.
+- `FIREBASE_SERVICE_ACCOUNT_JSON.project_id` harus sama dengan `FIREBASE_PROJECT_ID`;
+  mismatch gagal tertutup sebelum token dipakai.
 - Backoffice memakai Firebase Custom Claims + RBAC.
 - Firestore client rules adalah deny-by-default; privileged write/read dilakukan
   server-side melalui Admin credential.
@@ -145,7 +180,7 @@ Endpoint utama meliputi:
 - Ledger dan provider transfer memakai durable idempotency/state machine.
 - Game launch memiliki process-local guard + distributed Firestore lease untuk
   mencegah duplicate launch antar instance.
-- Provider token, Firebase credential, dan payment secret tidak dikirim ke Blogger.
+- Provider token, Firebase credential, UID bootstrap, dan payment secret tidak dikirim ke Blogger.
 - Bootstrap superadmin default OFF dan build validation menolak source config yang
   mengaktifkannya.
 - Request body adapter dibatasi 128 KiB dan launch URL provider wajib HTTPS.
