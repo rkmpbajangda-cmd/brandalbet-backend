@@ -12,10 +12,10 @@ hanya karena source atau deployment sudah tersedia.
 ## Cloudflare runtime foundation
 
 - Entrypoint: `cloudflare-worker.js`.
-- API adapter: `deno-server.js`.
+- API router: `cloudflare-router.js`.
 - Router menggunakan lazy loading per endpoint.
 - `/health` memverifikasi Worker entrypoint tanpa memuat backend graph penuh.
-- `/api/health` memverifikasi adapter + health handler.
+- `/api/health` memverifikasi Cloudflare router + health handler.
 - Compatibility date `2026-10-03` menggunakan Node.js compatibility default modern.
 - `process.env` digunakan oleh handler lama dan tersedia pada runtime Cloudflare dengan
   compatibility date tersebut.

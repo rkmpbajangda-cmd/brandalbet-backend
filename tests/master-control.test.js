@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createHandler as createMasterHandler } from '../netlify/functions/backoffice-master-control.js';
-import { createHandler as createLaunchHandler } from '../netlify/functions/game-launch.js';
+import { createHandler as createMasterHandler } from '../cloudflare/functions/backoffice-master-control.js';
+import { createHandler as createLaunchHandler } from '../cloudflare/functions/game-launch.js';
 import { publicMasterControl } from '../src/backoffice/master-control.js';
 
 const admin = { uid: 'admin-1', role: 'admin', backoffice: true };

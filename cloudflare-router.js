@@ -4,37 +4,39 @@ const MAX_BODY_BYTES = 128 * 1024;
 // startup lightweight and prevents one optional integration dependency from
 // making unrelated routes (such as /api/health) unavailable.
 const handlerLoaders = Object.freeze({
-  'backoffice-audit': () => import('./netlify/functions/backoffice-audit.js'),
-  'backoffice-dashboard': () => import('./netlify/functions/backoffice-dashboard.js'),
-  'backoffice-finance': () => import('./netlify/functions/backoffice-finance.js'),
-  'backoffice-game-catalog': () => import('./netlify/functions/backoffice-game-catalog.js'),
-  'backoffice-health': () => import('./netlify/functions/backoffice-health.js'),
-  'backoffice-ledger': () => import('./netlify/functions/backoffice-ledger.js'),
-  'backoffice-master-control': () => import('./netlify/functions/backoffice-master-control.js'),
-  'backoffice-members': () => import('./netlify/functions/backoffice-members.js'),
-  'backoffice-payment-connections': () => import('./netlify/functions/backoffice-payment-connections.js'),
-  'backoffice-promotions': () => import('./netlify/functions/backoffice-promotions.js'),
-  'backoffice-provider': () => import('./netlify/functions/backoffice-provider.js'),
-  'backoffice-readiness': () => import('./netlify/functions/backoffice-readiness.js'),
-  'backoffice-reports': () => import('./netlify/functions/backoffice-reports.js'),
-  'backoffice-website-settings': () => import('./netlify/functions/backoffice-website-settings.js'),
-  'bootstrap-superadmin': () => import('./netlify/functions/bootstrap-superadmin.js'),
-  'game-launch': () => import('./netlify/functions/game-launch.js'),
-  'game-wallet-reconcile': () => import('./netlify/functions/game-wallet-reconcile.js'),
-  'game-wallet-status': () => import('./netlify/functions/game-wallet-status.js'),
-  'game-wallet-transfer': () => import('./netlify/functions/game-wallet-transfer.js'),
-  games: () => import('./netlify/functions/games.js'),
-  health: () => import('./netlify/functions/health.js'),
-  me: () => import('./netlify/functions/me.js'),
-  'member-bank-account': () => import('./netlify/functions/member-bank-account.js'),
-  'member-config': () => import('./netlify/functions/member-config.js'),
-  'member-device-session': () => import('./netlify/functions/member-device-session.js'),
-  'member-onboarding': () => import('./netlify/functions/member-onboarding.js'),
-  'member-profile': () => import('./netlify/functions/member-profile.js'),
-  'member-session': () => import('./netlify/functions/member-session.js'),
-  promotions: () => import('./netlify/functions/promotions.js'),
-  transactions: () => import('./netlify/functions/transactions.js'),
-  wallet: () => import('./netlify/functions/wallet.js'),
+  'backoffice-audit': () => import('./cloudflare/functions/backoffice-audit.js'),
+  'backoffice-dashboard': () => import('./cloudflare/functions/backoffice-dashboard.js'),
+  'backoffice-finance': () => import('./cloudflare/functions/backoffice-finance.js'),
+  'backoffice-game-catalog': () => import('./cloudflare/functions/backoffice-game-catalog.js'),
+  'backoffice-health': () => import('./cloudflare/functions/backoffice-health.js'),
+  'backoffice-ledger': () => import('./cloudflare/functions/backoffice-ledger.js'),
+  'backoffice-master-control': () => import('./cloudflare/functions/backoffice-master-control.js'),
+  'backoffice-members': () => import('./cloudflare/functions/backoffice-members.js'),
+  'backoffice-payment-connections': () => import('./cloudflare/functions/backoffice-payment-connections.js'),
+  'backoffice-promotions': () => import('./cloudflare/functions/backoffice-promotions.js'),
+  'backoffice-provider': () => import('./cloudflare/functions/backoffice-provider.js'),
+  'backoffice-readiness': () => import('./cloudflare/functions/backoffice-readiness.js'),
+  'backoffice-reports': () => import('./cloudflare/functions/backoffice-reports.js'),
+  'backoffice-rewards': () => import('./cloudflare/functions/backoffice-rewards.js'),
+  'backoffice-website-settings': () => import('./cloudflare/functions/backoffice-website-settings.js'),
+  'bootstrap-superadmin': () => import('./cloudflare/functions/bootstrap-superadmin.js'),
+  'game-launch': () => import('./cloudflare/functions/game-launch.js'),
+  'game-wallet-reconcile': () => import('./cloudflare/functions/game-wallet-reconcile.js'),
+  'game-wallet-status': () => import('./cloudflare/functions/game-wallet-status.js'),
+  'game-wallet-transfer': () => import('./cloudflare/functions/game-wallet-transfer.js'),
+  games: () => import('./cloudflare/functions/games.js'),
+  health: () => import('./cloudflare/functions/health.js'),
+  me: () => import('./cloudflare/functions/me.js'),
+  'member-bank-account': () => import('./cloudflare/functions/member-bank-account.js'),
+  'member-config': () => import('./cloudflare/functions/member-config.js'),
+  'member-device-session': () => import('./cloudflare/functions/member-device-session.js'),
+  'member-onboarding': () => import('./cloudflare/functions/member-onboarding.js'),
+  'member-profile': () => import('./cloudflare/functions/member-profile.js'),
+  'member-rewards': () => import('./cloudflare/functions/member-rewards.js'),
+  'member-session': () => import('./cloudflare/functions/member-session.js'),
+  promotions: () => import('./cloudflare/functions/promotions.js'),
+  transactions: () => import('./cloudflare/functions/transactions.js'),
+  wallet: () => import('./cloudflare/functions/wallet.js'),
 });
 
 // Cache only imported modules, not environment-bound handlers. Cloudflare env
@@ -64,9 +66,7 @@ async function resolveHandler(name, env) {
 }
 
 function functionNameFromPath(pathname) {
-  const netlifyPrefix = '/.netlify/functions/';
   const apiPrefix = '/api/';
-  if (pathname.startsWith(netlifyPrefix)) return pathname.slice(netlifyPrefix.length);
   if (pathname.startsWith(apiPrefix)) return pathname.slice(apiPrefix.length);
   return null;
 }
@@ -118,7 +118,7 @@ function queryParameters(url) {
   return params;
 }
 
-export async function netlifyEventFromRequest(request) {
+export async function functionEventFromRequest(request) {
   const url = new URL(request.url);
   return {
     httpMethod: request.method.toUpperCase(),
@@ -139,7 +139,7 @@ function bytesFromBase64(value) {
   return bytes;
 }
 
-export function responseFromNetlify(result) {
+export function responseFromFunctionResult(result) {
   const status = Number.isInteger(result?.statusCode) ? result.statusCode : 500;
   const headers = new Headers();
   for (const [key, value] of Object.entries(result?.headers ?? {})) {
@@ -174,22 +174,15 @@ function json(status, body, extraHeaders = {}) {
 
 function logHandlerLoadFailure(name, error) {
   console.error(JSON.stringify({
-    event: 'backend_handler_load_failed',
+    event: 'cloudflare_handler_load_failed',
     route: name,
     name: error?.name || 'Error',
     message: typeof error?.message === 'string' ? error.message.slice(0, 300) : 'unknown',
   }));
 }
 
-export async function handleDenoRequest(request, env = process.env) {
+export async function handleApiRequest(request, env = process.env) {
   const url = new URL(request.url);
-  if (url.pathname === '/') {
-    return json(200, {
-      ok: true,
-      service: 'brandalbet-backend',
-      runtime: 'deno-deploy',
-    });
-  }
 
   const name = functionNameFromPath(url.pathname);
   if (!name || !handlerLoaders[name]) return json(404, { ok: false, error: 'not_found' });
@@ -203,14 +196,14 @@ export async function handleDenoRequest(request, env = process.env) {
   }
 
   try {
-    const event = await netlifyEventFromRequest(request);
-    return responseFromNetlify(await handler(event));
+    const event = await functionEventFromRequest(request);
+    return responseFromFunctionResult(await handler(event));
   } catch (error) {
     if (error?.statusCode === 413) {
       return json(413, { ok: false, error: 'payload_too_large' });
     }
     console.error(JSON.stringify({
-      event: 'deno_adapter_error',
+      event: 'cloudflare_router_error',
       requestId: request.headers.get('x-request-id') || null,
       route: name,
     }));
@@ -218,6 +211,3 @@ export async function handleDenoRequest(request, env = process.env) {
   }
 }
 
-if (globalThis.Deno?.serve) {
-  Deno.serve(handleDenoRequest);
-}

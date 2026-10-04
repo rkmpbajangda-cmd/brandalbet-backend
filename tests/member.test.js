@@ -1,10 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createHandler as createSessionHandler } from '../netlify/functions/member-session.js';
-import { createHandler as createProfileHandler } from '../netlify/functions/member-profile.js';
-import { createHandler as createWalletHandler } from '../netlify/functions/wallet.js';
-import { createHandler as createOnboardingHandler } from '../netlify/functions/member-onboarding.js';
-import { createHandler as createBankHandler } from '../netlify/functions/member-bank-account.js';
+import { createHandler as createSessionHandler } from '../cloudflare/functions/member-session.js';
+import { createHandler as createProfileHandler } from '../cloudflare/functions/member-profile.js';
+import { createHandler as createWalletHandler } from '../cloudflare/functions/wallet.js';
+import { createHandler as createOnboardingHandler } from '../cloudflare/functions/member-onboarding.js';
+import { createHandler as createBankHandler } from '../cloudflare/functions/member-bank-account.js';
 import { sanitizeProfilePatch, ProfileValidationError } from '../src/member/profile.js';
 import { sanitizeBankAccount, maskAccountNumber, BankAccountValidationError } from '../src/member/bank-account.js';
 import { sanitizeOnboardingPayload, OnboardingValidationError } from '../src/member/onboarding.js';

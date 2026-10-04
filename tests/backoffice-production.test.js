@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createHandler as createDashboardHandler } from '../netlify/functions/backoffice-dashboard.js';
+import { createHandler as createDashboardHandler } from '../cloudflare/functions/backoffice-dashboard.js';
 import {
   jakartaDayKey,
   listMembers,

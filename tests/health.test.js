@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { handler } from '../netlify/functions/health.js';
+import { handler } from '../cloudflare/functions/health.js';
 
 test('GET health returns the exact public contract without credentials', async () => {
   const result = await handler({ httpMethod: 'GET' });

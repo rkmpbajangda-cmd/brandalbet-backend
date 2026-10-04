@@ -29,9 +29,13 @@ function cleanPhone(value) {
 function cleanReferral(value) {
   if (value === undefined || value === null || value === '') return null;
   if (typeof value !== 'string') throw new OnboardingValidationError('invalid_referral_code');
-  const cleaned = value.trim();
-  if (!/^[A-Za-z0-9_-]{2,32}$/.test(cleaned)) throw new OnboardingValidationError('invalid_referral_code');
+  const cleaned = value.trim().toUpperCase();
+  if (!/^[A-Z0-9_-]{2,32}$/.test(cleaned)) throw new OnboardingValidationError('invalid_referral_code');
   return cleaned;
+}
+
+function validPromoterUid(value) {
+  return typeof value === 'string' && value.length > 0 && value.length <= 128 && !value.includes('/');
 }
 
 export function sanitizeOnboardingPayload(input) {
@@ -66,14 +70,23 @@ export async function completeMemberOnboarding(actor, input, { db = getAdminDb()
   const userRef = db.collection('users').doc(uid);
   const walletRef = db.collection('wallets').doc(uid);
   const bankRef = db.collection('memberBankAccounts').doc(uid);
+  const referralBindingRef = db.collection('referrals').doc(uid);
+  const referralCodeRef = safe.referralCode ? db.collection('referralCodes').doc(safe.referralCode) : null;
 
   let walletData = null;
+  let appliedReferralCode = null;
+  let appliedPromoterUid = null;
 
   await db.runTransaction(async (tx) => {
-    const usernameSnapshot = await tx.get(usernameRef);
-    const userSnapshot = await tx.get(userRef);
-    const walletSnapshot = await tx.get(walletRef);
-    const bankSnapshot = await tx.get(bankRef);
+    const reads = [
+      tx.get(usernameRef),
+      tx.get(userRef),
+      tx.get(walletRef),
+      tx.get(bankRef),
+      tx.get(referralBindingRef),
+    ];
+    if (referralCodeRef) reads.push(tx.get(referralCodeRef));
+    const [usernameSnapshot, userSnapshot, walletSnapshot, bankSnapshot, referralBindingSnapshot, referralCodeSnapshot] = await Promise.all(reads);
 
     if (usernameSnapshot.exists && usernameSnapshot.data()?.uid !== uid) {
       throw new OnboardingValidationError('username_taken', 409);
@@ -82,6 +95,34 @@ export async function completeMemberOnboarding(actor, input, { db = getAdminDb()
     const existingUser = userSnapshot.exists ? userSnapshot.data() : {};
     if (existingUser?.usernameNormalized && existingUser.usernameNormalized !== safe.usernameNormalized) {
       throw new OnboardingValidationError('username_locked', 409);
+    }
+
+    const existingBinding = referralBindingSnapshot.exists ? referralBindingSnapshot.data() : null;
+    const existingPromoterUid = validPromoterUid(existingBinding?.promoterUid)
+      ? existingBinding.promoterUid
+      : (validPromoterUid(existingUser?.referralPromoterUid) ? existingUser.referralPromoterUid : null);
+    const existingReferralCode = typeof existingBinding?.referralCode === 'string'
+      ? existingBinding.referralCode
+      : (typeof existingUser?.referralCode === 'string' ? existingUser.referralCode : null);
+
+    if (safe.referralCode) {
+      if (!referralCodeSnapshot?.exists || referralCodeSnapshot.data()?.active !== true) {
+        throw new OnboardingValidationError('invalid_referral_code', 400);
+      }
+      const promoterUid = referralCodeSnapshot.data()?.promoterUid;
+      if (!validPromoterUid(promoterUid)) throw new OnboardingValidationError('invalid_referral_code', 400);
+      if (promoterUid === uid) throw new OnboardingValidationError('self_referral_not_allowed', 409);
+      if (existingPromoterUid && existingPromoterUid !== promoterUid) {
+        throw new OnboardingValidationError('referral_locked', 409);
+      }
+      if (existingReferralCode && existingPromoterUid && existingReferralCode !== safe.referralCode) {
+        throw new OnboardingValidationError('referral_locked', 409);
+      }
+      appliedReferralCode = safe.referralCode;
+      appliedPromoterUid = promoterUid;
+    } else {
+      appliedReferralCode = existingReferralCode;
+      appliedPromoterUid = existingPromoterUid;
     }
 
     const now = FieldValue.serverTimestamp();
@@ -100,7 +141,8 @@ export async function completeMemberOnboarding(actor, input, { db = getAdminDb()
       usernameNormalized: safe.usernameNormalized,
       displayName: safe.displayName,
       phone: safe.phone,
-      referralCode: safe.referralCode,
+      referralCode: appliedReferralCode,
+      referralPromoterUid: appliedPromoterUid,
       language: 'id',
       timezone: 'Asia/Jakarta',
       onboardingCompleted: true,
@@ -108,6 +150,15 @@ export async function completeMemberOnboarding(actor, input, { db = getAdminDb()
     };
     if (!userSnapshot.exists) profileRecord.createdAt = now;
     tx.set(userRef, profileRecord, { merge: true });
+
+    if (appliedReferralCode && appliedPromoterUid && !referralBindingSnapshot.exists) {
+      tx.create(referralBindingRef, {
+        memberUid: uid,
+        promoterUid: appliedPromoterUid,
+        referralCode: appliedReferralCode,
+        createdAt: now,
+      });
+    }
 
     if (!walletSnapshot.exists) {
       walletData = {
@@ -119,6 +170,7 @@ export async function completeMemberOnboarding(actor, input, { db = getAdminDb()
       };
       tx.create(walletRef, {
         ...walletData,
+        rewardLockedMinor: 0,
         createdAt: now,
         updatedAt: now,
       });

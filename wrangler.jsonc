@@ -5,11 +5,15 @@
   "compatibility_date": "2026-10-03",
   "workers_dev": true,
   "keep_vars": true,
+  "triggers": {
+    "crons": [
+      "15 */6 * * *"
+    ]
+  },
   "assets": {
     "directory": "./public",
     "run_worker_first": [
       "/api/*",
-      "/.netlify/functions/*",
       "/health"
     ]
   },

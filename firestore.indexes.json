@@ -1,7 +1,21 @@
 {
-  "indexes": [{ "collectionGroup": "ledger", "queryScope": "COLLECTION", "fields": [
-    { "fieldPath": "uid", "order": "ASCENDING" },
-    { "fieldPath": "createdAt", "order": "DESCENDING" }
-  ] }],
+  "indexes": [
+    {
+      "collectionGroup": "ledger",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "uid", "order": "ASCENDING" },
+        { "fieldPath": "createdAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "rewardWeeklyMembers",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "weekKey", "order": "ASCENDING" },
+        { "fieldPath": "uid", "order": "ASCENDING" }
+      ]
+    }
+  ],
   "fieldOverrides": []
 }

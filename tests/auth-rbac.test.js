@@ -2,8 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { authenticateRequest, AuthHttpError } from '../src/auth/authenticate.js';
 import { canAccessBackoffice } from '../src/rbac/roles.js';
-import { createHandler as createMeHandler } from '../netlify/functions/me.js';
-import { createHandler as createBackofficeHealthHandler } from '../netlify/functions/backoffice-health.js';
+import { createHandler as createMeHandler } from '../cloudflare/functions/me.js';
+import { createHandler as createBackofficeHealthHandler } from '../cloudflare/functions/backoffice-health.js';
 
 const eventWithToken = (token = 'test-token') => ({
   httpMethod: 'GET',

@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { publicSiteSettings } from '../src/member/public-config.js';
-import { createHandler as createMemberConfigHandler } from '../netlify/functions/member-config.js';
+import { createHandler as createMemberConfigHandler } from '../cloudflare/functions/member-config.js';
 
 test('public site settings expose only safe member-facing fields', () => {
   const view = publicSiteSettings({
