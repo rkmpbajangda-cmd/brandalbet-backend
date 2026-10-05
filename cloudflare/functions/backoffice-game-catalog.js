@@ -72,8 +72,8 @@ export function createHandler({
       // snapshot. It does not contact GoldslotPalase. Only POST action=sync
       // performs provider catalog calls.
       const [catalog, display] = await Promise.all([
-        loadCatalog(),
-        loadDisplay(),
+        loadCatalog({ env }),
+        loadDisplay({ env }),
       ]);
       return { ...catalogView(catalog), display };
     },
