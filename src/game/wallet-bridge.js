@@ -11,11 +11,12 @@ function safeProviderBalance(data) {
 }
 
 function safeAvailable(wallet) {
-  const value = wallet?.availableMinor;
-  if (!Number.isSafeInteger(value) || value < 0) {
+  const available = wallet?.availableMinor;
+  const locked = wallet?.rewardLockedMinor ?? 0;
+  if (!Number.isSafeInteger(available) || available < 0 || !Number.isSafeInteger(locked) || locked < 0 || locked > available) {
     throw new ServiceError('wallet_integrity_error', 503);
   }
-  return value;
+  return available - locked;
 }
 
 export function normalizeLaunchRequestId(value) {
