@@ -33,7 +33,7 @@ function capabilities(env) {
     onlineGames: true,
     bonusCall: env.GOLDSLOTPALASE_BONUS_CALL_ENABLED === 'true',
     freeRound: env.GOLDSLOTPALASE_FREEROUND_ENABLED === 'true',
-    callback: env.GOLDSLOTPALASE_CALLBACK_HTTPS_ONLY === 'true',
+    callback: false,
   };
 }
 
