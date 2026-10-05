@@ -117,8 +117,11 @@ async function prepareTransfer(actor, input, player, beforeBalance, { db }) {
     const wallet = validateWallet(actor.uid, walletSnapshot.data());
     if (wallet.status !== 'active') throw new ServiceError('wallet_locked', 409);
 
-    if (input.direction === 'in' && wallet.availableMinor < input.amountMinor) {
-      throw new ServiceError('insufficient_funds', 409);
+    if (input.direction === 'in') {
+      const withdrawableMinor = wallet.availableMinor - wallet.rewardLockedMinor;
+      if (input.amountMinor > withdrawableMinor) {
+        throw new ServiceError('insufficient_withdrawable_funds', 409);
+      }
     }
     if (input.direction === 'out' && beforeBalance < input.amountMinor) {
       throw new ServiceError('provider_insufficient_funds', 409);
