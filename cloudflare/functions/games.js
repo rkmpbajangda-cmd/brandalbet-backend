@@ -1,5 +1,5 @@
 import { loadStoredGameCatalog } from '../../src/game/catalog.js';
-import { applyGameDisplaySettings, loadGameDisplaySettings } from '../../src/game/display-settings.js';
+import { applyGameDisplaySettings, loadGameDisplaySettings } from '../../src/game/display-settings-read.js';
 import { corsHeaders, CorsError } from '../../src/security/cors.js';
 import { empty, json } from '../../src/utils/http.js';
 
