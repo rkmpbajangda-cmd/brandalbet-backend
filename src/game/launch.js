@@ -90,15 +90,9 @@ async function releaseDistributedLaunchGuard(lease, { db, now = Date.now() } = {
       if (!snapshot.exists) return;
       const current = snapshot.data() ?? {};
       if (current.leaseId !== lease.leaseId) return;
-      tx.set(lease.ref, {
-        activeUntilMs: 0,
-        updatedAtMs: now,
-      }, { merge: true });
+      tx.set(lease.ref, { activeUntilMs: 0, updatedAtMs: now }, { merge: true });
     });
-  } catch {
-    // Best-effort release only. The lease naturally expires after a few seconds,
-    // so a Firestore release failure must never trigger a second provider call.
-  }
+  } catch {}
 }
 
 export function clearLaunchGuardForTest() {
@@ -115,23 +109,19 @@ export async function launchGoldslotGame(actor, input, {
   prepareBalance = ensurePlayableGoldslotBalance,
 } = {}) {
   const game = validateGameInput(input);
-  const [profile, wallet] = await Promise.all([loadProfile(actor), loadWallet(actor.uid, { db })]);
+  const [profile, wallet] = await Promise.all([
+    loadProfile(actor, { db }),
+    loadWallet(actor.uid, { db }),
+  ]);
   if (profile.onboardingCompleted !== true || !profile.username) throw new ServiceError('member_onboarding_required', 409);
   if (wallet.status !== 'active') throw new ServiceError('wallet_locked', 409);
 
-  // The process-local guard stops immediate duplicate taps cheaply. The
-  // Firestore lease below extends the same protection across serverless
-  // instances, so two concurrent requests cannot both reach GoldslotPalase.
   const guardNow = Date.now();
   const guardKey = acquireLaunchGuard(actor, game, guardNow);
   let distributedLease = null;
   try {
     distributedLease = await acquireDistributedLaunchGuard(actor, game, { db, now: guardNow });
     const player = await ensurePlayer(actor, { client, db });
-
-    // Production Goldslot clients always expose userInfo. The guard only preserves
-    // compatibility with minimal isolated unit-test doubles; it is not reachable
-    // through browser input because the client is constructed server-side.
     const walletBridge = typeof client?.userInfo === 'function'
       ? await prepareBalance(actor, {
         wallet,
@@ -160,8 +150,6 @@ export async function launchGoldslotGame(actor, input, {
       walletBridge,
     });
   } catch (error) {
-    // If the provider timeout is ambiguous, keep both guards until their short
-    // natural expiry. Retrying immediately could duplicate a provider mutation.
     if (error?.ambiguous !== true) {
       recentLaunches.delete(guardKey);
       await releaseDistributedLaunchGuard(distributedLease, { db });
