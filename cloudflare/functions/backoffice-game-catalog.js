@@ -26,8 +26,12 @@ function catalogView(catalog) {
   }));
   return {
     items,
+    providers: (catalog?.providers ?? []).map(provider => ({ providerId: provider.providerId, providerName: provider.providerName, status: provider.status ?? 'normal', gameCount: Number.isSafeInteger(provider.gameCount) ? provider.gameCount : 0 })),
+    providerCount: Array.isArray(catalog?.providers) ? catalog.providers.length : 0,
     provider: 'goldslotpalase',
     total: items.length,
+    activeTotal: items.filter(item => item.visible && item.providerStatus === 'active').length,
+    disabledTotal: items.filter(item => item.providerStatus !== 'active').length,
     syncedAt: catalog?.syncedAt ?? null,
     snapshotRevision: catalog?.snapshotRevision ?? null,
     snapshotStale: catalog?.snapshotStale === true,
