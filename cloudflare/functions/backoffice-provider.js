@@ -36,9 +36,12 @@ function capabilities(env) {
 async function snapshotStatus({ loadCatalog }) {
   try {
     const catalog = await loadCatalog();
+    const providers = Array.isArray(catalog.providers) ? catalog.providers : [];
     return {
       status: catalog.snapshotStale === true ? 'snapshot_stale' : 'snapshot_ready',
       gamesCount: catalog.games.length,
+      providerCount: providers.length,
+      providers: providers.map(provider => ({ providerId: provider.providerId, providerName: provider.providerName, status: provider.status ?? 'normal', gameCount: Number.isSafeInteger(provider.gameCount) ? provider.gameCount : 0 })),
       lastSync: catalog.syncedAt,
       snapshotRevision: catalog.snapshotRevision ?? null,
       snapshotStale: catalog.snapshotStale === true,
@@ -51,6 +54,8 @@ async function snapshotStatus({ loadCatalog }) {
       return {
         status: 'snapshot_missing',
         gamesCount: 0,
+        providerCount: 0,
+        providers: [],
         lastSync: null,
         snapshotRevision: null,
         snapshotStale: true,
@@ -77,8 +82,13 @@ export function createHandler({
     env,
     run: async (actor, event) => {
       const snapshot = await snapshotStatus({ loadCatalog });
-      const db = dbFactory(env);
-      const transactions = await ledgerStatus({ db, env });
+      let transactions = null;
+      try {
+        const db = dbFactory(env);
+        transactions = await ledgerStatus({ db, env });
+      } catch {
+        transactions = { status: 'unavailable', capability: false };
+      }
 
       if (event.httpMethod === 'GET') {
         return {
@@ -112,6 +122,7 @@ export function createHandler({
         const sync = await syncTransactions({ db, env, clientFactory });
         return {
           provider: 'goldslotpalase',
+          ...snapshot,
           transactions: sync,
           capabilities: capabilities(env),
         };
