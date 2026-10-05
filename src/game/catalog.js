@@ -300,11 +300,14 @@ export async function loadStoredGameCatalog({ db, env = process.env, now = Date.
       const snapshots = refs.length
         ? (typeof db.getAll === 'function' ? await db.getAll(...refs) : await Promise.all(refs.map(item => item.get())))
         : [];
+      const revision = Number.isSafeInteger(meta.revision) ? meta.revision : Number(meta.syncedAtMs);
+      if (!Number.isSafeInteger(revision) || revision < 0) throw new ServiceError('catalog_snapshot_corrupt', 503);
       const games = [];
-      for (const chunk of snapshots) {
+      for (let index = 0; index < snapshots.length; index += 1) {
+        const chunk = snapshots[index];
         if (!chunk.exists) throw new ServiceError('catalog_snapshot_corrupt', 503);
         const chunkData = chunk.data() ?? {};
-        if (Number(chunkData.revision) !== revision || Number(chunkData.index) !== refs.indexOf(chunk)) {
+        if (Number(chunkData.revision) !== revision || Number(chunkData.index) !== index) {
           throw new ServiceError('catalog_snapshot_corrupt', 503);
         }
         const rows = chunkData.games;
@@ -324,7 +327,6 @@ export async function loadStoredGameCatalog({ db, env = process.env, now = Date.
         ? meta.syncedAt
         : (Number.isFinite(syncedAtMs) ? new Date(syncedAtMs).toISOString() : null);
       if (!syncedAt) throw new ServiceError('catalog_snapshot_corrupt', 503);
-      const revision = Number.isSafeInteger(meta.revision) ? meta.revision : syncedAtMs;
       const value = Object.freeze({
         provider: 'goldslotpalase',
         games: Object.freeze(games),
