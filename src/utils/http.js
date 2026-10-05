@@ -20,3 +20,14 @@ export function empty(statusCode, headers = {}) {
     body: '',
   };
 }
+
+/**
+ * Add CORS headers to a controlled response without weakening the authenticated
+ * API allow-list. Callers must pass a value already validated by CORS policy.
+ */
+export function withCors(response, cors = {}) {
+  return {
+    ...response,
+    headers: { ...(response?.headers || BASE_HEADERS), ...cors },
+  };
+}
