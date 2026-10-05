@@ -4,6 +4,7 @@ import { corsHeaders, CorsError } from '../../src/security/cors.js';
 import { registerMemberDeviceSession, endMemberDeviceSession } from '../../src/auth/member-device-session.js';
 import { ServiceError } from '../../src/utils/errors.js';
 import { empty, json } from '../../src/utils/http.js';
+import { canAccessMember } from '../../src/rbac/roles.js';
 
 function parseBody(event) {
   if (!event.body || event.body.length > 2048) throw new ServiceError('invalid_member_session', 400);
@@ -28,6 +29,7 @@ export function createHandler({
       }
 
       actor = await authenticateRequest(event, { verifyIdToken, env });
+      if (!canAccessMember(actor)) throw new ServiceError('forbidden', 403);
       const input = parseBody(event);
       if (input?.action === 'end') {
         const result = await end(actor, event);
