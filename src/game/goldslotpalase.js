@@ -48,7 +48,7 @@ function providerLanguage(env, value) {
 
 function boundedProviderInteger(env, name, fallback, { min = 0, max = Number.MAX_SAFE_INTEGER } = {}) {
   const raw = env[name] ?? String(fallback);
-  if (typeof raw !== 'string' || !/^\\d+$/.test(raw)) throw new ServiceError('provider_invalid_configuration', 503);
+  if (typeof raw !== 'string' || !/^\d+$/.test(raw)) throw new ServiceError('provider_invalid_configuration', 503);
   const value = Number(raw);
   if (!Number.isSafeInteger(value) || value < min || value > max) throw new ServiceError('provider_invalid_configuration', 503);
   return value;
@@ -187,7 +187,7 @@ export function createGoldslotClient({ env = process.env, fetchImpl = fetch, tim
     bonusCallStart: ({ gplayId, setPoint, type, memo = '' }) => {
       if (!Number.isSafeInteger(setPoint) || setPoint < 0) throw new ServiceError('invalid_set_point');
       if (!Number.isSafeInteger(type) || type < 0) throw new ServiceError('invalid_bonus_call_type');
-      if (typeof memo !== 'string' || memo.length > 500 || /[\\x00-\\x1f]/.test(memo)) throw new ServiceError('invalid_bonus_call_memo');
+      if (typeof memo !== 'string' || memo.length > 500 || /[\x00-\x1f]/g.test(memo)) throw new ServiceError('invalid_bonus_call_memo');
       return post('/v4/game/call_start', {
         gplay_id: positiveIdentifier(gplayId, 'gplay_id'),
         set_point: setPoint,
