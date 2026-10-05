@@ -351,7 +351,7 @@ export async function listAudit(actor, event, { db = getAdminDb() } = {}) {
       requestId: safeString(row.requestId, 160),
       fingerprint: safeString(row.fingerprint, 64),
       revision: Number.isSafeInteger(row.revision) ? row.revision : null,
-      metadata: row.metadata && typeof row.metadata === 'object' ? row.metadata : null,
+      metadata: null,
     };
   }).filter(item =>
     (!actionFilter || lower(item.action).includes(actionFilter)) &&
