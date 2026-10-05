@@ -1,4 +1,3 @@
-import { createHash, timingSafeEqual } from 'node:crypto';
 import { FieldValue } from 'firebase-admin/firestore';
 import { getAdminDb } from '../firebase/admin.js';
 import { ServiceError } from '../utils/errors.js';
@@ -24,15 +23,19 @@ function normalizeSessionId(value) {
   return value;
 }
 
-function sessionHash(sessionId) {
-  return createHash('sha256').update(sessionId, 'utf8').digest('base64url');
+async function sessionHash(sessionId) {
+  const bytes = new TextEncoder().encode(sessionId);
+  const digest = new Uint8Array(await crypto.subtle.digest('SHA-256', bytes));
+  let binary = '';
+  for (const byte of digest) binary += String.fromCharCode(byte);
+  return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
 }
 
 function equalHash(left, right) {
-  if (typeof left !== 'string' || typeof right !== 'string') return false;
-  const a = Buffer.from(left);
-  const b = Buffer.from(right);
-  return a.length === b.length && timingSafeEqual(a, b);
+  if (typeof left !== 'string' || typeof right !== 'string' || left.length !== right.length) return false;
+  let diff = 0;
+  for (let index = 0; index < left.length; index += 1) diff |= left.charCodeAt(index) ^ right.charCodeAt(index);
+  return diff === 0;
 }
 
 export function memberSingleSessionEnabled(env = process.env) {
@@ -45,7 +48,7 @@ export async function registerMemberDeviceSession(actor, input, { db = getAdminD
   if (!input || typeof input !== 'object' || Array.isArray(input)) throw new ServiceError('invalid_member_session', 400);
   const sessionId = normalizeSessionId(input.sessionId);
   const replace = input.replace === true;
-  const hash = sessionHash(sessionId);
+  const hash = await sessionHash(sessionId);
   const ref = db.collection('memberSessions').doc(actor.uid);
 
   return db.runTransaction(async tx => {
@@ -90,7 +93,7 @@ export async function assertMemberDeviceSession(actor, event, { db = getAdminDb(
 
   const raw = sessionIdFromEvent(event);
   if (!raw) throw new ServiceError('member_session_required', 401);
-  const hash = sessionHash(normalizeSessionId(raw));
+  const hash = await sessionHash(normalizeSessionId(raw));
   if (!equalHash(current.sessionHash, hash)) throw new ServiceError('member_session_replaced', 401);
 
   return {
@@ -105,7 +108,7 @@ export async function endMemberDeviceSession(actor, event, { db = getAdminDb() }
   if (!raw) return { ended: false };
 
   let hash;
-  try { hash = sessionHash(normalizeSessionId(raw)); }
+  try { hash = await sessionHash(normalizeSessionId(raw)); }
   catch { return { ended: false }; }
 
   const ref = db.collection('memberSessions').doc(actor.uid);
