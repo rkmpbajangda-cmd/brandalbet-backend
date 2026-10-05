@@ -31,12 +31,12 @@ export function createHandler({
       actor = await authenticateRequest(event, { verifyIdToken, env });
       const input = parseBody(event);
       if (input?.action === 'end') {
-        const result = await end(actor, event);
+        const result = await end(actor, event, { db: getAdminDb(env) });
         auditSecurityEvent({ event, actor, action: 'member.device_session.end', outcome: result.ended ? 'allowed' : 'ignored' });
         return json(200, { ok: true, ...result }, cors);
       }
 
-      const session = await register(actor, input);
+      const session = await register(actor, input, { db: getAdminDb(env) });
       auditSecurityEvent({ event, actor, action: 'member.device_session.register', outcome: 'allowed' });
       return json(200, { ok: true, session }, cors);
     } catch (error) {
