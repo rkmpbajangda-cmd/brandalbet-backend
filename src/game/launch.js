@@ -1,4 +1,3 @@
-import { createHash } from 'node:crypto';
 import { ServiceError } from '../utils/errors.js';
 import { getOrCreateProfile } from '../member/profile.js';
 import { getOrCreateWallet } from '../wallet/service.js';
@@ -53,14 +52,18 @@ function acquireLaunchGuard(actor, game, now = Date.now()) {
   return key;
 }
 
-function distributedGuardRef(db, uid) {
-  const id = createHash('sha256').update(String(uid)).digest('hex');
+async function distributedGuardRef(db, uid) {
+  const bytes = new TextEncoder().encode(String(uid));
+  const digest = new Uint8Array(await crypto.subtle.digest('SHA-256', bytes));
+  let binary = '';
+  for (const byte of digest) binary += String.fromCharCode(byte);
+  const id = btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
   return db.collection(LAUNCH_GUARD_COLLECTION).doc(id);
 }
 
 async function acquireDistributedLaunchGuard(actor, game, { db, now = Date.now() } = {}) {
   if (!db?.collection || typeof db.runTransaction !== 'function') return null;
-  const ref = distributedGuardRef(db, actor.uid);
+  const ref = await distributedGuardRef(db, actor.uid);
   const leaseId = game.launchRequestId;
 
   await db.runTransaction(async tx => {
