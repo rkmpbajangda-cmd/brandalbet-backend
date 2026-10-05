@@ -184,18 +184,25 @@ async function writeCatalogSnapshot(value, { db, current, chunkSize = SNAPSHOT_C
     chunks.push(value.games.slice(offset, offset + chunkSize).map(game => ({ ...game })));
   }
 
-  // Firestore batches are capped by the platform; commit snapshot chunks in
-  // bounded groups without imposing any catalog-size limit.
-  const writes = [];
-  chunks.forEach((games, index) => writes.push({ type: 'set', ref: ref.collection('chunks').doc(String(index).padStart(4, '0')), data: {
-    revision,
-    index,
-    games,
-  }}));
-  for (let index = chunks.length; index < oldChunkCount; index += 1) {
-    writes.push({ type: 'delete', ref: ref.collection('chunks').doc(String(index).padStart(4, '0')) });
+  // Publish in two phases: all new chunks are committed first, then the
+  // metadata document is committed last. Readers only trust the metadata
+  // pointer, so a failed chunk write can never expose a partial new snapshot.
+  for (let start = 0; start < chunks.length; start += 450) {
+    const batch = db.batch();
+    for (let index = start; index < Math.min(start + 450, chunks.length); index += 1) {
+      batch.set(ref.collection('chunks').doc(String(index).padStart(4, '0')), {
+        revision,
+        index,
+        games: chunks[index],
+      });
+    }
+    await batch.commit();
   }
-  writes.push({ type: 'set', ref, data: {
+
+  // The metadata write is the publication point. Do not delete old chunks
+  // before this succeeds; they are harmless because readers use chunkCount.
+  const metaBatch = db.batch();
+  metaBatch.set(ref, {
     provider: 'goldslotpalase',
     providers: value.providers.map(provider => ({ ...provider })),
     syncedAt: value.syncedAt,
@@ -204,14 +211,27 @@ async function writeCatalogSnapshot(value, { db, current, chunkSize = SNAPSHOT_C
     totalGames: value.games.length,
     chunkCount: chunks.length,
     chunkSize,
-  }});
-  for (let start = 0; start < writes.length; start += 450) {
-    const batch = db.batch();
-    for (const write of writes.slice(start, start + 450)) {
-      if (write.type === 'delete') batch.delete(write.ref);
-      else batch.set(write.ref, write.data, { merge: false });
+  });
+  await metaBatch.commit();
+
+  // Best-effort cleanup after publication. A stale chunk can never be read
+  // when it lies beyond the published chunkCount, so cleanup failure does not
+  // invalidate an otherwise complete catalog.
+  if (oldChunkCount > chunks.length) {
+    try {
+      for (let start = chunks.length; start < oldChunkCount; start += 450) {
+        const batch = db.batch();
+        for (let index = start; index < Math.min(start + 450, oldChunkCount); index += 1) {
+          batch.delete(ref.collection('chunks').doc(String(index).padStart(4, '0')));
+        }
+        await batch.commit();
+      }
+    } catch (error) {
+      console.error(JSON.stringify({
+        event: 'catalog_snapshot_cleanup_failed',
+        error: error?.code || error?.name || 'unknown',
+      }));
     }
-    await batch.commit();
   }
 
   return Object.freeze({
@@ -227,10 +247,7 @@ async function writeCatalogSnapshot(value, { db, current, chunkSize = SNAPSHOT_C
  */
 export async function syncStoredGameCatalog({ client, db, now = Date.now, env = process.env } = {}) {
   if (!client?.allGames || !client?.providers) throw new ServiceError('provider_unconfigured', 503);
-  if (!db) {
-    const { getAdminDb } = await import('../firebase/admin.js');
-    db = getAdminDb(env);
-  }
+  if (!db) db = createFirestoreRestDb(env);
   if (syncInflight) return syncInflight;
   const current = now();
   syncInflight = (async () => {
@@ -286,7 +303,11 @@ export async function loadStoredGameCatalog({ db, env = process.env, now = Date.
       const games = [];
       for (const chunk of snapshots) {
         if (!chunk.exists) throw new ServiceError('catalog_snapshot_corrupt', 503);
-        const rows = chunk.data()?.games;
+        const chunkData = chunk.data() ?? {};
+        if (Number(chunkData.revision) !== revision || Number(chunkData.index) !== refs.indexOf(chunk)) {
+          throw new ServiceError('catalog_snapshot_corrupt', 503);
+        }
+        const rows = chunkData.games;
         if (!Array.isArray(rows)) throw new ServiceError('catalog_snapshot_corrupt', 503);
         for (const row of rows) {
           if (!validStoredGame(row)) throw new ServiceError('catalog_snapshot_corrupt', 503);
