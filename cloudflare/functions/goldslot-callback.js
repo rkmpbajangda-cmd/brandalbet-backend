@@ -200,7 +200,8 @@ async function processTransaction(command, data, player, db, payloadHash) {
       if (originals.empty) return { missingTransaction: true };
       if (originals.docs.length !== 1) return { reversalAmbiguous: true };
       const original = originals.docs[0].data();
-      if (original.processingStatus !== 'processed') return { missingTransaction: true };\n      if (original.uid !== player.uid || original.account !== data.account || original.provider !== PROVIDER) return { missingTransaction: true };
+      if (original.processingStatus !== 'processed') return { missingTransaction: true };
+      if (original.uid !== player.uid || original.account !== data.account || original.provider !== PROVIDER) return { missingTransaction: true };
       const originalDelta = Number.isSafeInteger(original.walletDeltaMinor) ? original.walletDeltaMinor : null;
       if (originalDelta == null) return { reversalAmbiguous: true };
       delta = -originalDelta;
