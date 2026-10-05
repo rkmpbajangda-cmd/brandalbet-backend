@@ -1,5 +1,5 @@
 const CODE_INFO = Object.freeze({
-  missing_bearer_token: ['AUTHENTICATION','Firebase ID Token','Bearer token extraction','Token autentikasi tidak dikirim ke Worker.','Kirim ulang request dengan Firebase ID Token yang valid.'],
+  missing_bearer_token: ['AUTHENTICATION','Cloudflare Worker','Bearer token extraction','Token autentikasi tidak dikirim ke Worker.','Kirim ulang request dengan Firebase ID Token yang valid.'],
   invalid_authorization_header: ['AUTHENTICATION','Cloudflare Worker','Authorization header','Format Authorization tidak valid.','Login ulang dan biarkan aplikasi membuat header autentikasi.'],
   invalid_or_expired_id_token: ['FIREBASE_AUTH','Cloudflare Worker','Firebase ID Token verification','Firebase ID Token ditolak karena tidak valid, kedaluwarsa, atau tidak sesuai proyek.','Refresh token Firebase dan pastikan FIREBASE_PROJECT_ID=brandal-bet.'],
   auth_project_mismatch: ['FIREBASE_AUTH','Cloudflare Worker','Firebase project verification','Konfigurasi backend menunjuk ke project Firebase yang berbeda.','Periksa FIREBASE_PROJECT_ID dan gunakan project brandal-bet.'],
@@ -25,7 +25,7 @@ const CODE_INFO = Object.freeze({
   service_unavailable: ['BACKEND_RUNTIME','Cloudflare Worker','Backend runtime','Backend mengalami error yang tidak dapat dipetakan sebagai error domain.','Periksa log Cloudflare Worker menggunakan Request ID.'],
   internal_error: ['BACKEND_RUNTIME','Cloudflare Worker','Backend runtime','Terjadi error internal yang tidak aman untuk ditampilkan sebagai stack trace.','Periksa log Worker menggunakan Request ID.'],
   backend_handler_unavailable: ['BACKEND_ROUTER','Cloudflare Worker','Handler loading','Modul endpoint gagal dimuat oleh Worker.','Periksa deployment/bundle Worker menggunakan Request ID.'],
-  not_found: ['ROUTING','Cloudflare Worker','API routing','Endpoint yang diminta tidak tersedia.','Periksa path API pada XML dan daftar route Worker.'],
+  not_found: ['ROUTING','Cloudflare Worker','API routing','Endpoint yang diminta tidak tersedia.','Periksa path API pada Blogger dan daftar route Worker.'],
   method_not_allowed: ['ROUTING','Cloudflare Worker','HTTP method','Method HTTP tidak didukung endpoint.','Gunakan method yang ditentukan endpoint.'],
   invalid_json: ['REQUEST_VALIDATION','Cloudflare Worker','JSON parser','Body request bukan JSON yang valid.','Kirim payload JSON yang valid.'],
   invalid_onboarding_payload: ['ONBOARDING_VALIDATION','Cloudflare Worker','Onboarding payload','Payload pendaftaran tidak valid.','Periksa seluruh field pendaftaran sebelum mengirim ulang.']
@@ -37,13 +37,13 @@ export function requestIdFromEvent(event) {
   return crypto.randomUUID();
 }
 
-export function diagnosticFor(error, { event, scope = 'member', actor = null, operation = null, stage = null, component = 'Cloudflare Worker', statusCode = null } = {}) {
+export function diagnosticFor(error, { event, scope = 'member', actor = null, operation = null, stage = null, component = null, statusCode = null } = {}) {
   const code = String(error?.code || 'internal_error');
   const info = CODE_INFO[code];
   const path = event?.path || event?.rawUrl || 'unknown endpoint';
   const httpStatus = Number(error?.statusCode || statusCode || 500);
   const fallbackStage = scope === 'backoffice' ? 'BACKOFFICE_API' : 'MEMBER_API';
-  const inferred = info || [fallbackStage, component, operation || path, 'Backend mengembalikan error.', 'Periksa detail error dan Request ID.'];
+  const inferred = info || [fallbackStage, 'Cloudflare Worker', operation || path, 'Backend mengembalikan error.', 'Periksa detail error dan Request ID.'];
   const uid = typeof actor?.uid === 'string' ? actor.uid : null;
   const role = typeof actor?.role === 'string' ? actor.role : (typeof actor?.claims?.role === 'string' ? actor.claims.role : null);
   return {
