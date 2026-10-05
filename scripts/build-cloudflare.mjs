@@ -131,6 +131,19 @@ if (!obligationOverride || !Array.isArray(obligationOverride.indexes) || obligat
   throw new Error('rewardTurnover.obligations must be exempt from Firestore indexing.');
 }
 
+const gamesSource = await readFile('cloudflare/functions/games.js', 'utf8');
+const catalogSource = await readFile('src/game/catalog.js', 'utf8');
+const displaySettingsSource = await readFile('src/game/display-settings.js', 'utf8');
+if (/from ['"]firebase-admin\\//.test(gamesSource)) {
+  throw new Error('Member games handler must not statically import firebase-admin on Cloudflare Workers.');
+}
+if (!catalogSource.includes("import('../firebase/firestore-rest.js')")) {
+  throw new Error('Member catalog reader must use the Cloudflare Firestore REST transport.');
+}
+if (!displaySettingsSource.includes("import('../firebase/firestore-rest.js')")) {
+  throw new Error('Member game display settings reader must use the Cloudflare Firestore REST transport.');
+}
+
 const routerSource = await readFile('cloudflare-router.js', 'utf8');
 if (routerSource.includes('/.netlify/functions/') || routerSource.includes('./netlify/functions/')) {
   throw new Error('Cloudflare router must not expose or import Netlify function paths.');
@@ -154,6 +167,7 @@ for (const file of [
   'cloudflare-router.js',
   'cloudflare/functions/goldslot-callback.js',
   'src/firebase/admin.js',
+  'src/firebase/firestore-rest.js',
   'src/config/readiness.js',
   'src/game/goldslotpalase.js',
   'src/game/player.js',
