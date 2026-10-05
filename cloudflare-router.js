@@ -1,4 +1,44 @@
 const MAX_BODY_BYTES = 128 * 1024;
+const RATE_LIMIT_WINDOW_MS = 60 * 1000;
+const RATE_LIMITS = Object.freeze({
+  'game-launch': 20,
+  'game-wallet-transfer': 10,
+  'game-wallet-reconcile': 10,
+  'member-onboarding': 8,
+  'member-bank-account': 20,
+  'member-profile': 30,
+});
+const rateBuckets = new Map();
+
+function requestClientKey(request) {
+  return request.headers.get('cf-connecting-ip')
+    || request.headers.get('x-forwarded-for')?.split(',')[0]?.trim()
+    || 'unknown';
+}
+
+function rateLimitCheck(request, route) {
+  const limit = RATE_LIMITS[route];
+  if (!limit) return { allowed: true, retryAfter: 0 };
+  const now = Date.now();
+  const key = route + '::' + requestClientKey(request);
+  const current = rateBuckets.get(key);
+  if (!current || current.resetAt <= now) {
+    rateBuckets.set(key, { count: 1, resetAt: now + RATE_LIMIT_WINDOW_MS });
+    return { allowed: true, retryAfter: 0 };
+  }
+  if (current.count >= limit) {
+    return { allowed: false, retryAfter: Math.max(1, Math.ceil((current.resetAt - now) / 1000)) };
+  }
+  current.count += 1;
+  return { allowed: true, retryAfter: 0 };
+}
+
+function pruneRateBuckets(now = Date.now()) {
+  if (rateBuckets.size < 5000) return;
+  for (const [key, bucket] of rateBuckets) {
+    if (bucket.resetAt <= now) rateBuckets.delete(key);
+  }
+}
 
 // Load only the handler needed for the current request. This keeps Cloudflare
 // startup lightweight and prevents one optional integration dependency from
@@ -167,6 +207,9 @@ function json(status, body, extraHeaders = {}) {
       'Content-Type': 'application/json; charset=utf-8',
       'Cache-Control': 'no-store',
       'X-Content-Type-Options': 'nosniff',
+      'X-Frame-Options': 'DENY',
+      'Referrer-Policy': 'no-referrer',
+      'Permissions-Policy': 'camera=(), microphone=(), geolocation=()',
       ...extraHeaders,
     },
   });
@@ -196,8 +239,18 @@ export async function handleApiRequest(request, env = process.env) {
   }
 
   try {
+    const limit = rateLimitCheck(request, name);
+    if (!limit.allowed) {
+      return json(429, { ok: false, error: 'rate_limited', retryAfterSeconds: limit.retryAfter }, {
+        'Retry-After': String(limit.retryAfter),
+      });
+    }
+    pruneRateBuckets();
     const event = await functionEventFromRequest(request);
-    return responseFromFunctionResult(await handler(event));
+    const response = responseFromFunctionResult(await handler(event));
+    const requestId = event.headers['x-request-id'];
+    if (requestId) response.headers.set('X-Request-ID', requestId);
+    return response;
   } catch (error) {
     if (error?.statusCode === 413) {
       return json(413, { ok: false, error: 'payload_too_large' });
