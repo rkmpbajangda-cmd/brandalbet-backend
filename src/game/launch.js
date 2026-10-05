@@ -4,6 +4,7 @@ import { getOrCreateProfile } from '../member/profile.js';
 import { getOrCreateWallet } from '../wallet/service.js';
 import { ensureGoldslotPlayer } from './player.js';
 import { ensurePlayableGoldslotBalance, normalizeLaunchRequestId } from './wallet-bridge.js';
+import { loadStoredGameCatalog } from './catalog.js';
 
 const LAUNCH_GUARD_MS = 8_000;
 const LAUNCH_GUARD_COLLECTION = 'gameLaunchGuards';
@@ -121,11 +122,25 @@ export async function launchGoldslotGame(actor, input, {
   loadWallet = getOrCreateWallet,
   ensurePlayer = ensureGoldslotPlayer,
   prepareBalance = ensurePlayableGoldslotBalance,
+  loadCatalog = loadStoredGameCatalog,
 } = {}) {
   const game = validateGameInput(input);
   const [profile, wallet] = await Promise.all([loadProfile(actor), loadWallet(actor.uid, { db })]);
   if (profile.onboardingCompleted !== true || !profile.username) throw new ServiceError('member_onboarding_required', 409);
   if (wallet.status !== 'active') throw new ServiceError('wallet_locked', 409);
+
+  // Launch is allowed only for a game that exists in the server-side provider
+  // snapshot. This prevents arbitrary provider/game identifiers from being
+  // launched by browser input and keeps launch behavior identical to the
+  // catalog shown to members.
+  const catalog = await loadCatalog({ db });
+  const catalogGame = catalog.games.find(item =>
+    item.providerId === game.providerId && item.gameSymbol === game.gameSymbol
+  );
+  if (!catalogGame) throw new ServiceError('game_not_found', 404);
+  if (catalogGame.launchEnabled !== true) throw new ServiceError('game_unavailable', 409);
+  const provider = catalog.providers.find(item => item.providerId === game.providerId);
+  if (provider?.status === 'maintenance') throw new ServiceError('provider_maintenance', 503);
 
   // The process-local guard stops immediate duplicate taps cheaply. The
   // Firestore lease below extends the same protection across serverless
