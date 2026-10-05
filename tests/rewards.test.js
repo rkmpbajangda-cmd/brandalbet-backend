@@ -90,6 +90,26 @@ test('referral commission credits promoter once and is independent from member c
   assert.equal(db.read('wallets/promoter-1').rewardLockedMinor, undefined);
 });
 
+test('legacy users referral field cannot create commission without immutable referral binding', async () => {
+  const db = transactionDb({
+    'users/u-legacy': { uid: 'u-legacy', referralPromoterUid: 'promoter-legacy' },
+    'wallets/u-legacy': wallet('u-legacy'),
+    'wallets/promoter-legacy': wallet('promoter-legacy'),
+  });
+  const round = {
+    provider: 'goldslotpalase',
+    uid: 'u-legacy',
+    roundId: 'legacy-referral-round',
+    betAmountMinor: 600_000,
+    winAmountMinor: 0,
+    settledAt: '2026-10-01T12:00:00.000Z',
+  };
+  await ingestSettledGameRound(round, { db, now: Date.parse('2026-10-02T00:00:00Z') });
+  const aggregatePath = 'rewardWeeklyMembers/' + weeklyAggregateId('2026-09-28', 'u-legacy');
+  const aggregate = db.read(aggregatePath);
+  assert.equal(aggregate.promoterUid, null);
+});
+
 test('settled game round is replay-safe, aggregates valid bet/win and advances turnover once', async () => {
   const obligation = {
     id: 'c'.repeat(64), weekKey: '2026-09-28', principalMinor: 50_000,
