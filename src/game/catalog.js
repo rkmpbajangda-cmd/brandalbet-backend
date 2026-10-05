@@ -1,7 +1,6 @@
 import { getAdminDb } from '../firebase/admin.js';
 import { ServiceError } from '../utils/errors.js';
 
-const MAX_GAMES = 10000;
 const DEFAULT_CATALOG_TTL_MS = 5 * 60 * 1000;
 const STALE_IF_ERROR_MS = 30 * 60 * 1000;
 const SNAPSHOT_COLLECTION = 'providerCatalogSnapshots';
@@ -61,7 +60,6 @@ export function normalizeGoldslotProviders(data) {
 
 export function normalizeGoldslotGames(data, providerNames = new Map()) {
   if (!Array.isArray(data)) throw new ServiceError('provider_invalid_catalog', 503);
-  if (data.length > MAX_GAMES) throw new ServiceError('provider_catalog_too_large', 503);
 
   const seen = new Set();
   const games = [];
@@ -186,18 +184,18 @@ async function writeCatalogSnapshot(value, { db, current, chunkSize = SNAPSHOT_C
     chunks.push(value.games.slice(offset, offset + chunkSize).map(game => ({ ...game })));
   }
 
-  const batch = db.batch();
-  chunks.forEach((games, index) => {
-    batch.set(ref.collection('chunks').doc(String(index).padStart(4, '0')), {
-      revision,
-      index,
-      games,
-    }, { merge: false });
-  });
+  // Firestore batches are capped by the platform; commit snapshot chunks in
+  // bounded groups without imposing any catalog-size limit.
+  const writes = [];
+  chunks.forEach((games, index) => writes.push({ type: 'set', ref: ref.collection('chunks').doc(String(index).padStart(4, '0')), data: {
+    revision,
+    index,
+    games,
+  }}));
   for (let index = chunks.length; index < oldChunkCount; index += 1) {
-    batch.delete(ref.collection('chunks').doc(String(index).padStart(4, '0')));
+    writes.push({ type: 'delete', ref: ref.collection('chunks').doc(String(index).padStart(4, '0')) });
   }
-  batch.set(ref, {
+  writes.push({ type: 'set', ref, data: {
     provider: 'goldslotpalase',
     providers: value.providers.map(provider => ({ ...provider })),
     syncedAt: value.syncedAt,
@@ -206,8 +204,15 @@ async function writeCatalogSnapshot(value, { db, current, chunkSize = SNAPSHOT_C
     totalGames: value.games.length,
     chunkCount: chunks.length,
     chunkSize,
-  }, { merge: false });
-  await batch.commit();
+  }});
+  for (let start = 0; start < writes.length; start += 450) {
+    const batch = db.batch();
+    for (const write of writes.slice(start, start + 450)) {
+      if (write.type === 'delete') batch.delete(write.ref);
+      else batch.set(write.ref, write.data, { merge: false });
+    }
+    await batch.commit();
+  }
 
   return Object.freeze({
     ...value,
@@ -264,8 +269,8 @@ export async function loadStoredGameCatalog({ db = getAdminDb(), now = Date.now,
       const meta = metaSnapshot.data() ?? {};
       const chunkCount = Number(meta.chunkCount);
       const totalGames = Number(meta.totalGames);
-      if (!Number.isSafeInteger(chunkCount) || chunkCount < 0 || chunkCount > 100
-        || !Number.isSafeInteger(totalGames) || totalGames < 0 || totalGames > MAX_GAMES) {
+      if (!Number.isSafeInteger(chunkCount) || chunkCount < 0
+        || !Number.isSafeInteger(totalGames) || totalGames < 0) {
         throw new ServiceError('catalog_snapshot_corrupt', 503);
       }
 
