@@ -186,10 +186,11 @@ export async function ingestSettledGameRound(rawInput, { db = getAdminDb(), now 
   const userRef = db.collection('users').doc(round.uid);
   const turnoverRef = db.collection('rewardTurnover').doc(round.uid);
   const walletRef = db.collection('wallets').doc(round.uid);
+  const referralBindingRef = db.collection('referrals').doc(round.uid);
 
   return db.runTransaction(async tx => {
-    const [existingRound, aggregateSnapshot, userSnapshot, turnoverSnapshot, walletSnapshot] = await Promise.all([
-      tx.get(roundRef), tx.get(aggregateRef), tx.get(userRef), tx.get(turnoverRef), tx.get(walletRef),
+    const [existingRound, aggregateSnapshot, userSnapshot, turnoverSnapshot, walletSnapshot, referralBindingSnapshot] = await Promise.all([
+      tx.get(roundRef), tx.get(aggregateRef), tx.get(userRef), tx.get(turnoverRef), tx.get(walletRef), tx.get(referralBindingRef),
     ]);
 
     if (existingRound.exists) {
@@ -210,7 +211,12 @@ export async function ingestSettledGameRound(rawInput, { db = getAdminDb(), now 
     const roundCount = safeInteger(existingAggregate?.roundCount ?? 0, { code: 'reward_aggregate_integrity_error' }) + 1;
     if (![betAmountMinor, winAmountMinor, roundCount].every(Number.isSafeInteger)) throw new ServiceError('amount_overflow', 409);
 
-    const promoterUid = typeof userSnapshot.data()?.referralPromoterUid === 'string' ? userSnapshot.data().referralPromoterUid : null;
+    // Referral ownership is authoritative only from the immutable referrals/{memberUid}
+    // binding. Legacy users.referralPromoterUid must never create commission by itself.
+    const promoterUid = typeof referralBindingSnapshot.data()?.promoterUid === 'string'
+      ? referralBindingSnapshot.data().promoterUid
+      : null;
+    if (promoterUid === round.uid) throw new ServiceError('self_referral_not_allowed', 409);
     const obligations = normalizeObligations(turnoverSnapshot.exists ? turnoverSnapshot.data() : null);
     const turnover = applyTurnoverToObligations(obligations, round.betAmountMinor);
     const previousLocked = safeInteger(walletSnapshot.data()?.rewardLockedMinor ?? lockedPrincipal(obligations), { code: 'reward_turnover_integrity_error' });
@@ -443,8 +449,9 @@ export async function memberRewardSummary(actor, { db = getAdminDb(), now = Date
   const turnoverRef = db.collection('rewardTurnover').doc(uid);
   const weekKey = rewardWeekKey(now);
   const weeklyRef = db.collection('rewardWeeklyMembers').doc(weeklyAggregateId(weekKey, uid));
-  const [userSnapshot, walletSnapshot, turnoverSnapshot, weeklySnapshot] = await Promise.all([
-    userRef.get(), walletRef.get(), turnoverRef.get(), weeklyRef.get(),
+  const referralBindingRef = db.collection('referrals').doc(uid);
+  const [userSnapshot, walletSnapshot, turnoverSnapshot, weeklySnapshot, referralBindingSnapshot] = await Promise.all([
+    userRef.get(), walletRef.get(), turnoverRef.get(), weeklyRef.get(), referralBindingRef.get(),
   ]);
   if (!userSnapshot.exists || !walletSnapshot.exists) throw new ServiceError('member_not_found', 404);
   const wallet = validateWallet(uid, walletSnapshot.data());
@@ -457,7 +464,7 @@ export async function memberRewardSummary(actor, { db = getAdminDb(), now = Date
     referral: {
       promoter: userSnapshot.data()?.referralPromoter === true,
       code: typeof userSnapshot.data()?.ownedReferralCode === 'string' ? userSnapshot.data().ownedReferralCode : null,
-      referredByPromoterUid: typeof userSnapshot.data()?.referralPromoterUid === 'string' ? userSnapshot.data().referralPromoterUid : null,
+      referredByPromoterUid: typeof referralBindingSnapshot.data()?.promoterUid === 'string' ? referralBindingSnapshot.data().promoterUid : null,
     },
     cashback: {
       currentWeekKey: weekKey,
