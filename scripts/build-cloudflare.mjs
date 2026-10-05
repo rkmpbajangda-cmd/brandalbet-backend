@@ -27,7 +27,7 @@ for (const name of forbiddenPlaintextSecrets) {
 }
 
 const requiredSecrets = new Set(config.secrets?.required ?? []);
-for (const name of ['FIREBASE_SERVICE_ACCOUNT_JSON', 'GOLDSLOTPALASE_API_TOKEN']) {
+for (const name of ['FIREBASE_SERVICE_ACCOUNT_JSON', 'GOLDSLOTPALASE_API_TOKEN', 'GOLDSLOTPALASE_CALLBACK_TOKEN']) {
   if (!requiredSecrets.has(name)) throw new Error(`${name} must be declared in wrangler secrets.required.`);
 }
 for (const optionalName of ['BOOTSTRAP_SUPERADMIN_UID', 'PAYMENT_CONFIG_ENCRYPTION_KEY']) {
@@ -152,6 +152,7 @@ if (!firebaseAdminSource.includes('firebase_admin_project_mismatch')) {
 for (const file of [
   'cloudflare-worker.js',
   'cloudflare-router.js',
+  'cloudflare/functions/goldslot-callback.js',
   'src/firebase/admin.js',
   'src/config/readiness.js',
   'src/game/goldslotpalase.js',
