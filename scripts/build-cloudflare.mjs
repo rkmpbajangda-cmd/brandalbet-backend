@@ -138,7 +138,7 @@ const memberDisplayReaderSource = await readFile('src/game/display-settings-read
 if (/from ['"]firebase-admin\//.test(gamesSource) || /from ['"]firebase-admin\//.test(memberDisplayReaderSource)) {
   throw new Error('Member games route must not statically import firebase-admin on Cloudflare Workers.');
 }
-if (!catalogSource.includes("import('../firebase/firestore-rest.js')")) {
+if (!catalogSource.includes("from '../firebase/firestore-rest.js'")) {
   throw new Error('Member catalog reader must use the Cloudflare Firestore REST transport.');
 }
 if (!memberDisplayReaderSource.includes("../firebase/firestore-rest.js")) {
