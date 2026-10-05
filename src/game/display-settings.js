@@ -1,5 +1,3 @@
-import { FieldValue } from 'firebase-admin/firestore';
-import { getAdminDb } from '../firebase/admin.js';
 import { ServiceError } from '../utils/errors.js';
 
 const ADMINS = new Set(['admin', 'superadmin']);
@@ -76,7 +74,11 @@ function fromSnapshot(snapshot) {
   });
 }
 
-export async function loadGameDisplaySettings({ db = getAdminDb(), now = Date.now, ttlMs = DEFAULT_TTL_MS } = {}) {
+export async function loadGameDisplaySettings({ db, env = process.env, now = Date.now, ttlMs = DEFAULT_TTL_MS } = {}) {
+  if (!db) {
+    const { createFirestoreRestDb } = await import('../firebase/firestore-rest.js');
+    db = createFirestoreRestDb(env);
+  }
   const current = now();
   if (cache && current < cache.expiresAt) return cache.value;
   const snapshot = await db.collection('gameDisplaySettings').doc('member').get();
@@ -89,8 +91,13 @@ export function clearGameDisplaySettingsCache() {
   cache = null;
 }
 
-export async function updateGameDisplaySettings(actor, input, { db = getAdminDb() } = {}) {
+export async function updateGameDisplaySettings(actor, input, { db, env = process.env } = {}) {
   requireAdmin(actor);
+  const [{ FieldValue }, { getAdminDb }] = await Promise.all([
+    import('firebase-admin/firestore'),
+    import('../firebase/admin.js'),
+  ]);
+  if (!db) db = getAdminDb(env);
   if (!input || input.action !== 'update') throw new ServiceError('invalid_game_display_action', 400);
   const settings = normalizeGameDisplaySettings(input.settings);
   const expectedRevision = Number(input.expectedRevision ?? 0);
