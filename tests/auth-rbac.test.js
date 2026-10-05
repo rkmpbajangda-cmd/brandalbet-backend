@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { authenticateRequest, AuthHttpError } from '../src/auth/authenticate.js';
-import { canAccessBackoffice } from '../src/rbac/roles.js';
+import { canAccessBackoffice, canAccessMember } from '../src/rbac/roles.js';
 import { createHandler as createMeHandler } from '../cloudflare/functions/me.js';
 import { createHandler as createBackofficeHealthHandler } from '../cloudflare/functions/backoffice-health.js';
 
@@ -99,4 +99,19 @@ test('backoffice health forwards request-scoped Cloudflare env to token verifier
   assert.equal(response.statusCode, 200);
   assert.equal(response.headers['Access-Control-Allow-Origin'], 'https://admin.example.test');
   assert.equal(observedEnv, env);
+});
+
+
+test('member RBAC is explicit and cannot be satisfied by backoffice roles', () => {
+  assert.equal(canAccessMember({ role: 'member', backoffice: false }), true);
+  assert.equal(canAccessMember({ role: 'operator', backoffice: true }), false);
+  assert.equal(canAccessMember({ role: 'admin', backoffice: true }), false);
+  assert.equal(canAccessMember({ role: 'admin', backoffice: false }), false);
+  assert.equal(canAccessMember({ role: 'unknown', backoffice: false }), false);
+});
+
+test('backoffice and member scopes remain mutually exclusive', () => {
+  assert.equal(canAccessBackoffice({ role: 'superadmin', backoffice: true }), true);
+  assert.equal(canAccessMember({ role: 'superadmin', backoffice: true }), false);
+  assert.equal(canAccessBackoffice({ role: 'member', backoffice: false }), false);
 });
