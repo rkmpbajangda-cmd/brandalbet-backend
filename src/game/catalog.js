@@ -174,10 +174,6 @@ function validStoredGame(row) {
 
 async function writeCatalogSnapshot(value, { db, current, chunkSize = SNAPSHOT_CHUNK_SIZE } = {}) {
   const ref = snapshotRef(db);
-  const previous = await ref.get();
-  const oldChunkCount = previous.exists && Number.isSafeInteger(previous.data()?.chunkCount)
-    ? previous.data().chunkCount
-    : 0;
   const revision = current;
   const chunks = [];
   for (let offset = 0; offset < value.games.length; offset += chunkSize) {
