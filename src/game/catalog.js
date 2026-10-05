@@ -214,25 +214,10 @@ async function writeCatalogSnapshot(value, { db, current, chunkSize = SNAPSHOT_C
   });
   await metaBatch.commit();
 
-  // Best-effort cleanup after publication. A stale chunk can never be read
-  // when it lies beyond the published chunkCount, so cleanup failure does not
-  // invalidate an otherwise complete catalog.
-  if (oldChunkCount > chunks.length) {
-    try {
-      for (let start = chunks.length; start < oldChunkCount; start += 450) {
-        const batch = db.batch();
-        for (let index = start; index < Math.min(start + 450, oldChunkCount); index += 1) {
-          batch.delete(ref.collection('chunks').doc(String(index).padStart(4, '0')));
-        }
-        await batch.commit();
-      }
-    } catch (error) {
-      console.error(JSON.stringify({
-        event: 'catalog_snapshot_cleanup_failed',
-        error: error?.code || error?.name || 'unknown',
-      }));
-    }
-  }
+  // Old chunks beyond the published chunkCount are intentionally retained.
+  // They are unreachable to readers and retaining them avoids a cross-isolate
+  // sync race where one synchronization could delete chunks being published
+  // by another synchronization. Future syncs reuse the same chunk IDs.
 
   return Object.freeze({
     ...value,
