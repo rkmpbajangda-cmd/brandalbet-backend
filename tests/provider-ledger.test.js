@@ -175,6 +175,39 @@ test('round finalizer aggregates multiple settled rounds once and deletes tempor
   assert.equal(db.entries().filter(([path]) => path.startsWith('settledGameRounds/')).length, 0);
 });
 
+test('round finalizer applies valid betting turnover before releasing reward lock', async () => {
+  const now = Date.parse('2026-10-05T01:00:00.000Z');
+  const old = now - 60 * 60 * 1000;
+  const db = transactionDb({
+    'providerSyncStates/goldslotpalase-transactions': {
+      provider: 'goldslotpalase', status: 'ready', lastId: 5000, lastSuccessAtMs: now, hasMore: false,
+    },
+    'users/member-1': { uid: 'member-1' },
+    'wallets/member-1': {
+      uid: 'member-1', currency: 'IDR', balanceMinor: 1000000,
+      availableMinor: 1000000, rewardLockedMinor: 300000, status: 'active',
+    },
+    'rewardTurnover/member-1': {
+      uid: 'member-1',
+      obligations: [{
+        id: 'cashback-1', weekKey: '2026-W40', principalMinor: 300000,
+        requiredTurnoverMinor: 3000000, remainingTurnoverMinor: 3000000,
+      }],
+      pendingTurnoverMinor: 3000000,
+    },
+    'providerGameRounds/r1': {
+      provider: 'goldslotpalase', uid: 'member-1', userCode: 501, roundId: 'r1', providerId: 10,
+      gameSymbol: 'slot-test', effectiveBetMinor: 1000000, winAmountMinor: 600000,
+      status: 'pending', hasSettlement: true, anomaly: false, lastProviderAtMs: old, maxTransId: 4001,
+    },
+  });
+
+  const result = await finalizeReadyGoldslotRounds({ db, now });
+  assert.equal(result.finalized, 1);
+  assert.equal(db.read('wallets/member-1').rewardLockedMinor, 200000);
+  assert.equal(db.read('rewardTurnover/member-1').pendingTurnoverMinor, 2000000);
+});
+
 test('scheduled provider sync is fail-closed while transaction sync is disabled', async () => {
   let called = false;
   const result = await syncGoldslotProviderTransactions({
