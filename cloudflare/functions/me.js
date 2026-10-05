@@ -10,17 +10,17 @@ export function createHandler(dependencies = {}) {
   return async (event) => {
     let cors = {};
     try {
-      cors = corsHeaders(event, 'member');
+      cors = corsHeaders(event, 'member', env);
       if (event.httpMethod === 'OPTIONS') return empty(204, cors);
       if (event.httpMethod !== 'GET') return json(405, { ok: false, error: 'method_not_allowed' }, { ...cors, Allow: 'GET, OPTIONS' });
 
-      if (!canAccessMember(actor)) throw new ServiceError('forbidden', 403);
       const actor = await authenticateRequest(event, {
         verifyIdToken,
         verifyMemberSession,
         requireMemberSession: true,
         env,
       });
+      if (!canAccessMember(actor)) throw new ServiceError('forbidden', 403);
       auditSecurityEvent({ event, actor, action: 'auth.me.read', outcome: 'allowed' });
       return json(200, {
         ok: true,
