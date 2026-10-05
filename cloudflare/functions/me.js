@@ -2,7 +2,7 @@ import { authenticateRequest, AuthHttpError } from '../../src/auth/authenticate.
 import { ServiceError } from '../../src/utils/errors.js';
 import { auditSecurityEvent } from '../../src/audit/logger.js';
 import { corsHeaders, CorsError } from '../../src/security/cors.js';
-import { isKnownRole } from '../../src/rbac/roles.js';
+import { isKnownRole, canAccessMember } from '../../src/rbac/roles.js';
 import { empty, json } from '../../src/utils/http.js';
 
 export function createHandler(dependencies = {}) {
@@ -14,6 +14,7 @@ export function createHandler(dependencies = {}) {
       if (event.httpMethod === 'OPTIONS') return empty(204, cors);
       if (event.httpMethod !== 'GET') return json(405, { ok: false, error: 'method_not_allowed' }, { ...cors, Allow: 'GET, OPTIONS' });
 
+      if (!canAccessMember(actor)) throw new ServiceError('forbidden', 403);
       const actor = await authenticateRequest(event, {
         verifyIdToken,
         verifyMemberSession,
