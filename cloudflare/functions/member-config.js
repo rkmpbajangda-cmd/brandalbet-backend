@@ -20,7 +20,7 @@ export function createHandler({
       const assetEnv = assetEnvForRequest(event, env);
       const [controlRaw, website] = await Promise.all([
         loadControl({ db: getAdminDb(env) }),
-        loadSite({ env: assetEnv }),
+        loadSite({ db: getAdminDb(env), env: assetEnv }),
       ]);
       const control = publicMasterControl(controlRaw);
       return json(200, {
