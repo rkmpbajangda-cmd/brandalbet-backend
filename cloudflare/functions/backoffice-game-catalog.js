@@ -62,7 +62,7 @@ export function createHandler({
       if (event.httpMethod === 'POST') {
         const input = parseBody(event);
         if (input.action === 'update') {
-          const display = await updateDisplay(actor, input);
+          const display = await updateDisplay(actor, input, { db: dbFactory(env) });
           return { display };
         }
         if (input.action === 'sync') {
