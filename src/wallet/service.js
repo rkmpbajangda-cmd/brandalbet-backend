@@ -6,10 +6,16 @@ export function validateWallet(uid, data) {
   if (!data || data.uid !== uid || data.currency !== 'IDR' ||
       !Number.isSafeInteger(data.balanceMinor) || data.balanceMinor < 0 ||
       !Number.isSafeInteger(data.availableMinor) || data.availableMinor < 0 ||
-      data.availableMinor > data.balanceMinor || !['active', 'locked'].includes(data.status)) {
+      data.availableMinor > data.balanceMinor ||
+      !['active', 'locked'].includes(data.status)) {
     throw new ServiceError('wallet_integrity_error', 503);
   }
-  return data;
+  const rewardLockedMinor = data.rewardLockedMinor ?? 0;
+  if (!Number.isSafeInteger(rewardLockedMinor) || rewardLockedMinor < 0 ||
+      rewardLockedMinor > data.availableMinor) {
+    throw new ServiceError('wallet_integrity_error', 503);
+  }
+  return { ...data, rewardLockedMinor };
 }
 export function walletView(uid, data) {
   validateWallet(uid, data);
