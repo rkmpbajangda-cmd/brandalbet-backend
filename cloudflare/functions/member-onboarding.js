@@ -4,6 +4,7 @@ import { auditSecurityEvent } from '../../src/audit/logger.js';
 import { corsHeaders, CorsError } from '../../src/security/cors.js';
 import { completeMemberOnboarding, OnboardingValidationError } from '../../src/member/onboarding.js';
 import { loadMasterControl } from '../../src/backoffice/master-control.js';
+import { getAdminDb } from '../../src/firebase/admin.js';
 import { empty, json } from '../../src/utils/http.js';
 
 function parseBody(event) {
@@ -26,7 +27,7 @@ export function createHandler({ verifyIdToken, onboard = completeMemberOnboardin
         return json(405, { ok: false, error: 'method_not_allowed' }, { ...cors, Allow: 'POST, OPTIONS' });
       }
 
-      const control = await loadControl({ db: (await import('../../src/firebase/admin.js')).getAdminDb(env) });
+      const control = await loadControl({ db: getAdminDb(env) });
       if (control.maintenanceMode === true) throw new ServiceError('maintenance_mode', 503);
       if (control.registrationEnabled === false) throw new ServiceError('registration_disabled', 503);
 
