@@ -3,11 +3,10 @@ import { authenticateRequest, AuthHttpError } from '../../src/auth/authenticate.
 import { auditSecurityEvent } from '../../src/audit/logger.js';
 import { corsHeaders, CorsError } from '../../src/security/cors.js';
 import { getOrCreateWallet } from '../../src/wallet/service.js';
+import { getAdminDb } from '../../src/firebase/admin.js';
 import { empty, json } from '../../src/utils/http.js';
 
-export function createHandler({ verifyIdToken, loadWallet = getOrCreateWallet,
-  env = process.env,
-} = {}) {
+export function createHandler({ verifyIdToken, loadWallet = getOrCreateWallet, env = process.env } = {}) {
   return async (event) => {
     let cors = {};
     let actor = null;
@@ -17,7 +16,7 @@ export function createHandler({ verifyIdToken, loadWallet = getOrCreateWallet,
       if (event.httpMethod !== 'GET') return json(405, { ok: false, error: 'method_not_allowed' }, { ...cors, Allow: 'GET, OPTIONS' });
 
       actor = await authenticateRequest(event, { verifyIdToken, requireMemberSession: true, env });
-      const wallet = await loadWallet(actor.uid);
+      const wallet = await loadWallet(actor.uid, { db: getAdminDb(env) });
       auditSecurityEvent({ event, actor, action: 'wallet.read', outcome: 'allowed' });
       return json(200, { ok: true, wallet }, cors);
     } catch (error) {
