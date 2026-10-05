@@ -30,16 +30,30 @@ function boolFlag(value) {
   return value === true || value === 1 || value === '1';
 }
 
+function positiveInteger(value) {
+  const number = typeof value === 'string' && value.trim() !== '' ? Number(value) : value;
+  return Number.isSafeInteger(number) && number > 0 ? number : null;
+}
+
 function providerIdOf(row) {
-  const value = row?.provider_id ?? row?.id;
-  return Number.isSafeInteger(value) && value > 0 ? value : null;
+  return positiveInteger(row?.provider_id ?? row?.providerId ?? row?.id);
+}
+
+function collectionFromResponse(data, keys) {
+  if (Array.isArray(data)) return data;
+  if (!data || typeof data !== 'object' || Array.isArray(data)) return null;
+  for (const key of keys) {
+    if (Array.isArray(data[key])) return data[key];
+  }
+  return null;
 }
 
 export function normalizeGoldslotProviders(data) {
-  if (!Array.isArray(data)) return [];
+  const rows = collectionFromResponse(data, ['providers', 'data', 'list', 'rows']);
+  if (!rows) return [];
   const seen = new Set();
   const providers = [];
-  for (const row of data) {
+  for (const row of rows) {
     if (!row || typeof row !== 'object' || Array.isArray(row)) continue;
     const providerId = providerIdOf(row);
     if (!providerId || seen.has(providerId)) continue;
@@ -65,10 +79,10 @@ export function normalizeGoldslotGames(data, providerNames = new Map()) {
 
   const seen = new Set();
   const games = [];
-  for (const row of data) {
+  for (const row of rows) {
     if (!row || typeof row !== 'object' || Array.isArray(row)) continue;
-    const providerId = row.provider_id;
-    const gameCode = safeText(row.game_code, 200);
+    const providerId = positiveInteger(row.provider_id ?? row.providerId);
+    const gameCode = safeText(row.game_code ?? row.gameCode ?? row.code, 200);
     if (!Number.isSafeInteger(providerId) || providerId <= 0 || !gameCode) continue;
 
     const key = providerId + ':' + gameCode;
