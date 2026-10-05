@@ -1,8 +1,5 @@
 const MAX_BODY_BYTES = 128 * 1024;
 
-// Load only the handler needed for the current request. This keeps Cloudflare
-// startup lightweight and prevents one optional integration dependency from
-// making unrelated routes (such as /api/health) unavailable.
 const handlerLoaders = Object.freeze({
   'backoffice-audit': () => import('./cloudflare/functions/backoffice-audit.js'),
   'backoffice-dashboard': () => import('./cloudflare/functions/backoffice-dashboard.js'),
@@ -24,6 +21,7 @@ const handlerLoaders = Object.freeze({
   'game-wallet-reconcile': () => import('./cloudflare/functions/game-wallet-reconcile.js'),
   'game-wallet-status': () => import('./cloudflare/functions/game-wallet-status.js'),
   'game-wallet-transfer': () => import('./cloudflare/functions/game-wallet-transfer.js'),
+  'goldslot-callback': () => import('./cloudflare/functions/goldslot-callback.js'),
   games: () => import('./cloudflare/functions/games.js'),
   health: () => import('./cloudflare/functions/health.js'),
   me: () => import('./cloudflare/functions/me.js'),
@@ -39,15 +37,11 @@ const handlerLoaders = Object.freeze({
   wallet: () => import('./cloudflare/functions/wallet.js'),
 });
 
-// Cache only imported modules, not environment-bound handlers. Cloudflare env
-// bindings are passed explicitly for each request instead of relying solely on
-// process.env compatibility behavior.
 const moduleCache = new Map();
 
 async function resolveHandler(name, env) {
   const loader = handlerLoaders[name];
   if (!loader) return null;
-
   let promise = moduleCache.get(name);
   if (!promise) {
     promise = loader().catch((error) => {
@@ -56,11 +50,8 @@ async function resolveHandler(name, env) {
     });
     moduleCache.set(name, promise);
   }
-
   const module = await promise;
-  if (typeof module?.createHandler === 'function') {
-    return module.createHandler({ env });
-  }
+  if (typeof module?.createHandler === 'function') return module.createHandler({ env });
   if (typeof module?.handler === 'function') return module.handler;
   throw new TypeError(`Handler export is unavailable for ${name}`);
 }
@@ -79,7 +70,6 @@ async function readRequestBody(request) {
     error.statusCode = 413;
     throw error;
   }
-
   const reader = request.body.getReader();
   const chunks = [];
   let size = 0;
@@ -95,7 +85,6 @@ async function readRequestBody(request) {
     }
     chunks.push(value);
   }
-
   const merged = new Uint8Array(size);
   let offset = 0;
   for (const chunk of chunks) {
@@ -149,14 +138,10 @@ export function responseFromFunctionResult(result) {
     if (!Array.isArray(values)) continue;
     for (const value of values) headers.append(key, String(value));
   }
-
   const bodyForbidden = status === 204 || status === 205 || status === 304;
-  const body = bodyForbidden
-    ? null
-    : (result?.isBase64Encoded
-      ? bytesFromBase64(String(result?.body ?? ''))
-      : String(result?.body ?? ''));
-
+  const body = bodyForbidden ? null : (result?.isBase64Encoded
+    ? bytesFromBase64(String(result?.body ?? ''))
+    : String(result?.body ?? ''));
   return new Response(body, { status, headers });
 }
 
@@ -183,7 +168,6 @@ function logHandlerLoadFailure(name, error) {
 
 export async function handleApiRequest(request, env = process.env) {
   const url = new URL(request.url);
-
   const name = functionNameFromPath(url.pathname);
   if (!name || !handlerLoaders[name]) return json(404, { ok: false, error: 'not_found' });
 
@@ -199,9 +183,7 @@ export async function handleApiRequest(request, env = process.env) {
     const event = await functionEventFromRequest(request);
     return responseFromFunctionResult(await handler(event));
   } catch (error) {
-    if (error?.statusCode === 413) {
-      return json(413, { ok: false, error: 'payload_too_large' });
-    }
+    if (error?.statusCode === 413) return json(413, { ok: false, error: 'payload_too_large' });
     console.error(JSON.stringify({
       event: 'cloudflare_router_error',
       requestId: request.headers.get('x-request-id') || null,
@@ -210,4 +192,3 @@ export async function handleApiRequest(request, env = process.env) {
     return json(500, { ok: false, error: 'internal_error' });
   }
 }
-
