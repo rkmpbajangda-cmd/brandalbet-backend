@@ -43,13 +43,16 @@ function catalogView(catalog) {
 export function createHandler({
   verifyIdToken,
   env = process.env,
-  loadCatalog = loadStoredGameCatalog,
+  loadCatalog,
   syncCatalog = syncStoredGameCatalog,
   clientFactory = createGoldslotClient,
   dbFactory = getAdminDb,
-  loadDisplay = loadGameDisplaySettings,
+  loadDisplay,
   updateDisplay = updateGameDisplaySettings,
 } = {}) {
+  const readCatalog = loadCatalog || ((options = {}) => loadStoredGameCatalog({ ...options, db: dbFactory(env) }));
+  const readDisplay = loadDisplay || ((options = {}) => loadGameDisplaySettings({ ...options, db: dbFactory(env) }));
+
   return protectedHandler({
     scope: 'backoffice',
     methods: ['GET', 'POST'],
@@ -66,7 +69,7 @@ export function createHandler({
           if (!CATALOG_SYNC_ROLES.has(actor.role)) throw new ServiceError('forbidden', 403);
           const [catalog, display] = await Promise.all([
             syncCatalog({ client: clientFactory({ env }), db: dbFactory(env) }),
-            loadDisplay(),
+            readDisplay(),
           ]);
           return { ...catalogView(catalog), display, syncedByAdmin: true };
         }
@@ -77,8 +80,8 @@ export function createHandler({
       // snapshot. It does not contact GoldslotPalase. Only POST action=sync
       // performs provider catalog calls.
       const [catalog, display] = await Promise.all([
-        loadCatalog(),
-        loadDisplay(),
+        readCatalog(),
+        readDisplay(),
       ]);
       return { ...catalogView(catalog), display };
     },
