@@ -26,12 +26,12 @@ export function createHandler({ verifyIdToken, onboard = completeMemberOnboardin
         return json(405, { ok: false, error: 'method_not_allowed' }, { ...cors, Allow: 'POST, OPTIONS' });
       }
 
-      const control = await loadControl();
+      const control = await loadControl({ db: (await import('../../src/firebase/admin.js')).getAdminDb(env) });
       if (control.maintenanceMode === true) throw new ServiceError('maintenance_mode', 503);
       if (control.registrationEnabled === false) throw new ServiceError('registration_disabled', 503);
 
       actor = await authenticateRequest(event, { verifyIdToken, requireMemberSession: true, env });
-      const result = await onboard(actor, parseBody(event));
+      const result = await onboard(actor, parseBody(event), { db: (await import('../../src/firebase/admin.js')).getAdminDb(env) });
       auditSecurityEvent({ event, actor, action: 'member.onboarding.complete', outcome: 'allowed' });
       return json(200, { ok: true, ...result }, cors);
     } catch (error) {
