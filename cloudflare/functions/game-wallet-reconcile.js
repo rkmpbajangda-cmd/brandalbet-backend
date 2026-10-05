@@ -13,13 +13,12 @@ export function createHandler({ verifyIdToken, env = process.env, clientFactory 
     env,
     run: async (actor, event) => {
       const input = parseJsonBody(event, 4096);
-      const transfer = await reconcile(actor, input, { env, client: clientFactory({ env }) });
-      auditSecurityEvent({
-        event,
-        actor,
-        action: 'game.wallet.reconcile',
-        outcome: transfer.status,
+      const transfer = await reconcile(actor, input, {
+        env,
+        db: getAdminDb(env),
+        client: clientFactory({ env }),
       });
+      auditSecurityEvent({ event, actor, action: 'game.wallet.reconcile', outcome: transfer.status });
       return { transfer };
     },
   });
