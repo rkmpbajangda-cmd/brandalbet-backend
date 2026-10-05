@@ -466,6 +466,7 @@ function principalTotal(obligations) {
 
 async function finalizeMemberRounds(uid, roundDocs, { db, now, committedCursor }) {
   const userRef = db.collection('users').doc(uid);
+  const referralBindingRef = db.collection('referrals').doc(uid);
   const turnoverRef = db.collection('rewardTurnover').doc(uid);
   const walletRef = db.collection('wallets').doc(uid);
   const weekKeys = [...new Set(roundDocs.map(doc => rewardWeekKey(new Date(doc.data().lastProviderAtMs).toISOString())))];
@@ -473,18 +474,20 @@ async function finalizeMemberRounds(uid, roundDocs, { db, now, committedCursor }
   const roundRefs = roundDocs.map(doc => doc.ref);
 
   return db.runTransaction(async tx => {
-    const refs = [userRef, turnoverRef, walletRef, ...aggregateRefs, ...roundRefs];
+    const refs = [userRef, referralBindingRef, turnoverRef, walletRef, ...aggregateRefs, ...roundRefs];
     const snapshots = typeof tx.getAll === 'function' ? await tx.getAll(...refs) : await Promise.all(refs.map(ref => tx.get(ref)));
     const userSnapshot = snapshots[0];
-    const turnoverSnapshot = snapshots[1];
-    const walletSnapshot = snapshots[2];
+    const referralBindingSnapshot = snapshots[1];
+    const turnoverSnapshot = snapshots[2];
+    const walletSnapshot = snapshots[3];
     if (!userSnapshot.exists) throw new ServiceError('member_not_found', 404);
     if (!walletSnapshot.exists) throw new ServiceError('wallet_not_found', 409);
     const wallet = validateWallet(uid, walletSnapshot.data());
     if (wallet.status !== 'active') throw new ServiceError('wallet_locked', 409);
 
-    const aggregateSnapshots = snapshots.slice(3, 3 + aggregateRefs.length);
-    const liveRoundSnapshots = snapshots.slice(3 + aggregateRefs.length);
+    const aggregateStart = 4;
+    const aggregateSnapshots = snapshots.slice(aggregateStart, aggregateStart + aggregateRefs.length);
+    const liveRoundSnapshots = snapshots.slice(aggregateStart + aggregateRefs.length);
     const deltas = new Map();
     let totalBetMinor = 0;
     let finalized = 0;
@@ -515,7 +518,12 @@ async function finalizeMemberRounds(uid, roundDocs, { db, now, committedCursor }
 
     if (finalized === 0 && cancelled === 0) return { finalized: 0, cancelled: 0, aggregateWrites: 0, walletWrites: 0 };
     const timestamp = FieldValue.serverTimestamp();
-    const promoterUid = typeof userSnapshot.data()?.referralPromoterUid === 'string' ? userSnapshot.data().referralPromoterUid : null;
+    // Only the immutable referrals/{memberUid} record is eligible for referral commission.
+    // Legacy users.referralPromoterUid is intentionally ignored.
+    const promoterUid = typeof referralBindingSnapshot.data()?.promoterUid === 'string'
+      ? referralBindingSnapshot.data().promoterUid
+      : null;
+    if (promoterUid === uid) throw new ServiceError('self_referral_not_allowed', 409);
     let aggregateWrites = 0;
     for (let index = 0; index < weekKeys.length; index += 1) {
       const weekKey = weekKeys[index];
