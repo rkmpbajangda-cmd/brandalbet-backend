@@ -474,12 +474,14 @@ export async function report(actor, input, { db = getAdminDb() } = {}) {
       { label: 'Created At', value: r => isoTimestamp(r.createdAt) },
     ]);
   }
-  const auditRef = db.collection('auditEvents').doc(auditDocId({
-    action: 'report.export',
-    requestId: input.requestId,
-    actorUid: actor.uid,
-    targetId: input.type,
-  }));
+  const auditRef = input.requestId
+    ? db.collection('auditEvents').doc(auditDocId({
+      action: 'report.export',
+      requestId: input.requestId,
+      actorUid: actor.uid,
+      targetId: input.type,
+    }))
+    : db.collection('auditEvents').doc();
   await auditRef.set(makeAuditEvent({
     action: 'report.export',
     actorUid: actor.uid,
