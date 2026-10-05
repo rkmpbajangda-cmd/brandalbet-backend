@@ -47,6 +47,7 @@ test('wallet bridge never transfers reward-locked cashback into Goldslot', async
   });
   assert.equal(transferInput.amountMinor, 700);
   assert.equal(result.transferredMinor, 700);
+  assert.equal(result.internalAvailableMinor, 300);
   assert.equal(result.providerBalanceMinor, 700);
 });
 
