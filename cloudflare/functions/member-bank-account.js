@@ -3,6 +3,7 @@ import { ServiceError } from '../../src/utils/errors.js';
 import { auditSecurityEvent } from '../../src/audit/logger.js';
 import { corsHeaders, CorsError } from '../../src/security/cors.js';
 import { getBankAccount, saveBankAccount, BankAccountValidationError } from '../../src/member/bank-account.js';
+import { getAdminDb } from '../../src/firebase/admin.js';
 import { empty, json } from '../../src/utils/http.js';
 
 function parseBody(event) {
@@ -29,8 +30,8 @@ export function createHandler({
 
       actor = await authenticateRequest(event, { verifyIdToken, requireMemberSession: true, env });
       const bankAccount = event.httpMethod === 'GET'
-        ? await loadBankAccount(actor.uid)
-        : await saveMemberBankAccount(actor.uid, parseBody(event));
+        ? await loadBankAccount(actor.uid, { db: getAdminDb(env) })
+        : await saveMemberBankAccount(actor.uid, parseBody(event), { db: getAdminDb(env) });
 
       auditSecurityEvent({
         event,

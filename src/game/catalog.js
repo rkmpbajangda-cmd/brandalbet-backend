@@ -27,19 +27,41 @@ function safeImage(value) {
 }
 
 function boolFlag(value) {
-  return value === true || value === 1 || value === '1';
+  if (value === true || value === 1 || value === '1') return true;
+  if (typeof value === 'string') {
+    const normalized = value.trim().toLowerCase();
+    return ['true', 'yes', 'on', 'enabled', 'enable', 'active'].includes(normalized);
+  }
+  return false;
+}
+
+function positiveInteger(value) {
+  const number = typeof value === 'string' && value.trim() !== '' ? Number(value) : value;
+  return Number.isSafeInteger(number) && number > 0 ? number : null;
 }
 
 function providerIdOf(row) {
-  const value = row?.provider_id ?? row?.id;
-  return Number.isSafeInteger(value) && value > 0 ? value : null;
+  return positiveInteger(row?.provider_id ?? row?.providerId ?? row?.id);
+}
+
+function collectionFromResponse(data, keys, depth = 0) {
+  if (Array.isArray(data)) return data;
+  if (!data || typeof data !== 'object' || Array.isArray(data) || depth > 2) return null;
+  for (const key of keys) {
+    if (Array.isArray(data[key])) return data[key];
+  }
+  if (data.data && typeof data.data === 'object') {
+    return collectionFromResponse(data.data, keys, depth + 1);
+  }
+  return null;
 }
 
 export function normalizeGoldslotProviders(data) {
-  if (!Array.isArray(data)) return [];
+  const rows = collectionFromResponse(data, ['providers', 'data', 'list', 'rows']);
+  if (!rows) return [];
   const seen = new Set();
   const providers = [];
-  for (const row of data) {
+  for (const row of rows) {
     if (!row || typeof row !== 'object' || Array.isArray(row)) continue;
     const providerId = providerIdOf(row);
     if (!providerId || seen.has(providerId)) continue;
@@ -60,23 +82,24 @@ export function normalizeGoldslotProviders(data) {
 }
 
 export function normalizeGoldslotGames(data, providerNames = new Map()) {
-  if (!Array.isArray(data)) throw new ServiceError('provider_invalid_catalog', 503);
-  if (data.length > MAX_GAMES) throw new ServiceError('provider_catalog_too_large', 503);
+  const rows = collectionFromResponse(data, ['games', 'data', 'list', 'rows']);
+  if (!rows) throw new ServiceError('provider_invalid_catalog', 503);
+  if (rows.length > MAX_GAMES) throw new ServiceError('provider_catalog_too_large', 503);
 
   const seen = new Set();
   const games = [];
-  for (const row of data) {
+  for (const row of rows) {
     if (!row || typeof row !== 'object' || Array.isArray(row)) continue;
-    const providerId = row.provider_id;
-    const gameCode = safeText(row.game_code, 200);
+    const providerId = positiveInteger(row.provider_id ?? row.providerId);
+    const gameCode = safeText(row.game_code ?? row.gameCode ?? row.code, 200);
     if (!Number.isSafeInteger(providerId) || providerId <= 0 || !gameCode) continue;
 
     const key = providerId + ':' + gameCode;
     if (seen.has(key)) continue;
     seen.add(key);
 
-    const localized = safeText(row.locale_name, 180);
-    const english = safeText(row.game_name, 180);
+    const localized = safeText(row.locale_name ?? row.localeName ?? row.name_localized, 180);
+    const english = safeText(row.game_name ?? row.gameName ?? row.name, 180);
     const providerName = providerNames.get(providerId) || ('Provider ' + providerId);
     games.push(Object.freeze({
       id: gameCode,
@@ -90,8 +113,8 @@ export function normalizeGoldslotGames(data, providerNames = new Map()) {
       localizedName: localized || null,
       image: safeImage(row.game_image_narrow) || safeImage(row.game_image),
       imageUrl: safeImage(row.game_image_narrow) || safeImage(row.game_image),
-      launchEnabled: boolFlag(row.launch_enable),
-      active: boolFlag(row.launch_enable),
+      launchEnabled: boolFlag(row.launch_enable ?? row.launchEnable ?? row.launch_enabled ?? row.enabled),
+      active: boolFlag(row.launch_enable ?? row.launchEnable ?? row.launch_enabled ?? row.enabled),
       category: safeText(row.category, 32) || 'Slots',
       registeredAt: safeText(row.reg_date, 64) || null,
     }));

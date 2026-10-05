@@ -16,7 +16,7 @@ export function createHandler({
 } = {}) {
   const runLaunch = launch ?? ((actor, input, options) => launchGoldslotGame(actor, input, {
     ...options,
-    db: getAdminDb(),
+    db: getAdminDb(env),
   }));
 
   return protectedHandler({
@@ -25,7 +25,7 @@ export function createHandler({
     verifyIdToken,
     env,
     run: async (actor, event) => {
-      const control = await loadControl();
+      const control = await loadControl({ db: getAdminDb(env) });
       if (control.maintenanceMode === true) throw new ServiceError('maintenance_mode', 503);
       if (control.gameLaunchEnabled === false) throw new ServiceError('game_launch_disabled', 503);
       if (control.memberWalletEnabled === false) throw new ServiceError('member_wallet_disabled', 503);

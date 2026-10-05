@@ -1,6 +1,7 @@
 import { loadMasterControl, publicMasterControl } from '../../src/backoffice/master-control.js';
 import { loadPublicSiteSettings } from '../../src/member/public-config.js';
 import { assetEnvForRequest, publicAssetCdnConfig } from '../../src/config/assets.js';
+import { getAdminDb } from '../../src/firebase/admin.js';
 import { corsHeaders, CorsError } from '../../src/security/cors.js';
 import { empty, json } from '../../src/utils/http.js';
 
@@ -18,8 +19,8 @@ export function createHandler({
 
       const assetEnv = assetEnvForRequest(event, env);
       const [controlRaw, website] = await Promise.all([
-        loadControl(),
-        loadSite({ env: assetEnv }),
+        loadControl({ db: getAdminDb(env) }),
+        loadSite({ db: getAdminDb(env), env: assetEnv }),
       ]);
       const control = publicMasterControl(controlRaw);
       return json(200, {

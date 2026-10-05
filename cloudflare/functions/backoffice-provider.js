@@ -36,9 +36,12 @@ function capabilities(env) {
 async function snapshotStatus({ loadCatalog }) {
   try {
     const catalog = await loadCatalog();
+    const providers = Array.isArray(catalog.providers) ? catalog.providers : [];
     return {
       status: catalog.snapshotStale === true ? 'snapshot_stale' : 'snapshot_ready',
       gamesCount: catalog.games.length,
+      providerCount: providers.length,
+      providers: providers.map(provider => ({ providerId: provider.providerId, providerName: provider.providerName, status: provider.status ?? 'normal', gameCount: Number.isSafeInteger(provider.gameCount) ? provider.gameCount : 0 })),
       lastSync: catalog.syncedAt,
       snapshotRevision: catalog.snapshotRevision ?? null,
       snapshotStale: catalog.snapshotStale === true,
@@ -51,6 +54,8 @@ async function snapshotStatus({ loadCatalog }) {
       return {
         status: 'snapshot_missing',
         gamesCount: 0,
+        providerCount: 0,
+        providers: [],
         lastSync: null,
         snapshotRevision: null,
         snapshotStale: true,
@@ -64,21 +69,28 @@ async function snapshotStatus({ loadCatalog }) {
 export function createHandler({
   verifyIdToken,
   env = process.env,
-  loadCatalog = loadStoredGameCatalog,
+  loadCatalog,
   clientFactory = createGoldslotClient,
   ledgerStatus = getGoldslotProviderLedgerStatus,
   syncTransactions = syncGoldslotProviderTransactions,
   dbFactory = getAdminDb,
 } = {}) {
+  const readCatalog = loadCatalog || ((options = {}) => loadStoredGameCatalog({ ...options, db: dbFactory(env) }));
+
   return protectedHandler({
     scope: 'backoffice',
     methods: ['GET', 'POST'],
     verifyIdToken,
     env,
     run: async (actor, event) => {
-      const snapshot = await snapshotStatus({ loadCatalog });
+      const snapshot = await snapshotStatus({ loadCatalog: readCatalog });
+      let transactions = null;
       const db = dbFactory(env);
-      const transactions = await ledgerStatus({ db, env });
+      try {
+        transactions = await ledgerStatus({ db, env });
+      } catch {
+        transactions = { status: 'unavailable', capability: false };
+      }
 
       if (event.httpMethod === 'GET') {
         return {
@@ -112,6 +124,7 @@ export function createHandler({
         const sync = await syncTransactions({ db, env, clientFactory });
         return {
           provider: 'goldslotpalase',
+          ...snapshot,
           transactions: sync,
           capabilities: capabilities(env),
         };

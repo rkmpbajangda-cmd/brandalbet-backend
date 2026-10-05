@@ -48,25 +48,29 @@ function providerUtcTime(value, field) {
 }
 
 function providerResultCode(payload) {
-  const result = payload?.result;
-  const code = payload?.code;
-  const hasResult = Number.isInteger(result);
-  const hasCode = Number.isInteger(code);
-  if (!hasResult && !hasCode) return null;
-  if (hasResult && hasCode && result !== code) return null;
-  return hasResult ? result : code;
+  const normalize = value => {
+    if (Number.isInteger(value)) return value;
+    if (typeof value === 'string' && /^-?\\d+$/.test(value.trim())) return Number(value.trim());
+    return null;
+  };
+  const result = normalize(payload?.result);
+  const code = normalize(payload?.code);
+  if (result === null && code === null) return null;
+  if (result !== null && code !== null && result !== code) return null;
+  return result !== null ? result : code;
 }
 
 async function readJsonResponse(response, mutation) {
   try {
     if (!response?.body || typeof response.body.getReader !== 'function') {
       const text = await response.text();
-      if (Buffer.byteLength(text, 'utf8') > MAX_RESPONSE_BYTES) throw new Error('response_limit');
+      if (new TextEncoder().encode(text).byteLength > MAX_RESPONSE_BYTES) throw new Error('response_limit');
       return JSON.parse(text);
     }
     const reader = response.body.getReader();
+    const decoder = new TextDecoder();
     let size = 0;
-    const chunks = [];
+    let text = '';
     while (true) {
       const { done, value } = await reader.read();
       if (done) break;
@@ -75,9 +79,10 @@ async function readJsonResponse(response, mutation) {
         await reader.cancel();
         throw new Error('response_limit');
       }
-      chunks.push(Buffer.from(value));
+      text += decoder.decode(value, { stream: true });
     }
-    return JSON.parse(Buffer.concat(chunks).toString('utf8'));
+    text += decoder.decode();
+    return JSON.parse(text);
   } catch {
     throw new GoldslotError('provider_invalid_response', { ambiguous: mutation });
   }

@@ -2,6 +2,7 @@ import { createGoldslotClient } from '../../src/game/goldslotpalase.js';
 import { reconcileGoldslotTransfer } from '../../src/game/transfer.js';
 import { parseJsonBody } from '../../src/utils/body.js';
 import { protectedHandler } from '../../src/utils/protected-handler.js';
+import { getAdminDb } from '../../src/firebase/admin.js';
 import { auditSecurityEvent } from '../../src/audit/logger.js';
 
 export function createHandler({ verifyIdToken, env = process.env, clientFactory = createGoldslotClient, reconcile = reconcileGoldslotTransfer } = {}) {
