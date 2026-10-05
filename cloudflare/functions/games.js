@@ -5,9 +5,14 @@ import { empty, json } from '../../src/utils/http.js';
 
 export function createHandler({
   env = process.env,
-  loadCatalog = loadStoredGameCatalog,
-  loadDisplay = loadGameDisplaySettings,
+  loadCatalog,
+  loadDisplay,
+  dbFactory,
+
 } = {}) {
+  const readCatalog = loadCatalog || ((options = {}) => loadStoredGameCatalog({ ...options, db: dbFactory ? dbFactory(env) : undefined }));
+  const readDisplay = loadDisplay || ((options = {}) => loadGameDisplaySettings({ ...options, db: dbFactory ? dbFactory(env) : undefined }));
+
   return async (event) => {
     let cors = {};
     try {
@@ -21,8 +26,8 @@ export function createHandler({
       // contacts GoldslotPalase merely because a member opens/reloads/searches
       // the game page. Provider synchronization is an explicit admin action.
       const [catalog, displaySettings] = await Promise.all([
-        loadCatalog(),
-        Promise.resolve().then(() => loadDisplay()).catch(() => ({})),
+        readCatalog(),
+        Promise.resolve().then(() => readDisplay()).catch(() => ({})),
       ]);
       const view = applyGameDisplaySettings(catalog, displaySettings);
 
