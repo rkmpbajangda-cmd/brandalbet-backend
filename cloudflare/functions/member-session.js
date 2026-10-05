@@ -6,6 +6,7 @@ import { getOrCreateProfile } from '../../src/member/profile.js';
 import { getBankAccount } from '../../src/member/bank-account.js';
 import { getOrCreateWallet } from '../../src/wallet/service.js';
 import { empty, json } from '../../src/utils/http.js';
+import { canAccessMember } from '../../src/rbac/roles.js';
 
 export function createHandler({
   verifyIdToken,
@@ -23,6 +24,7 @@ export function createHandler({
       if (event.httpMethod !== 'GET') return json(405, { ok: false, error: 'method_not_allowed' }, { ...cors, Allow: 'GET, OPTIONS' });
 
       actor = await authenticateRequest(event, { verifyIdToken, requireMemberSession: true, env });
+      if (!canAccessMember(actor)) throw new ServiceError('forbidden', 403);
       const [profile, bankAccount, wallet] = await Promise.all([
         loadProfile(actor),
         loadBankAccount(actor.uid),
