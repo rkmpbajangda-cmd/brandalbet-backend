@@ -1,5 +1,6 @@
 import { protectedHandler } from '../../src/utils/protected-handler.js';
 import { memberRewardSummary } from '../../src/rewards/service.js';
+import { getAdminDb } from '../../src/firebase/admin.js';
 
 export function createHandler({ verifyIdToken, load = memberRewardSummary, env = process.env } = {}) {
   return protectedHandler({
@@ -7,7 +8,7 @@ export function createHandler({ verifyIdToken, load = memberRewardSummary, env =
     methods: ['GET'],
     verifyIdToken,
     env,
-    run: async actor => ({ rewards: await load(actor) }),
+    run: async actor => ({ rewards: await load(actor, { db: getAdminDb(env) }) }),
   });
 }
 
