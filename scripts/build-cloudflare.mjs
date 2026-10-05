@@ -104,6 +104,18 @@ for (const dispatch of ["cron === '5 * * * *'", "cron === '15,45 * * * *'", "cro
 }
 if (!workerSource.includes('finalizeReadyGoldslotRounds')) throw new Error('Compact provider round finalizer must run independently from provider API sync.');
 
+const providerAdapterSource = await readFile('src/game/goldslotpalase.js', 'utf8');
+if (!providerAdapterSource.includes('providerRuntimeConfig') || !providerAdapterSource.includes('acquireProviderSlot')) {
+  throw new Error('Goldslot runtime concurrency/pacing enforcement is missing.');
+}
+if (!providerAdapterSource.includes("throttle: true")) {
+  throw new Error('Goldslot transaction pacing enforcement is missing.');
+}
+const launchSource = await readFile('src/game/launch.js', 'utf8');
+if (!launchSource.includes('GOLDSLOTPALASE_LAUNCH_URL_TTL_MS') || !launchSource.includes('launchUrlExpiresAt')) {
+  throw new Error('Goldslot launch URL TTL enforcement is missing.');
+}
+
 const ledgerSource = await readFile('src/game/provider-ledger.js', 'utf8');
 if (ledgerSource.includes("collection('providerTransactions')")) throw new Error('Raw provider transactions must not be persisted in free-tier mode.');
 if (!ledgerSource.includes('rawTransactionsPersisted: false')) throw new Error('Provider storage policy must explicitly prohibit raw transaction persistence.');
