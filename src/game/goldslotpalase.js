@@ -169,7 +169,7 @@ export function createGoldslotClient({ env = process.env, fetchImpl = fetch, tim
     throw new GoldslotError('provider_unconfigured');
   }
   const runtime = providerRuntimeConfig(env);
-  const requestTimeoutMs = timeoutMs == null ? runtime.callbackTimeoutMs : timeoutMs;
+  const requestTimeoutMs = timeoutMs == null ? 8000 : timeoutMs;
   if (!Number.isInteger(requestTimeoutMs) || requestTimeoutMs < 1 || requestTimeoutMs > 15000) {
     throw new ServiceError('invalid_provider_timeout');
   }
