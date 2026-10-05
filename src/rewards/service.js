@@ -297,6 +297,8 @@ export async function creditWeeklyCashback({ uid, weekKey, amountMinor, basisNet
   rewardWeekBounds(weekKey);
   safeInteger(amountMinor, { min: 1 });
   safeInteger(basisNetLossMinor, { min: 1 });
+  if (basisNetLossMinor < REWARD_POLICY.cashbackMinimumNetLossMinor) throw new ServiceError('cashback_minimum_not_met', 409);
+  if (amountMinor !== rateAmount(basisNetLossMinor, REWARD_POLICY.cashbackRateBps)) throw new ServiceError('cashback_amount_mismatch', 409);
   const payoutId = hashKey(['weekly-cashback', weekKey, uid]);
   const payload = {
     kind: 'weekly_cashback', beneficiaryUid: uid, weekKey, amountMinor, basisNetLossMinor,
@@ -370,6 +372,7 @@ export async function creditReferralCommission({ promoterUid, sourceMemberUid, w
   safeInteger(amountMinor, { min: 1 });
   safeInteger(basisNetLossMinor, { min: 1 });
   if (promoterUid === sourceMemberUid) throw new ServiceError('self_referral_not_allowed', 409);
+  if (amountMinor !== rateAmount(basisNetLossMinor, REWARD_POLICY.referralRateBps)) throw new ServiceError('referral_amount_mismatch', 409);
   const payoutId = hashKey(['referral-commission', weekKey, promoterUid, sourceMemberUid]);
   const payload = {
     kind: 'referral_commission', beneficiaryUid: promoterUid, sourceMemberUid, weekKey, amountMinor, basisNetLossMinor,
@@ -481,9 +484,20 @@ export async function memberRewardSummary(actor, { db = getAdminDb(), now = Date
 
 async function settleAggregate(doc, weekKey, { db }) {
   const row = doc.data();
-  if (row?.weekKey !== weekKey || row?.uid !== doc.data()?.uid) throw new ServiceError('reward_aggregate_integrity_error', 503);
+  if (row?.weekKey !== weekKey || typeof row?.uid !== 'string') throw new ServiceError('reward_aggregate_integrity_error', 503);
   const uid = uidValue(row.uid);
-  const promoterUid = typeof row.promoterUid === 'string' && row.promoterUid ? uidValue(row.promoterUid, 'invalid_promoter_uid') : null;
+  const bindingSnapshot = await db.collection('referrals').doc(uid).get();
+  const boundPromoterUid = typeof bindingSnapshot.data()?.promoterUid === 'string' && bindingSnapshot.data().promoterUid
+    ? uidValue(bindingSnapshot.data().promoterUid, 'invalid_promoter_uid')
+    : null;
+  const storedPromoterUid = typeof row.promoterUid === 'string' && row.promoterUid
+    ? uidValue(row.promoterUid, 'invalid_promoter_uid')
+    : null;
+  if (storedPromoterUid && storedPromoterUid !== boundPromoterUid) {
+    throw new ServiceError('reward_referral_binding_conflict', 503);
+  }
+  const promoterUid = boundPromoterUid;
+  if (promoterUid === uid) throw new ServiceError('self_referral_not_allowed', 409);
   const rewards = calculateWeeklyRewards({ ...row, promoterUid });
   const result = { uid, ...rewards, cashbackCredited: false, referralCredited: false };
   if (rewards.cashbackMinor > 0) {
