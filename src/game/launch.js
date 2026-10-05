@@ -7,6 +7,14 @@ import { ensurePlayableGoldslotBalance, normalizeLaunchRequestId } from './walle
 
 const LAUNCH_GUARD_MS = 8_000;
 const LAUNCH_GUARD_COLLECTION = 'gameLaunchGuards';
+
+function launchTtlMs(env) {
+  const raw = env?.GOLDSLOTPALASE_LAUNCH_URL_TTL_MS ?? '600000';
+  if (typeof raw !== 'string' || !/^\d+$/.test(raw)) throw new ServiceError('provider_invalid_configuration', 503);
+  const value = Number(raw);
+  if (!Number.isSafeInteger(value) || value < 1000 || value > 3600000) throw new ServiceError('provider_invalid_configuration', 503);
+  return value;
+}
 const recentLaunches = new Map();
 
 function validateGameInput(input) {
@@ -147,7 +155,7 @@ export async function launchGoldslotGame(actor, input, {
       userCode: player.userCode,
       providerId: game.providerId,
       gameSymbol: game.gameSymbol,
-      language: 9,
+      language: undefined,
     });
 
     return Object.freeze({
@@ -155,7 +163,8 @@ export async function launchGoldslotGame(actor, input, {
       providerId: game.providerId,
       gameSymbol: game.gameSymbol,
       launchUrl: launchUrl(data),
-      expiresInSeconds: 600,
+      expiresInSeconds: Math.floor(launchTtlMs(env) / 1000),
+      launchUrlExpiresAt: new Date(Date.now() + launchTtlMs(env)).toISOString(),
       oneTimeUse: true,
       walletBridge,
     });
