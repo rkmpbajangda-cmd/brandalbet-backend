@@ -21,8 +21,8 @@ export function createHandler({
       // contacts GoldslotPalase merely because a member opens/reloads/searches
       // the game page. Provider synchronization is an explicit admin action.
       const [catalog, displaySettings] = await Promise.all([
-        loadCatalog(),
-        Promise.resolve().then(() => loadDisplay()).catch(() => ({})),
+        loadCatalog({ env }),
+        Promise.resolve().then(() => loadDisplay({ env })).catch(() => ({})),
       ]);
       const view = applyGameDisplaySettings(catalog, displaySettings);
 
