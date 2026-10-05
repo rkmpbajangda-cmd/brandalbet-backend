@@ -156,8 +156,15 @@ export async function listMembers(actor, event, { db = getAdminDb() } = {}) {
   const search = lower(q(event, 'q'));
   const statusFilter = lower(q(event, 'status'));
 
+  // Current onboarding writes to users. Fall back to the legacy members
+  // collection so existing registrations remain visible after schema migration.
   const snapshot = await db.collection('users').orderBy('createdAt', 'desc').limit(limit).get();
-  const profiles = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+  let profileDocs = snapshot.docs;
+  if (profileDocs.length === 0) {
+    const legacy = await db.collection('members').limit(limit).get();
+    profileDocs = legacy.docs;
+  }
+  const profiles = profileDocs.map(doc => ({ id: doc.id, ...doc.data() }));
   const walletRefs = profiles.map(p => db.collection('wallets').doc(p.id));
   const wallets = walletRefs.length ? await db.getAll(...walletRefs) : [];
   const walletMap = new Map(wallets.filter(s => s.exists).map(s => [s.id, s.data()]));
@@ -183,7 +190,7 @@ export async function listMembers(actor, event, { db = getAdminDb() } = {}) {
     return [item.uid, item.username, item.email, item.displayName].some(value => lower(value).includes(search));
   });
 
-  return { items, limit, filtered: Boolean(search || statusFilter) };
+  return { items, total: items.length, limit, filtered: Boolean(search || statusFilter), source: snapshot.docs.length ? 'users' : 'members_legacy_fallback' };
 }
 
 export async function listLedger(actor, event, { db = getAdminDb() } = {}) {
