@@ -39,11 +39,14 @@ function providerIdOf(row) {
   return positiveInteger(row?.provider_id ?? row?.providerId ?? row?.id);
 }
 
-function collectionFromResponse(data, keys) {
+function collectionFromResponse(data, keys, depth = 0) {
   if (Array.isArray(data)) return data;
-  if (!data || typeof data !== 'object' || Array.isArray(data)) return null;
+  if (!data || typeof data !== 'object' || Array.isArray(data) || depth > 2) return null;
   for (const key of keys) {
     if (Array.isArray(data[key])) return data[key];
+  }
+  if (data.data && typeof data.data === 'object') {
+    return collectionFromResponse(data.data, keys, depth + 1);
   }
   return null;
 }
