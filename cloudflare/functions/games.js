@@ -47,7 +47,7 @@ export function createHandler({
         // Short HTTP freshness keeps admin display changes reasonably quick,
         // while the underlying provider catalog itself remains a persistent
         // snapshot and therefore creates zero Goldslot calls on cache misses.
-        'Cache-Control': 'private, no-store'',
+        'Cache-Control': 'private, no-store',
       });
     } catch (error) {
       const known = error instanceof CorsError || (error && Number.isInteger(error.statusCode) && typeof error.code === 'string');
