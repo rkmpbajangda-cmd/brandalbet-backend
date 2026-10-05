@@ -487,7 +487,7 @@ export async function report(actor, input, { db = getAdminDb() } = {}) {
     actorUid: actor.uid,
     targetId: input.type,
     requestId: input.requestId,
-    metadata: { reportType: input.type, rowCount: content ? content.split('\\n').length - 1 : 0 },
+    metadata: { reportType: input.type, rowCount: content ? content.split('\n').length - 1 : 0 },
   }));
   return {
     filename: `brandalbet-${input.type}-${new Date().toISOString().slice(0,10)}.csv`,
