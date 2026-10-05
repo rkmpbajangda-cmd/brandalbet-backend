@@ -5,6 +5,7 @@ import { corsHeaders, CorsError } from '../../src/security/cors.js';
 import { getOrCreateProfile } from '../../src/member/profile.js';
 import { getBankAccount } from '../../src/member/bank-account.js';
 import { getOrCreateWallet } from '../../src/wallet/service.js';
+import { getAdminDb } from '../../src/firebase/admin.js';
 import { empty, json } from '../../src/utils/http.js';
 
 export function createHandler({
@@ -24,9 +25,9 @@ export function createHandler({
 
       actor = await authenticateRequest(event, { verifyIdToken, requireMemberSession: true, env });
       const [profile, bankAccount, wallet] = await Promise.all([
-        loadProfile(actor),
-        loadBankAccount(actor.uid),
-        loadWallet(actor.uid),
+        loadProfile(actor, { db: getAdminDb(env) }),
+        loadBankAccount(actor.uid, { db: getAdminDb(env) }),
+        loadWallet(actor.uid, { db: getAdminDb(env) }),
       ]);
 
       auditSecurityEvent({ event, actor, action: 'member.session.read', outcome: 'allowed' });
