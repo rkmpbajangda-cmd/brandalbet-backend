@@ -25,7 +25,7 @@ function base64UrlEncodeText(value) {
 }
 
 function pemToArrayBuffer(pem) {
-  const clean = String(pem).replace(/-----BEGIN PRIVATE KEY-----/g, '').replace(/-----END PRIVATE KEY-----/g, '').replace(/\\s+/g, '');
+  const clean = String(pem).replace(/-----BEGIN PRIVATE KEY-----/g, '').replace(/-----END PRIVATE KEY-----/g, '').replace(/\s+/g, '');
   const binary = atob(clean);
   const bytes = new Uint8Array(binary.length);
   for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
@@ -45,7 +45,7 @@ function readServiceAccount(env) {
   }
   const projectId = typeof parsed?.project_id === 'string' ? parsed.project_id.trim() : '';
   const clientEmail = typeof parsed?.client_email === 'string' ? parsed.client_email.trim() : '';
-  const privateKey = typeof parsed?.private_key === 'string' ? parsed.private_key.replace(/\\\\n/g, '\\n') : '';
+  const privateKey = typeof parsed?.private_key === 'string' ? parsed.private_key.replace(/\\n/g, '\n') : '';
   const expectedProjectId = typeof env?.FIREBASE_PROJECT_ID === 'string' ? env.FIREBASE_PROJECT_ID.trim() : '';
   const missing = [];
   if (!projectId) missing.push('FIREBASE_SERVICE_ACCOUNT_JSON.project_id');
