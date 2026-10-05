@@ -34,11 +34,17 @@ export async function postLedgerEntry(input, { db = getAdminDb() } = {}) {
     if (!snapshot.exists) throw new ServiceError('wallet_not_found', 409);
     const wallet = validateWallet(p.uid, snapshot.data());
     if (wallet.status !== 'active') throw new ServiceError('wallet_locked', 409);
-    if (p.type === 'debit' && wallet.availableMinor < p.amountMinor) throw new ServiceError('insufficient_funds', 409);
+    if (p.type === 'debit') {
+      const withdrawableMinor = wallet.availableMinor - wallet.rewardLockedMinor;
+      if (p.amountMinor > withdrawableMinor) throw new ServiceError('insufficient_withdrawable_funds', 409);
+    }
     const delta = p.type === 'credit' ? p.amountMinor : -p.amountMinor;
     const balanceMinor = wallet.balanceMinor + delta;
     const availableMinor = wallet.availableMinor + delta;
-    if (!Number.isSafeInteger(balanceMinor) || !Number.isSafeInteger(availableMinor)) throw new ServiceError('amount_overflow', 409);
+    if (!Number.isSafeInteger(balanceMinor) || !Number.isSafeInteger(availableMinor) ||
+        balanceMinor < 0 || availableMinor < 0 || availableMinor > balanceMinor) {
+      throw new ServiceError('amount_overflow', 409);
+    }
     const timestamp = FieldValue.serverTimestamp();
     tx.create(entryRef, { ...p, fingerprint, currency: 'IDR', deltaMinor: delta,
       balanceBeforeMinor: wallet.balanceMinor, balanceAfterMinor: balanceMinor,
