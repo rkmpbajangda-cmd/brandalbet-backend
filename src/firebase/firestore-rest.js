@@ -1,4 +1,10 @@
-import { FirebaseConfigError } from './admin.js';
+class FirebaseConfigError extends Error {
+  constructor(missing) {
+    super(`Firebase REST configuration is incomplete: ${missing.join(', ')}`);
+    this.name = 'FirebaseConfigError';
+    this.code = 'firebase_rest_unconfigured';
+  }
+}
 
 const TOKEN_URL = 'https://oauth2.googleapis.com/token';
 const FIRESTORE_BASE = 'https://firestore.googleapis.com/v1';
