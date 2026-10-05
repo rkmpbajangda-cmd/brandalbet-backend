@@ -22,3 +22,22 @@ test('withdrawal guard allows own withdrawable funds and rejects locked cashback
     { code: 'cashback_turnover_incomplete', statusCode: 409 },
   );
 });
+
+
+test('withdrawal guard blocks unresolved Goldslot transfer', async () => {
+  const db = transactionDb({ 'wallets/u1': wallet });
+  const loadActiveTransfer = async () => ({
+    activeTransfer: { status: 'ambiguous', id: 't1' },
+  });
+  await assert.rejects(
+    assertRewardWithdrawalAllowed('u1', 100_000, { db, loadActiveTransfer }),
+    { code: 'game_transfer_in_progress', statusCode: 409 },
+  );
+});
+
+test('withdrawal guard permits withdrawal after transfer is settled', async () => {
+  const db = transactionDb({ 'wallets/u1': wallet });
+  const loadActiveTransfer = async () => ({ activeTransfer: null });
+  const allowed = await assertRewardWithdrawalAllowed('u1', 520_000, { db, loadActiveTransfer });
+  assert.equal(allowed.withdrawableMinor, 520_000);
+});
