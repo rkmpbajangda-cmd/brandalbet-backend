@@ -2,7 +2,8 @@ import { protectedHandler } from '../../src/utils/protected-handler.js';
 import { ServiceError } from '../../src/utils/errors.js';
 import { createGoldslotClient } from '../../src/game/goldslotpalase.js';
 import { loadStoredGameCatalog, syncStoredGameCatalog } from '../../src/game/catalog.js';
-import { loadGameDisplaySettings, updateGameDisplaySettings } from '../../src/game/display-settings.js';
+import { loadGameDisplaySettings } from '../../src/game/display-settings-read.js';
+import { updateGameDisplaySettings } from '../../src/game/display-settings.js';
 
 const CATALOG_SYNC_ROLES = new Set(['admin', 'superadmin']);
 
@@ -53,14 +54,14 @@ export function createHandler({
       if (event.httpMethod === 'POST') {
         const input = parseBody(event);
         if (input.action === 'update') {
-          const display = await updateDisplay(actor, input);
+          const display = await updateDisplay(actor, input, { env });
           return { display };
         }
         if (input.action === 'sync') {
           if (!CATALOG_SYNC_ROLES.has(actor.role)) throw new ServiceError('forbidden', 403);
           const [catalog, display] = await Promise.all([
-            syncCatalog({ client: clientFactory({ env }) }),
-            loadDisplay(),
+            syncCatalog({ client: clientFactory({ env }), env }),
+            loadDisplay({ env }),
           ]);
           return { ...catalogView(catalog), display, syncedByAdmin: true };
         }
