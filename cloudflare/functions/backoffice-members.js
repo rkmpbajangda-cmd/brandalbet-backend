@@ -1,6 +1,7 @@
 import { protectedHandler } from '../../src/utils/protected-handler.js';
 import { listMembers } from '../../src/backoffice/service.js';
-export function createHandler({ verifyIdToken, run = listMembers } = {}) {
-  return protectedHandler({ scope: 'backoffice', methods: ['GET'], verifyIdToken, run });
+import { getAdminDb } from '../../src/firebase/admin.js';
+export function createHandler({ verifyIdToken, env = process.env, run = listMembers } = {}) {
+  return protectedHandler({ scope: 'backoffice', methods: ['GET'], verifyIdToken, env, run: (actor, event) => run(actor, event, { db: getAdminDb(env), env }) });
 }
 export const handler = createHandler();
