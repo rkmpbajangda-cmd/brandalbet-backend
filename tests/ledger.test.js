@@ -51,3 +51,14 @@ test('concurrent first profile requests all return the same profile', async () =
   assert.equal(db.entries().length, 1);
   assert.ok(results.every(r => r.uid === 'u1'));
 });
+test('ledger debit cannot consume cashback still locked by turnover', async () => {
+  const db = transactionDb({ 'wallets/u1': { ...wallet, rewardLockedMinor: 300 } });
+  await assert.rejects(
+    postLedgerEntry({ ...posting, amountMinor: 501, operationId: 'external-locked-01' }, { db }),
+    { code: 'insufficient_withdrawable_funds' },
+  );
+  const allowed = await postLedgerEntry({ ...posting, amountMinor: 500, operationId: 'external-locked-02' }, { db });
+  assert.equal(allowed.duplicate, false);
+  assert.equal(db.read('wallets/u1').availableMinor, 300);
+  assert.equal(db.read('wallets/u1').rewardLockedMinor, 300);
+});
