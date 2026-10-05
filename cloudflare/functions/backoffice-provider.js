@@ -85,8 +85,8 @@ export function createHandler({
     run: async (actor, event) => {
       const snapshot = await snapshotStatus({ loadCatalog: readCatalog });
       let transactions = null;
+      const db = dbFactory(env);
       try {
-        const db = dbFactory(env);
         transactions = await ledgerStatus({ db, env });
       } catch {
         transactions = { status: 'unavailable', capability: false };
