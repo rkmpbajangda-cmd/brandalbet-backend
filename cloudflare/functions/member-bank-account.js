@@ -4,6 +4,7 @@ import { auditSecurityEvent } from '../../src/audit/logger.js';
 import { corsHeaders, CorsError } from '../../src/security/cors.js';
 import { getBankAccount, saveBankAccount, BankAccountValidationError } from '../../src/member/bank-account.js';
 import { empty, json } from '../../src/utils/http.js';
+import { canAccessMember } from '../../src/rbac/roles.js';
 
 function parseBody(event) {
   if (!event.body || event.body.length > 8192) throw new BankAccountValidationError('invalid_bank_account_payload');
@@ -28,6 +29,7 @@ export function createHandler({
       }
 
       actor = await authenticateRequest(event, { verifyIdToken, requireMemberSession: true, env });
+      if (!canAccessMember(actor)) throw new ServiceError('forbidden', 403);
       const bankAccount = event.httpMethod === 'GET'
         ? await loadBankAccount(actor.uid)
         : await saveMemberBankAccount(actor.uid, parseBody(event));
