@@ -5,6 +5,7 @@ import { corsHeaders, CorsError } from '../../src/security/cors.js';
 import { completeMemberOnboarding, OnboardingValidationError } from '../../src/member/onboarding.js';
 import { loadMasterControl } from '../../src/backoffice/master-control.js';
 import { empty, json } from '../../src/utils/http.js';
+import { canAccessMember } from '../../src/rbac/roles.js';
 
 function parseBody(event) {
   if (!event.body || event.body.length > 16384) throw new OnboardingValidationError('invalid_onboarding_payload');
@@ -31,6 +32,7 @@ export function createHandler({ verifyIdToken, onboard = completeMemberOnboardin
       if (control.registrationEnabled === false) throw new ServiceError('registration_disabled', 503);
 
       actor = await authenticateRequest(event, { verifyIdToken, requireMemberSession: true, env });
+      if (!canAccessMember(actor)) throw new ServiceError('forbidden', 403);
       const result = await onboard(actor, parseBody(event));
       auditSecurityEvent({ event, actor, action: 'member.onboarding.complete', outcome: 'allowed' });
       return json(200, { ok: true, ...result }, cors);
