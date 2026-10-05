@@ -27,7 +27,12 @@ function safeImage(value) {
 }
 
 function boolFlag(value) {
-  return value === true || value === 1 || value === '1';
+  if (value === true || value === 1 || value === '1') return true;
+  if (typeof value === 'string') {
+    const normalized = value.trim().toLowerCase();
+    return ['true', 'yes', 'on', 'enabled', 'enable', 'active'].includes(normalized);
+  }
+  return false;
 }
 
 function positiveInteger(value) {
@@ -93,8 +98,8 @@ export function normalizeGoldslotGames(data, providerNames = new Map()) {
     if (seen.has(key)) continue;
     seen.add(key);
 
-    const localized = safeText(row.locale_name, 180);
-    const english = safeText(row.game_name, 180);
+    const localized = safeText(row.locale_name ?? row.localeName ?? row.name_localized, 180);
+    const english = safeText(row.game_name ?? row.gameName ?? row.name, 180);
     const providerName = providerNames.get(providerId) || ('Provider ' + providerId);
     games.push(Object.freeze({
       id: gameCode,
@@ -108,8 +113,8 @@ export function normalizeGoldslotGames(data, providerNames = new Map()) {
       localizedName: localized || null,
       image: safeImage(row.game_image_narrow) || safeImage(row.game_image),
       imageUrl: safeImage(row.game_image_narrow) || safeImage(row.game_image),
-      launchEnabled: boolFlag(row.launch_enable),
-      active: boolFlag(row.launch_enable),
+      launchEnabled: boolFlag(row.launch_enable ?? row.launchEnable ?? row.launch_enabled ?? row.enabled),
+      active: boolFlag(row.launch_enable ?? row.launchEnable ?? row.launch_enabled ?? row.enabled),
       category: safeText(row.category, 32) || 'Slots',
       registeredAt: safeText(row.reg_date, 64) || null,
     }));
