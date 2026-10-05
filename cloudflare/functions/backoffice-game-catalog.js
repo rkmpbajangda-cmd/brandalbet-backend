@@ -24,10 +24,22 @@ function catalogView(catalog) {
     imageUrl: game.imageUrl,
     updatedAt: catalog.syncedAt,
   }));
+
+  const providers = (catalog?.providers ?? []).map(provider => ({
+    providerId: provider.providerId,
+    providerName: provider.providerName,
+    status: provider.status ?? 'normal',
+    gameCount: Number.isSafeInteger(provider.gameCount) ? provider.gameCount : 0,
+  }));
+
   return {
     items,
+    providers,
+    providerCount: providers.length,
     provider: 'goldslotpalase',
     total: items.length,
+    activeTotal: items.filter(item => item.visible && item.providerStatus === 'active').length,
+    disabledTotal: items.filter(item => item.providerStatus !== 'active').length,
     syncedAt: catalog?.syncedAt ?? null,
     snapshotRevision: catalog?.snapshotRevision ?? null,
     snapshotStale: catalog?.snapshotStale === true,
@@ -67,9 +79,6 @@ export function createHandler({
         throw new ServiceError('invalid_game_display_action', 400);
       }
 
-      // Opening the backoffice catalog is read-only against the persistent
-      // snapshot. It does not contact GoldslotPalase. Only POST action=sync
-      // performs provider catalog calls.
       const [catalog, display] = await Promise.all([
         loadCatalog(),
         loadDisplay(),
