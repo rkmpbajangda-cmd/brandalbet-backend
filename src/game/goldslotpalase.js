@@ -48,13 +48,16 @@ function providerUtcTime(value, field) {
 }
 
 function providerResultCode(payload) {
-  const result = payload?.result;
-  const code = payload?.code;
-  const hasResult = Number.isInteger(result);
-  const hasCode = Number.isInteger(code);
-  if (!hasResult && !hasCode) return null;
-  if (hasResult && hasCode && result !== code) return null;
-  return hasResult ? result : code;
+  const normalize = value => {
+    if (Number.isInteger(value)) return value;
+    if (typeof value === 'string' && /^-?\\d+$/.test(value.trim())) return Number(value.trim());
+    return null;
+  };
+  const result = normalize(payload?.result);
+  const code = normalize(payload?.code);
+  if (result === null && code === null) return null;
+  if (result !== null && code !== null && result !== code) return null;
+  return result !== null ? result : code;
 }
 
 async function readJsonResponse(response, mutation) {
