@@ -1,6 +1,7 @@
 import { protectedHandler } from '../../src/utils/protected-handler.js';
 import { ServiceError } from '../../src/utils/errors.js';
 import { createGoldslotClient } from '../../src/game/goldslotpalase.js';
+import { getAdminDb } from '../../src/firebase/admin.js';
 import { loadStoredGameCatalog, syncStoredGameCatalog } from '../../src/game/catalog.js';
 import { loadGameDisplaySettings, updateGameDisplaySettings } from '../../src/game/display-settings.js';
 
@@ -45,6 +46,7 @@ export function createHandler({
   loadCatalog = loadStoredGameCatalog,
   syncCatalog = syncStoredGameCatalog,
   clientFactory = createGoldslotClient,
+  dbFactory = getAdminDb,
   loadDisplay = loadGameDisplaySettings,
   updateDisplay = updateGameDisplaySettings,
 } = {}) {
@@ -63,7 +65,7 @@ export function createHandler({
         if (input.action === 'sync') {
           if (!CATALOG_SYNC_ROLES.has(actor.role)) throw new ServiceError('forbidden', 403);
           const [catalog, display] = await Promise.all([
-            syncCatalog({ client: clientFactory({ env }) }),
+            syncCatalog({ client: clientFactory({ env }), db: dbFactory(env) }),
             loadDisplay(),
           ]);
           return { ...catalogView(catalog), display, syncedByAdmin: true };
