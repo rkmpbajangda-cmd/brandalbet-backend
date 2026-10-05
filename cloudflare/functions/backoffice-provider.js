@@ -69,12 +69,14 @@ async function snapshotStatus({ loadCatalog }) {
 export function createHandler({
   verifyIdToken,
   env = process.env,
-  loadCatalog = loadStoredGameCatalog,
+  loadCatalog,
   clientFactory = createGoldslotClient,
   ledgerStatus = getGoldslotProviderLedgerStatus,
   syncTransactions = syncGoldslotProviderTransactions,
   dbFactory = getAdminDb,
 } = {}) {
+  const readCatalog = loadCatalog || ((options = {}) => loadStoredGameCatalog({ ...options, db: dbFactory(env) }));
+
   return protectedHandler({
     scope: 'backoffice',
     methods: ['GET', 'POST'],
