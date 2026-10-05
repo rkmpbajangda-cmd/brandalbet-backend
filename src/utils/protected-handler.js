@@ -1,6 +1,6 @@
 import { authenticateRequest, AuthHttpError } from '../auth/authenticate.js';
 import { corsHeaders, CorsError } from '../security/cors.js';
-import { canAccessBackoffice } from '../rbac/roles.js';
+import { canAccessBackoffice, canAccessMember } from '../rbac/roles.js';
 import { ServiceError } from './errors.js';
 import { json, empty } from './http.js';
 export function protectedHandler({ scope = 'member', methods = ['GET'], verifyIdToken, env = process.env, run }) {
@@ -16,6 +16,7 @@ export function protectedHandler({ scope = 'member', methods = ['GET'], verifyId
         env,
       });
       if (scope === 'backoffice' && !canAccessBackoffice(actor)) throw new ServiceError('forbidden', 403);
+      if (scope === 'member' && !canAccessMember(actor)) throw new ServiceError('forbidden', 403);
       return json(200, { ok: true, ...await run(actor, event) }, cors);
     } catch (error) {
       const known = error instanceof AuthHttpError || error instanceof CorsError || error instanceof ServiceError;
