@@ -133,6 +133,7 @@ export async function launchGoldslotGame(actor, input, {
   const guardNow = Date.now();
   const guardKey = acquireLaunchGuard(actor, game, guardNow);
   let distributedLease = null;
+  const configuredTtlMs = launchTtlMs(env);
   try {
     distributedLease = await acquireDistributedLaunchGuard(actor, game, { db, now: guardNow });
     const player = await ensurePlayer(actor, { client, db });
@@ -163,8 +164,8 @@ export async function launchGoldslotGame(actor, input, {
       providerId: game.providerId,
       gameSymbol: game.gameSymbol,
       launchUrl: launchUrl(data),
-      expiresInSeconds: Math.floor(launchTtlMs(env) / 1000),
-      launchUrlExpiresAt: new Date(Date.now() + launchTtlMs(env)).toISOString(),
+      expiresInSeconds: Math.floor(configuredTtlMs / 1000),
+      launchUrlExpiresAt: new Date(Date.now() + configuredTtlMs).toISOString(),
       oneTimeUse: true,
       walletBridge,
     });
