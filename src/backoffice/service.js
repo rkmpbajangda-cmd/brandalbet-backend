@@ -3,6 +3,7 @@ import { getAdminDb } from '../firebase/admin.js';
 import { ServiceError } from '../utils/errors.js';
 import { createGoldslotClient } from '../game/goldslotpalase.js';
 import { loadPublicGameCatalog } from '../game/catalog.js';
+import { auditDocId, makeAuditEvent } from '../audit/service.js';
 
 const ALL_BACKOFFICE = new Set(['operator', 'finance', 'admin', 'superadmin']);
 const OPERATIONS = new Set(['operator', 'admin', 'superadmin']);
@@ -334,7 +335,10 @@ export async function providerStatus(actor, event, { env = process.env, clientFa
 export async function listAudit(actor, event, { db = getAdminDb() } = {}) {
   requireRole(actor, ADMINS);
   const limit = limitValue(q(event, 'limit'), 100, 200);
-  const snapshot = await db.collection('auditEvents').orderBy('createdAt', 'desc').limit(limit).get();
+  const actionFilter = lower(q(event, 'action'));
+  const actorFilter = lower(q(event, 'actor'));
+  const outcomeFilter = lower(q(event, 'outcome'));
+  const snapshot = await db.collection('auditEvents').orderBy('createdAt', 'desc').limit(Math.min(500, Math.max(limit, 200))).get();
   const items = snapshot.docs.map(doc => {
     const row = doc.data();
     return {
@@ -345,10 +349,16 @@ export async function listAudit(actor, event, { db = getAdminDb() } = {}) {
       resource: safeString(row.targetId ?? row.resource, 160),
       result: safeString(row.outcome ?? row.result, 40) || 'recorded',
       requestId: safeString(row.requestId, 160),
+      fingerprint: safeString(row.fingerprint, 64),
       revision: Number.isSafeInteger(row.revision) ? row.revision : null,
+      metadata: row.metadata && typeof row.metadata === 'object' ? row.metadata : null,
     };
-  });
-  return { items, limit };
+  }).filter(item =>
+    (!actionFilter || lower(item.action).includes(actionFilter)) &&
+    (!actorFilter || lower(item.actor).includes(actorFilter)) &&
+    (!outcomeFilter || lower(item.result) === outcomeFilter),
+  ).slice(0, limit);
+  return { items, limit, filters: { action: actionFilter || null, actor: actorFilter || null, outcome: outcomeFilter || null } };
 }
 
 const SITE_FIELDS = Object.freeze({
@@ -408,7 +418,7 @@ export async function websiteSettings(actor, event, input, { db = getAdminDb() }
   const now = FieldValue.serverTimestamp();
   await db.runTransaction(async tx => {
     tx.set(ref, { ...safe, updatedAt: now, updatedBy: actor.uid }, { merge: true });
-    tx.create(auditRef, { action: 'website.settings.update', actorUid: actor.uid, targetId: input.section, createdAt: now });
+    tx.create(auditRef, makeAuditEvent({ action: 'website.settings.update', actorUid: actor.uid, targetId: input.section, createdAt: now, metadata: { fields: Object.keys(safe) } }));
   });
   const snapshot = await ref.get();
   return { settings: snapshot.data() };
@@ -464,6 +474,19 @@ export async function report(actor, input, { db = getAdminDb() } = {}) {
       { label: 'Created At', value: r => isoTimestamp(r.createdAt) },
     ]);
   }
+  const auditRef = db.collection('auditEvents').doc(auditDocId({
+    action: 'report.export',
+    requestId: input.requestId,
+    actorUid: actor.uid,
+    targetId: input.type,
+  }));
+  await auditRef.set(makeAuditEvent({
+    action: 'report.export',
+    actorUid: actor.uid,
+    targetId: input.type,
+    requestId: input.requestId,
+    metadata: { reportType: input.type, rowCount: content ? content.split('\\n').length - 1 : 0 },
+  }));
   return {
     filename: `brandalbet-${input.type}-${new Date().toISOString().slice(0,10)}.csv`,
     mimeType: 'text/csv;charset=utf-8',
