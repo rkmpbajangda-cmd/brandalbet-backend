@@ -16,7 +16,7 @@ export function createHandler({
 } = {}) {
   const runLaunch = launch ?? ((actor, input, options) => launchGoldslotGame(actor, input, {
     ...options,
-    db: getAdminDb(),
+    db: getAdminDb(env),
   }));
 
   return protectedHandler({
