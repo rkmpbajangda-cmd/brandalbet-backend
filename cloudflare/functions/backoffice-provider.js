@@ -36,9 +36,17 @@ function capabilities(env) {
 async function snapshotStatus({ loadCatalog }) {
   try {
     const catalog = await loadCatalog();
+    const providers = Array.isArray(catalog.providers) ? catalog.providers : [];
     return {
       status: catalog.snapshotStale === true ? 'snapshot_stale' : 'snapshot_ready',
       gamesCount: catalog.games.length,
+      providerCount: providers.length,
+      providers: providers.map(provider => ({
+        providerId: provider.providerId,
+        providerName: provider.providerName,
+        status: provider.status ?? 'normal',
+        gameCount: Number.isSafeInteger(provider.gameCount) ? provider.gameCount : 0,
+      })),
       lastSync: catalog.syncedAt,
       snapshotRevision: catalog.snapshotRevision ?? null,
       snapshotStale: catalog.snapshotStale === true,
@@ -51,10 +59,12 @@ async function snapshotStatus({ loadCatalog }) {
       return {
         status: 'snapshot_missing',
         gamesCount: 0,
+        providerCount: 0,
+        providers: [],
         lastSync: null,
         snapshotRevision: null,
         snapshotStale: true,
-        message: 'Katalog belum pernah disinkronkan. Jalankan Sync Catalog sekali dari backoffice.',
+        message: 'Katalog belum pernah disinkronkan. Jalankan Sinkronkan Game sekali dari backoffice.',
       };
     }
     throw error;
@@ -77,8 +87,16 @@ export function createHandler({
     env,
     run: async (actor, event) => {
       const snapshot = await snapshotStatus({ loadCatalog });
-      const db = dbFactory(env);
-      const transactions = await ledgerStatus({ db, env });
+
+      // Provider status must remain readable even if the optional transaction
+      // ledger status is unavailable. Transaction health is reported separately.
+      let transactions = null;
+      try {
+        const db = dbFactory(env);
+        transactions = await ledgerStatus({ db, env });
+      } catch {
+        transactions = { status: 'unavailable', capability: false };
+      }
 
       if (event.httpMethod === 'GET') {
         return {
@@ -94,7 +112,6 @@ export function createHandler({
       if (!LIVE_CHECK_ROLES.has(actor.role)) throw new ServiceError('forbidden', 403);
 
       if (input.action === 'check') {
-        // Explicit admin action only: opening/reloading the page never calls the provider.
         await clientFactory({ env }).agentInfo();
         return {
           provider: 'goldslotpalase',
@@ -109,9 +126,10 @@ export function createHandler({
       }
 
       if (input.action === 'sync-transactions') {
-        const sync = await syncTransactions({ db, env, clientFactory });
+        const sync = await syncTransactions({ db: dbFactory(env), env, clientFactory });
         return {
           provider: 'goldslotpalase',
+          ...snapshot,
           transactions: sync,
           capabilities: capabilities(env),
         };
