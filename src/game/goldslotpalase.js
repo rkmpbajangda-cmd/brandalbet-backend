@@ -75,7 +75,7 @@ async function readJsonResponse(response, mutation) {
   try {
     if (!response?.body || typeof response.body.getReader !== 'function') {
       const text = await response.text();
-      if (Buffer.byteLength(text, 'utf8') > MAX_RESPONSE_BYTES) throw new Error('response_limit');
+      if (new TextEncoder().encode(text).byteLength > MAX_RESPONSE_BYTES) throw new Error('response_limit');
       return JSON.parse(text);
     }
     const reader = response.body.getReader();
