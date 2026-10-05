@@ -83,7 +83,7 @@ export function createHandler({
     verifyIdToken,
     env,
     run: async (actor, event) => {
-      const snapshot = await snapshotStatus({ loadCatalog });
+      const snapshot = await snapshotStatus({ loadCatalog: readCatalog });
       let transactions = null;
       try {
         const db = dbFactory(env);
