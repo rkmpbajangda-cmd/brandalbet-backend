@@ -74,8 +74,9 @@ export function normalizeGoldslotProviders(data) {
 }
 
 export function normalizeGoldslotGames(data, providerNames = new Map()) {
-  if (!Array.isArray(data)) throw new ServiceError('provider_invalid_catalog', 503);
-  if (data.length > MAX_GAMES) throw new ServiceError('provider_catalog_too_large', 503);
+  const rows = collectionFromResponse(data, ['games', 'data', 'list', 'rows']);
+  if (!rows) throw new ServiceError('provider_invalid_catalog', 503);
+  if (rows.length > MAX_GAMES) throw new ServiceError('provider_catalog_too_large', 503);
 
   const seen = new Set();
   const games = [];
