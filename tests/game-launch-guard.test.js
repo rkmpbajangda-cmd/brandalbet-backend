@@ -4,10 +4,24 @@ import { launchGoldslotGame, clearLaunchGuardForTest } from '../src/game/launch.
 import { transactionDb } from './helpers/transaction-db.js';
 
 const actor = { uid: 'guard-user', email: 'member@example.invalid' };
+const catalog = {
+  games: [
+    { providerId: 9, gameSymbol: 'slot_guard', launchEnabled: true },
+    { providerId: 9, gameSymbol: 'slot_distributed_guard', launchEnabled: true },
+    { providerId: 10, gameSymbol: 'another_game', launchEnabled: true },
+    { providerId: 9, gameSymbol: 'slot_retry', launchEnabled: true },
+  ],
+  providers: [
+    { providerId: 9, status: 'normal' },
+    { providerId: 10, status: 'normal' },
+  ],
+};
+
 const common = {
   loadProfile: async () => ({ uid: actor.uid, username: 'member', onboardingCompleted: true }),
   loadWallet: async () => ({ uid: actor.uid, currency: 'IDR', balanceMinor: 0, availableMinor: 0, status: 'active' }),
   ensurePlayer: async () => ({ userCode: 77 }),
+  loadCatalog: async () => catalog,
 };
 
 function launchClient(counter, implementation) {
