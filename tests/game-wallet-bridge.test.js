@@ -120,6 +120,7 @@ test('game launch prepares provider balance before requesting one-time URL', asy
     loadProfile: async () => ({ uid: 'u1', username: 'member', onboardingCompleted: true }),
     loadWallet: async () => wallet,
     ensurePlayer: async () => player,
+    loadCatalog: async () => ({ games: [{ providerId: 9, gameSymbol: 'slot_x', launchEnabled: true }], providers: [{ providerId: 9, status: 'normal' }] }),
     prepareBalance: async (_actor, input) => {
       order.push('bridge');
       assert.equal(input.launchRequestId, 'launch-request-002');
