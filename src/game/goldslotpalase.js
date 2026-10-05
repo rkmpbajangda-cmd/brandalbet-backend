@@ -61,12 +61,13 @@ async function readJsonResponse(response, mutation) {
   try {
     if (!response?.body || typeof response.body.getReader !== 'function') {
       const text = await response.text();
-      if (Buffer.byteLength(text, 'utf8') > MAX_RESPONSE_BYTES) throw new Error('response_limit');
+      if (new TextEncoder().encode(text).byteLength > MAX_RESPONSE_BYTES) throw new Error('response_limit');
       return JSON.parse(text);
     }
     const reader = response.body.getReader();
+    const decoder = new TextDecoder();
     let size = 0;
-    const chunks = [];
+    let text = '';
     while (true) {
       const { done, value } = await reader.read();
       if (done) break;
@@ -75,9 +76,10 @@ async function readJsonResponse(response, mutation) {
         await reader.cancel();
         throw new Error('response_limit');
       }
-      chunks.push(Buffer.from(value));
+      text += decoder.decode(value, { stream: true });
     }
-    return JSON.parse(Buffer.concat(chunks).toString('utf8'));
+    text += decoder.decode();
+    return JSON.parse(text);
   } catch {
     throw new GoldslotError('provider_invalid_response', { ambiguous: mutation });
   }
