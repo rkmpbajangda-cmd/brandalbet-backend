@@ -109,7 +109,7 @@ test('readiness reveals no secret values and never asserts production readiness'
 });
 test('transaction history cannot read another user via query parameters', async () => {
   let uid;
-  const handler = transactionsHandler({ verifyIdToken: async () => ({ uid: 'actual-user' }), list: async value => { uid = value; return []; } });
+  const handler = transactionsHandler({ verifyIdToken: async () => ({ uid: 'actual-user', role: 'member' }), env: { MEMBER_SINGLE_SESSION_ENABLED: 'false' }, list: async value => { uid = value; return []; } });
   assert.equal((await handler(event)).statusCode, 200); assert.equal(uid, 'actual-user');
 });
 test('new JSON handlers reject bad content types, large bodies and malformed JSON', () => {
