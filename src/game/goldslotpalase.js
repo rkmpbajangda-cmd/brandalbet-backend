@@ -40,6 +40,20 @@ function boundedLimit(value, { min = 10, max = 2000, code = 'invalid_limit' } = 
   return value;
 }
 
+function providerLanguage(env, value) {
+  const language = value ?? Number(env.GOLDSLOTPALASE_LANGUAGE ?? 9);
+  if (!Number.isInteger(language) || language < 1 || language > 33) throw new ServiceError('invalid_language');
+  return language;
+}
+
+function boundedProviderInteger(env, name, fallback, { min = 0, max = Number.MAX_SAFE_INTEGER } = {}) {
+  const raw = env[name] ?? String(fallback);
+  if (typeof raw !== 'string' || !/^\\d+$/.test(raw)) throw new ServiceError('provider_invalid_configuration', 503);
+  const value = Number(raw);
+  if (!Number.isSafeInteger(value) || value < min || value > max) throw new ServiceError('provider_invalid_configuration', 503);
+  return value;
+}
+
 function providerUtcTime(value, field) {
   if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}:\d{2}$/.test(value)) {
     throw new ServiceError('invalid_' + field);
@@ -153,15 +167,65 @@ export function createGoldslotClient({ env = process.env, fetchImpl = fetch, tim
 
     callbackTest: () => post('/v4/agent/callback-test', {}, true, { requireData: false }),
 
-    providers: ({ language = 9 } = {}) => {
-      if (!Number.isInteger(language) || language < 1 || language > 33) throw new ServiceError('invalid_language');
-      return post('/v4/game/providers', { lang: language });
+    providers: ({ language } = {}) => {
+      const lang = providerLanguage(env, language);
+      return post('/v4/game/providers', { lang });
     },
 
-    games: ({ providerId, language = 9 }) => {
+    games: ({ providerId, language } = {}) => {
       positiveIdentifier(providerId, 'provider_id');
-      if (!Number.isInteger(language) || language < 1 || language > 33) throw new ServiceError('invalid_language');
-      return post('/v4/game/games', { provider_id: providerId, lang: language });
+      const lang = providerLanguage(env, language);
+      return post('/v4/game/games', { provider_id: providerId, lang });
+    },
+
+    onlineGames: () => post('/v4/game/online-games'),
+
+    bonusCallConfig: ({ gplayId }) => post('/v4/game/call_config', {
+      gplay_id: positiveIdentifier(gplayId, 'gplay_id'),
+    }),
+
+    bonusCallStart: ({ gplayId, setPoint, type, memo = '' }) => {
+      if (!Number.isSafeInteger(setPoint) || setPoint < 0) throw new ServiceError('invalid_set_point');
+      if (!Number.isSafeInteger(type) || type < 0) throw new ServiceError('invalid_bonus_call_type');
+      if (typeof memo !== 'string' || memo.length > 500 || /[\\x00-\\x1f]/.test(memo)) throw new ServiceError('invalid_bonus_call_memo');
+      return post('/v4/game/call_start', {
+        gplay_id: positiveIdentifier(gplayId, 'gplay_id'),
+        set_point: setPoint,
+        type,
+        memo,
+      }, true);
+    },
+
+    bonusCallCancel: ({ gplayId }) => post('/v4/game/call_cancel', {
+      gplay_id: positiveIdentifier(gplayId, 'gplay_id'),
+    }, true),
+
+    freeRoundCreate: ({ userCode, providerId, gameSymbol, bet, win, rounds, expirationDate, scenario }) => {
+      positiveIdentifier(userCode, 'user_code');
+      positiveIdentifier(providerId, 'provider_id');
+      if (typeof gameSymbol !== 'string' || !gameSymbol || gameSymbol.length > 200 || /[\\x00-\\x1f]/.test(gameSymbol)) throw new ServiceError('invalid_game_symbol');
+      for (const [name, value] of [['bet', bet], ['win', win]]) {
+        if (!Number.isSafeInteger(value) || value < 0) throw new ServiceError('invalid_' + name);
+      }
+      if (!Number.isSafeInteger(rounds) || rounds < 1) throw new ServiceError('invalid_rounds');
+      if (typeof expirationDate !== 'string' || !expirationDate || expirationDate.length > 80) throw new ServiceError('invalid_expiration_date');
+      const payload = { user_code: userCode, provider_id: providerId, game_symbol: gameSymbol, bet, win, rounds, expirationDate };
+      if (scenario !== undefined) {
+        if (typeof scenario !== 'string' || scenario.length > 200 || /[\\x00-\\x1f]/.test(scenario)) throw new ServiceError('invalid_scenario');
+        payload.scenario = scenario;
+      }
+      return post('/v4/game/freeround/create', payload, true);
+    },
+
+    freeRoundCancel: ({ userCode, providerId, gameSymbol }) => {
+      positiveIdentifier(userCode, 'user_code');
+      positiveIdentifier(providerId, 'provider_id');
+      if (typeof gameSymbol !== 'string' || !gameSymbol || gameSymbol.length > 200 || /[\\x00-\\x1f]/.test(gameSymbol)) throw new ServiceError('invalid_game_symbol');
+      return post('/v4/game/freeround/cancel', {
+        user_code: userCode,
+        provider_id: providerId,
+        game_symbol: gameSymbol,
+      }, true);
     },
 
     allGames: () => post('/v4/game/all'),
@@ -189,19 +253,19 @@ export function createGoldslotClient({ env = process.env, fetchImpl = fetch, tim
       user_code: positiveIdentifier(userCode, 'user_code'),
     }, true),
 
-    launch: ({ userCode, providerId, gameSymbol, language = 9 }) => {
+    launch: ({ userCode, providerId, gameSymbol, language }) => {
       positiveIdentifier(userCode, 'user_code');
       positiveIdentifier(providerId, 'provider_id');
       if (typeof gameSymbol !== 'string' || !gameSymbol || gameSymbol.length > 200 || /[\x00-\x1f]/.test(gameSymbol)) {
         throw new ServiceError('invalid_game_symbol');
       }
-      if (!Number.isInteger(language) || language < 1 || language > 33) throw new ServiceError('invalid_language');
+      const lang = providerLanguage(env, language);
       // Individual RTP override is intentionally disabled. Normal operation uses provider/global RTP.
       return post('/v4/game/game-url', {
         user_code: userCode,
         provider_id: providerId,
         game_symbol: gameSymbol,
-        lang: language,
+        lang,
         return_url: '',
         min_bet: 0,
         max_bet: 0,
