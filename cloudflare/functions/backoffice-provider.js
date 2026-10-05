@@ -28,8 +28,12 @@ function capabilities(env) {
     rewardPayout: env.REWARDS_PAYOUT_ENABLED === 'true',
     rtpGlobal: true,
     rtpPerGame: false,
-    rtpPerUser: true,
+    rtpPerUser: env.GOLDSLOTPALASE_INDIVIDUAL_RTP_ENABLED === 'true',
     scatterControl: false,
+    onlineGames: true,
+    bonusCall: env.GOLDSLOTPALASE_BONUS_CALL_ENABLED === 'true',
+    freeRound: env.GOLDSLOTPALASE_FREEROUND_ENABLED === 'true',
+    callback: env.GOLDSLOTPALASE_CALLBACK_HTTPS_ONLY === 'true',
   };
 }
 
