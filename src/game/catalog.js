@@ -1,4 +1,3 @@
-import { getAdminDb } from '../firebase/admin.js';
 import { ServiceError } from '../utils/errors.js';
 
 const DEFAULT_CATALOG_TTL_MS = 5 * 60 * 1000;
@@ -225,8 +224,12 @@ async function writeCatalogSnapshot(value, { db, current, chunkSize = SNAPSHOT_C
  * Explicit admin-only synchronization path. This is the only catalog path that
  * should contact Goldslot in normal production operation.
  */
-export async function syncStoredGameCatalog({ client, db = getAdminDb(), now = Date.now } = {}) {
+export async function syncStoredGameCatalog({ client, db, now = Date.now, env = process.env } = {}) {
   if (!client?.allGames || !client?.providers) throw new ServiceError('provider_unconfigured', 503);
+  if (!db) {
+    const { getAdminDb } = await import('../firebase/admin.js');
+    db = getAdminDb(env);
+  }
   if (syncInflight) return syncInflight;
   const current = now();
   syncInflight = (async () => {
@@ -256,8 +259,12 @@ export async function syncStoredGameCatalog({ client, db = getAdminDb(), now = D
  * A stale snapshot is intentionally still served until an administrator syncs
  * again so provider outages cannot make the member catalog disappear.
  */
-export async function loadStoredGameCatalog({ db = getAdminDb(), now = Date.now, ttlMs = SNAPSHOT_MEMORY_TTL_MS } = {}) {
+export async function loadStoredGameCatalog({ db, env = process.env, now = Date.now, ttlMs = SNAPSHOT_MEMORY_TTL_MS } = {}) {
   const current = now();
+  if (!db) {
+    const { createFirestoreRestDb } = await import('../firebase/firestore-rest.js');
+    db = createFirestoreRestDb(env);
+  }
   if (snapshotCache && current < snapshotCache.expiresAt) return snapshotCache.value;
   if (snapshotInflight) return snapshotInflight;
 
