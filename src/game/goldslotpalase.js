@@ -145,13 +145,13 @@ function providerRuntimeConfig(env) {
   });
 }
 
-async function acquireProviderSlot(config) {
+async function acquireProviderSlot(config, throttle = false) {
   if (providerRuntime.active >= config.maxConcurrent) {
     await new Promise(resolve => providerRuntime.waiters.push(resolve));
   }
   providerRuntime.active += 1;
   const now = Date.now();
-  const waitMs = Math.max(0, providerRuntime.lastRequestStartedAt + config.minIntervalMs - now);
+  const waitMs = throttle ? Math.max(0, providerRuntime.lastRequestStartedAt + config.minIntervalMs - now) : 0;
   if (waitMs > 0) await new Promise(resolve => setTimeout(resolve, waitMs));
   providerRuntime.lastRequestStartedAt = Date.now();
 }
@@ -174,8 +174,8 @@ export function createGoldslotClient({ env = process.env, fetchImpl = fetch, tim
     throw new ServiceError('invalid_provider_timeout');
   }
 
-  async function post(path, payload = {}, mutation = false, { requireData = true } = {}) {
-    await acquireProviderSlot(runtime);
+  async function post(path, payload = {}, mutation = false, { requireData = true, throttle = false } = {}) {
+    await acquireProviderSlot(runtime, throttle);
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), requestTimeoutMs);
     try {
@@ -328,14 +328,14 @@ export function createGoldslotClient({ env = process.env, fetchImpl = fetch, tim
     transactionsById: ({ lastId = 0, limit = 2000 } = {}) => post('/v4/game/transaction-id', {
       last_id: nonNegativeInteger(lastId, 'last_id'),
       limit: boundedLimit(limit, { code: 'transaction_limit' }),
-    }),
+    }, false, { throttle: true }),
 
     transactionsByTime: ({ startTime, endTime, offset = 0, limit = 2000 }) => post('/v4/game/transaction', {
       start_time: providerUtcTime(startTime, 'start_time'),
       end_time: providerUtcTime(endTime, 'end_time'),
       offset: nonNegativeInteger(offset, 'offset'),
       limit: boundedLimit(limit, { code: 'transaction_limit' }),
-    }),
+    }, false, { throttle: true }),
 
     roundDetails: ({ userCode, roundId, providerId = null, gameSymbol = null }) => {
       positiveIdentifier(userCode, 'user_code');
