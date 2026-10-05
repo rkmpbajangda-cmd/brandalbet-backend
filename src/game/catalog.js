@@ -1,4 +1,5 @@
 import { ServiceError } from '../utils/errors.js';
+import { createFirestoreRestDb } from '../firebase/firestore-rest.js';
 
 const DEFAULT_CATALOG_TTL_MS = 5 * 60 * 1000;
 const STALE_IF_ERROR_MS = 30 * 60 * 1000;
@@ -261,10 +262,7 @@ export async function syncStoredGameCatalog({ client, db, now = Date.now, env = 
  */
 export async function loadStoredGameCatalog({ db, env = process.env, now = Date.now, ttlMs = SNAPSHOT_MEMORY_TTL_MS } = {}) {
   const current = now();
-  if (!db) {
-    const { createFirestoreRestDb } = await import('../firebase/firestore-rest.js');
-    db = createFirestoreRestDb(env);
-  }
+  if (!db) db = createFirestoreRestDb(env);
   if (snapshotCache && current < snapshotCache.expiresAt) return snapshotCache.value;
   if (snapshotInflight) return snapshotInflight;
 
