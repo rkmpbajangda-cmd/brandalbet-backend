@@ -1,7 +1,7 @@
 import { ServiceError } from '../utils/errors.js';
 
 // Only GoldslotPalase. Never take a provider URL or credentials from a browser request.
-const MAX_RESPONSE_BYTES = 2 * 1024 * 1024;
+const MAX_RESPONSE_BYTES = 16 * 1024 * 1024;
 
 function providerBaseUrl(env) {
   const raw = env.GOLDSLOTPALASE_API_URL;
@@ -89,9 +89,15 @@ async function readJsonResponse(response, mutation) {
         await reader.cancel();
         throw new Error('response_limit');
       }
-      chunks.push(Buffer.from(value));
+      chunks.push(value);
     }
-    return JSON.parse(Buffer.concat(chunks).toString('utf8'));
+    const merged = new Uint8Array(size);
+    let offset = 0;
+    for (const chunk of chunks) {
+      merged.set(chunk, offset);
+      offset += chunk.byteLength;
+    }
+    return JSON.parse(new TextDecoder().decode(merged));
   } catch {
     throw new GoldslotError('provider_invalid_response', { ambiguous: mutation });
   }
