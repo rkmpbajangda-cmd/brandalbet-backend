@@ -61,7 +61,7 @@ function parseBody(event) {
 }
 
 function text(value, max, code) {
-  if (typeof value !== 'string' || !value || value.length > max || /[\\x00-\\x1f]/.test(value)) throw new ServiceError(code, 400);
+  if (typeof value !== 'string' || !value || value.length > max || /[\u0000-\u001F\u007F]/.test(value)) throw new ServiceError(code, 400);
   return value;
 }
 
@@ -196,11 +196,11 @@ async function processTransaction(command, data, player, db, payloadHash) {
         .where('transactionGuid', '==', cancelGuid)
         .where('command', 'in', ['bet', 'win'])
         .limit(2);
-      const originals = await originalQuery.get();
+      const originals = await tx.get(originalQuery);
       if (originals.empty) return { missingTransaction: true };
       if (originals.docs.length !== 1) return { reversalAmbiguous: true };
       const original = originals.docs[0].data();
-      if (original.processingStatus !== 'processed') return { missingTransaction: true };
+      if (original.processingStatus !== 'processed') return { missingTransaction: true };\n      if (original.uid !== player.uid || original.account !== data.account || original.provider !== PROVIDER) return { missingTransaction: true };
       const originalDelta = Number.isSafeInteger(original.walletDeltaMinor) ? original.walletDeltaMinor : null;
       if (originalDelta == null) return { reversalAmbiguous: true };
       delta = -originalDelta;
