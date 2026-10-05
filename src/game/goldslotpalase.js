@@ -116,19 +116,68 @@ function validateSuccessEnvelope(payload, mutation, { requireData = true } = {})
   return payload.data;
 }
 
-export function createGoldslotClient({ env = process.env, fetchImpl = fetch, timeoutMs = 8000 } = {}) {
+const providerRuntime = {
+  active: 0,
+  lastRequestStartedAt: 0,
+  waiters: [],
+};
+
+function providerRuntimeConfig(env) {
+  const maxConcurrent = boundedProviderInteger(env, 'GOLDSLOTPALASE_MAX_CONCURRENT_CALLS', 10, { min: 1, max: 100 });
+  const minIntervalMs = boundedProviderInteger(env, 'GOLDSLOTPALASE_TRANSACTION_MIN_INTERVAL_MS', 30000, { min: 0, max: 300000 });
+  const launchUrlTtlMs = boundedProviderInteger(env, 'GOLDSLOTPALASE_LAUNCH_URL_TTL_MS', 600000, { min: 1000, max: 3600000 });
+  const callbackHttpsOnly = String(env.GOLDSLOTPALASE_CALLBACK_HTTPS_ONLY ?? 'true') === 'true';
+  const callbackTimeoutMs = boundedProviderInteger(env, 'GOLDSLOTPALASE_CALLBACK_TIMEOUT_MS', 15000, { min: 1000, max: 15000 });
+  const callbackRetryAttempts = boundedProviderInteger(env, 'GOLDSLOTPALASE_CALLBACK_RETRY_ATTEMPTS', 4, { min: 0, max: 10 });
+  const callbackRetryIntervalMs = boundedProviderInteger(env, 'GOLDSLOTPALASE_CALLBACK_RETRY_INTERVAL_MS', 5000, { min: 0, max: 60000 });
+  const transactionRetentionDays = boundedProviderInteger(env, 'GOLDSLOTPALASE_TRANSACTION_RETENTION_DAYS', 2, { min: 1, max: 30 });
+  const roundDetailsDays = boundedProviderInteger(env, 'GOLDSLOTPALASE_ROUND_DETAILS_DAYS', 30, { min: 1, max: 365 });
+  return Object.freeze({
+    maxConcurrent,
+    minIntervalMs,
+    launchUrlTtlMs,
+    callbackHttpsOnly,
+    callbackTimeoutMs,
+    callbackRetryAttempts,
+    callbackRetryIntervalMs,
+    transactionRetentionDays,
+    roundDetailsDays,
+  });
+}
+
+async function acquireProviderSlot(config) {
+  if (providerRuntime.active >= config.maxConcurrent) {
+    await new Promise(resolve => providerRuntime.waiters.push(resolve));
+  }
+  providerRuntime.active += 1;
+  const now = Date.now();
+  const waitMs = Math.max(0, providerRuntime.lastRequestStartedAt + config.minIntervalMs - now);
+  if (waitMs > 0) await new Promise(resolve => setTimeout(resolve, waitMs));
+  providerRuntime.lastRequestStartedAt = Date.now();
+}
+
+function releaseProviderSlot() {
+  providerRuntime.active = Math.max(0, providerRuntime.active - 1);
+  const next = providerRuntime.waiters.shift();
+  if (next) next();
+}
+
+export function createGoldslotClient({ env = process.env, fetchImpl = fetch, timeoutMs = null } = {}) {
   const token = env.GOLDSLOTPALASE_API_TOKEN;
   const baseUrl = providerBaseUrl(env);
   if (typeof token !== 'string' || !token.trim() || /[\r\n]/.test(token)) {
     throw new GoldslotError('provider_unconfigured');
   }
-  if (!Number.isInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > 15000) {
+  const runtime = providerRuntimeConfig(env);
+  const requestTimeoutMs = timeoutMs == null ? runtime.callbackTimeoutMs : timeoutMs;
+  if (!Number.isInteger(requestTimeoutMs) || requestTimeoutMs < 1 || requestTimeoutMs > 15000) {
     throw new ServiceError('invalid_provider_timeout');
   }
 
   async function post(path, payload = {}, mutation = false, { requireData = true } = {}) {
+    await acquireProviderSlot(runtime);
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    const timer = setTimeout(() => controller.abort(), requestTimeoutMs);
     try {
       // Single attempt only for every request. Mutations that time out are ambiguous and must be reconciled.
       const response = await fetchImpl(baseUrl + path, {
@@ -152,6 +201,7 @@ export function createGoldslotClient({ env = process.env, fetchImpl = fetch, tim
       throw new GoldslotError('provider_unavailable', { ambiguous: mutation });
     } finally {
       clearTimeout(timer);
+      releaseProviderSlot();
     }
   }
 
@@ -311,5 +361,6 @@ export function createGoldslotClient({ env = process.env, fetchImpl = fetch, tim
     }),
 
     validateProviderMoney: (value, field = 'provider_amount') => nonNegativeInteger(value, field),
+    runtimeConfig: () => runtime,
   });
 }
