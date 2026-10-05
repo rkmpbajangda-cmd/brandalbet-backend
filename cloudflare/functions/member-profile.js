@@ -4,6 +4,7 @@ import { auditSecurityEvent } from '../../src/audit/logger.js';
 import { corsHeaders, CorsError } from '../../src/security/cors.js';
 import { getOrCreateProfile, updateProfile, ProfileValidationError } from '../../src/member/profile.js';
 import { empty, json } from '../../src/utils/http.js';
+import { canAccessMember } from '../../src/rbac/roles.js';
 
 function parseBody(event) {
   if (!event.body || event.body.length > 8192) throw new ProfileValidationError('invalid_profile_payload');
@@ -28,6 +29,7 @@ export function createHandler({
       }
 
       actor = await authenticateRequest(event, { verifyIdToken, requireMemberSession: true, env });
+      if (!canAccessMember(actor)) throw new ServiceError('forbidden', 403);
       const profile = event.httpMethod === 'GET'
         ? await loadProfile(actor)
         : await saveProfile(actor, parseBody(event));
