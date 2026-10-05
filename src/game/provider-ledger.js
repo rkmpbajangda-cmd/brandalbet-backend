@@ -767,7 +767,9 @@ export async function getGoldslotProviderLedgerStatus({ db = getAdminDb(), env =
     lastId: Number.isSafeInteger(state?.lastId) ? state.lastId : null,
     lastSuccessAtMs,
     ageMs,
-    retentionRisk: ageMs != null && ageMs > 36 * 60 * 60 * 1000,
+    retentionRisk: ageMs != null && ageMs > (
+      (Number(env.GOLDSLOTPALASE_TRANSACTION_RETENTION_DAYS ?? 2) * 24 * 60 * 60 * 1000)
+    ),
     hasMore: state?.hasMore === true,
     processedLastRun: Number.isSafeInteger(state?.processedLastRun) ? state.processedLastRun : 0,
     roundWritesLastRun: Number.isSafeInteger(state?.roundWritesLastRun) ? state.roundWritesLastRun : 0,
