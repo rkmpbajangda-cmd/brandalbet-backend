@@ -134,7 +134,7 @@ if (!obligationOverride || !Array.isArray(obligationOverride.indexes) || obligat
 const gamesSource = await readFile('cloudflare/functions/games.js', 'utf8');
 const catalogSource = await readFile('src/game/catalog.js', 'utf8');
 const displaySettingsSource = await readFile('src/game/display-settings.js', 'utf8');
-if (/from ['"]firebase-admin\\//.test(gamesSource)) {
+if (/from ['"]firebase-admin\//.test(gamesSource)) {
   throw new Error('Member games handler must not statically import firebase-admin on Cloudflare Workers.');
 }
 if (!catalogSource.includes("import('../firebase/firestore-rest.js')")) {
