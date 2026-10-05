@@ -31,6 +31,25 @@ test('wallet bridge transfers all available internal funds before launch', async
   assert.equal(result.transferredMinor, 1000);
 });
 
+test('wallet bridge never transfers reward-locked cashback into Goldslot', async () => {
+  let transferInput = null;
+  const result = await ensurePlayableGoldslotBalance(actor, {
+    wallet: { ...wallet, balanceMinor: 1000, availableMinor: 1000, rewardLockedMinor: 300 },
+    player,
+    env: transferEnv,
+    launchRequestId: 'launch-request-locked',
+    client: { userInfo: async () => ({ balance: 0 }) },
+    loadActiveTransfer: noActive,
+    executeTransfer: async (_actor, input) => {
+      transferInput = input;
+      return { status: 'succeeded', providerBalanceAfter: 700 };
+    },
+  });
+  assert.equal(transferInput.amountMinor, 700);
+  assert.equal(result.transferredMinor, 700);
+  assert.equal(result.providerBalanceMinor, 700);
+});
+
 test('wallet bridge fails closed instead of moving positive internal funds while disabled', async () => {
   await assert.rejects(ensurePlayableGoldslotBalance(actor, {
     wallet,
