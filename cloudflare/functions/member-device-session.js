@@ -2,6 +2,7 @@ import { authenticateRequest, AuthHttpError } from '../../src/auth/authenticate.
 import { auditSecurityEvent } from '../../src/audit/logger.js';
 import { corsHeaders, CorsError } from '../../src/security/cors.js';
 import { registerMemberDeviceSession, endMemberDeviceSession } from '../../src/auth/member-device-session.js';
+import { getAdminDb } from '../../src/firebase/admin.js';
 import { ServiceError } from '../../src/utils/errors.js';
 import { empty, json } from '../../src/utils/http.js';
 
