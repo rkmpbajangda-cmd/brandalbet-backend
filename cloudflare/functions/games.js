@@ -1,4 +1,5 @@
 import { loadStoredGameCatalog } from '../../src/game/catalog.js';
+import { getAdminDb } from '../../src/firebase/admin.js';
 import { applyGameDisplaySettings, loadGameDisplaySettings } from '../../src/game/display-settings.js';
 import { corsHeaders, CorsError } from '../../src/security/cors.js';
 import { empty, json } from '../../src/utils/http.js';
@@ -7,7 +8,7 @@ export function createHandler({
   env = process.env,
   loadCatalog,
   loadDisplay,
-  dbFactory,
+  dbFactory = getAdminDb,
 
 } = {}) {
   const readCatalog = loadCatalog || ((options = {}) => loadStoredGameCatalog({ ...options, db: dbFactory ? dbFactory(env) : undefined }));
