@@ -53,6 +53,10 @@ export async function ensurePlayableGoldslotBalance(actor, {
   }
 
   const availableMinor = safeAvailable(wallet);
+  const walletAvailableMinor = wallet?.availableMinor;
+  if (!Number.isSafeInteger(walletAvailableMinor) || walletAvailableMinor < 0) {
+    throw new ServiceError('wallet_integrity_error', 503);
+  }
   const before = safeProviderBalance(await client.userInfo(player.userCode));
   const policy = gameWalletTransferPolicy(env);
 
@@ -65,7 +69,7 @@ export async function ensurePlayableGoldslotBalance(actor, {
       mode: 'transfer',
       providerBalanceMinor: before,
       transferredMinor: 0,
-      internalAvailableMinor: 0,
+      internalAvailableMinor: walletAvailableMinor,
     });
   }
 
@@ -102,6 +106,8 @@ export async function ensurePlayableGoldslotBalance(actor, {
     mode: 'transfer',
     providerBalanceMinor: after,
     transferredMinor: availableMinor,
-    internalAvailableMinor: 0,
+    // The remaining internal balance is the reward-locked portion; it stays in
+    // Firestore and is intentionally not moved into Goldslot.
+    internalAvailableMinor: walletAvailableMinor - availableMinor,
   });
 }
