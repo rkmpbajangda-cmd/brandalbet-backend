@@ -274,12 +274,26 @@ async function handleCommand(command, data, player, db, payloadHash) {
   }
   if (command === 'status') {
     const guid = transactionGuid(data);
-    const snapshot = await db.collection('providerCallbacks')
-      .where('provider', '==', PROVIDER).where('transactionGuid', '==', guid).limit(2).get();
-    if (snapshot.empty) return providerError(42);
-    if (snapshot.docs.length !== 1) throw new ServiceError('callback_transaction_ambiguous', 503);
-    const row = snapshot.docs[0].data();
-    return success({ status: row.command === 'cancel' ? 'CANCELED' : 'OK' });
+    const originalSnapshot = await db.collection('providerCallbacks')
+      .where('provider', '==', PROVIDER)
+      .where('transactionGuid', '==', guid)
+      .where('command', 'in', ['bet', 'win'])
+      .limit(2)
+      .get();
+    if (originalSnapshot.empty) return providerError(42);
+    if (originalSnapshot.docs.length !== 1) throw new ServiceError('callback_transaction_ambiguous', 503);
+    const original = originalSnapshot.docs[0].data();
+    if (original.uid !== player.uid || original.account !== data.account || original.provider !== PROVIDER ||
+        original.processingStatus !== 'processed') return providerError(42);
+
+    const reversalSnapshot = await db.collection('providerCallbacks')
+      .where('provider', '==', PROVIDER)
+      .where('command', '==', 'cancel')
+      .where('reversalOf', '==', guid)
+      .limit(2)
+      .get();
+    if (reversalSnapshot.docs.length > 1) throw new ServiceError('callback_reversal_ambiguous', 503);
+    return success({ status: reversalSnapshot.empty ? 'OK' : 'CANCELED' });
   }
 
   const result = await processTransaction(command, data, player, db, payloadHash);
