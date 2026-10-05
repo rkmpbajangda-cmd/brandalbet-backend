@@ -26,7 +26,8 @@
   "secrets": {
     "required": [
       "FIREBASE_SERVICE_ACCOUNT_JSON",
-      "GOLDSLOTPALASE_API_TOKEN"
+      "GOLDSLOTPALASE_API_TOKEN",
+      "GOLDSLOTPALASE_CALLBACK_TOKEN"
     ]
   },
   "vars": {
