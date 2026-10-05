@@ -205,8 +205,74 @@ export function createFirestoreRestDb(env) {
     doc: id => makeRef(path + '/' + encodeURIComponent(id)),
   });
 
+  function encodeFirestoreValue(value) {
+    if (value === null) return { nullValue: null };
+    if (typeof value === 'boolean') return { booleanValue: value };
+    if (typeof value === 'string') return { stringValue: value };
+    if (typeof value === 'number') {
+      if (!Number.isFinite(value)) throw new Error('firestore_rest_invalid_number');
+      if (Number.isSafeInteger(value)) return { integerValue: String(value) };
+      return { doubleValue: value };
+    }
+    if (value instanceof Date) return { timestampValue: value.toISOString() };
+    if (Array.isArray(value)) return { arrayValue: { values: value.map(encodeFirestoreValue) } };
+    if (typeof value === 'object') {
+      const fields = {};
+      for (const [key, item] of Object.entries(value)) {
+        if (item === undefined) continue;
+        fields[key] = encodeFirestoreValue(item);
+      }
+      return { mapValue: { fields } };
+    }
+    throw new Error('firestore_rest_unsupported_value');
+  }
+
+  function encodeFirestoreFields(data = {}) {
+    const fields = {};
+    for (const [key, value] of Object.entries(data)) {
+      if (value === undefined) continue;
+      fields[key] = encodeFirestoreValue(value);
+    }
+    return fields;
+  }
+
+  async function commitWrites(writes) {
+    if (!Array.isArray(writes) || !writes.length) return;
+    const url = FIRESTORE_BASE + '/projects/' + encodePathSegment(projectId) + '/databases/(default)/documents:commit';
+    const response = await firestoreFetch(env, url, {
+      method: 'POST',
+      body: JSON.stringify({ writes }),
+    });
+    if (!response.ok) {
+      const error = new Error('firestore_rest_commit_failed');
+      error.code = 'firestore_rest_commit_failed';
+      error.statusCode = response.status >= 500 ? 503 : 502;
+      throw error;
+    }
+  }
+
   return {
     collection: collectionId => makeCollection(encodeURIComponent(collectionId)),
+    batch: () => {
+      const writes = [];
+      const add = write => writes.push(write);
+      return {
+        set: (ref, data) => {
+          add({
+            update: {
+              name: 'projects/' + encodePathSegment(projectId) + '/databases/(default)/documents/' + ref.path,
+              fields: encodeFirestoreFields(data),
+            },
+          });
+        },
+        delete: ref => {
+          add({
+            delete: 'projects/' + encodePathSegment(projectId) + '/databases/(default)/documents/' + ref.path,
+          });
+        },
+        commit: () => commitWrites(writes),
+      };
+    },
     getAll: async (...refs) => {
       if (!refs.length) return [];
       const names = refs.map(ref => 'projects/' + encodePathSegment(projectId) + '/databases/(default)/documents/' + ref.path);
