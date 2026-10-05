@@ -69,7 +69,9 @@ function fromSnapshot(snapshot) {
   return Object.freeze({
     ...normalized,
     revision: Number.isSafeInteger(row.revision) && row.revision >= 0 ? row.revision : 0,
-    updatedAt: typeof row.updatedAt?.toDate === 'function' ? row.updatedAt.toDate().toISOString() : null,
+    updatedAt: typeof row.updatedAt?.toDate === 'function'
+      ? row.updatedAt.toDate().toISOString()
+      : row.updatedAt instanceof Date ? row.updatedAt.toISOString() : null,
     updatedBy: typeof row.updatedBy === 'string' ? row.updatedBy : null,
   });
 }
