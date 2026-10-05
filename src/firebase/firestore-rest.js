@@ -222,7 +222,7 @@ export function createFirestoreRestDb(env) {
         throw error;
       }
       const text = await response.text();
-      const rows = text.split('\\n').map(line => line.trim()).filter(Boolean).map(line => JSON.parse(line));
+      const rows = text.split('\n').map(line => line.trim()).filter(Boolean).map(line => JSON.parse(line));
       const found = new Map();
       for (const row of rows) {
         if (row?.found?.name) found.set(row.found.name, documentFromRest(row.found));
