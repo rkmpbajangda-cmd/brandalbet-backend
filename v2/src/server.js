@@ -116,14 +116,14 @@ async function memberSessionResponse(req,res,next){
    pool.query('SELECT id,username,email,display_name displayName,phone,referral_code referralCode FROM users WHERE id=?',[req.user.id]),
    pool.query('SELECT language,timezone,avatar_url avatarUrl FROM member_profiles WHERE user_id=?',[req.user.id]),
    pool.query('SELECT id,type,provider,account_number accountNumber,account_name accountName,routing_type routingType,routing_value routingValue,is_primary isPrimary,verified_at verifiedAt FROM bank_accounts WHERE user_id=? ORDER BY created_at DESC LIMIT 1',[req.user.id]),
-   pool.query('SELECT balance,locked FROM wallets WHERE user_id=?',[req.user.id])
+   pool.query('SELECT balance,locked,locked_balance FROM wallets WHERE user_id=?',[req.user.id])
   ]);
   const profile=u[0]||null;
   ok(res,{
    session:{userId:req.user.id,deviceId:req.user.device_id,expiresAt:req.user.expires_at,sessionType:req.user.session_type},
    profile:profile?{...profile,onboardingCompleted:Boolean(b[0])&&Boolean(profile.username&&profile.displayName&&profile.phone&&b[0].accountNumber&&b[0].accountName)}:null,
    bankAccount:b[0]||null,
-   wallet:{balance:Number(w[0]?.balance||0),locked:Boolean(w[0]?.locked)},
+   wallet:{balance:Number(w[0]?.balance||0),lockedBalance:Number(w[0]?.locked_balance||0),availableBalance:Math.max(0,Number(w[0]?.balance||0)-Number(w[0]?.locked_balance||0)),locked:Boolean(w[0]?.locked)},
    preferences:p[0]||{language:'id',timezone:'Asia/Jakarta'}
   });
  }catch(e){next(e)}
@@ -137,7 +137,7 @@ app.post('/api/member-device-session',memberAuth,async(req,res,next)=>{try{
 }catch(e){next(e)}});
 
 app.get('/api/member/profile',memberAuth,async(req,res,next)=>{try{
- const [[u],[p],[b]] = await Promise.all([pool.query('SELECT id,username,email,display_name displayName,phone,referral_code referralCode FROM users WHERE id=?',[req.user.id]),pool.query('SELECT language,timezone,avatar_url avatarUrl FROM member_profiles WHERE user_id=?',[req.user.id]),pool.query('SELECT id,type,provider,account_number accountNumber,account_name accountName FROM bank_accounts WHERE user_id=? ORDER BY created_at DESC LIMIT 1',[req.user.id])]);
+ const [[u],[p],[b]] = await Promise.all([pool.query('SELECT id,username,email,display_name displayName,phone,referral_code referralCode FROM users WHERE id=?',[req.user.id]),pool.query('SELECT language,timezone,avatar_url avatarUrl FROM member_profiles WHERE user_id=?',[req.user.id]),pool.query('SELECT id,type,provider,account_number accountNumber,account_name accountName,routing_type routingType,routing_value routingValue,is_primary isPrimary,verified_at verifiedAt FROM bank_accounts WHERE user_id=? ORDER BY created_at DESC LIMIT 1',[req.user.id])]);
  const [[w]]=await pool.query('SELECT balance,locked FROM wallets WHERE user_id=?',[req.user.id]);
  ok(res,{profile:u[0]||null,bankAccount:b[0]||null,wallet:{availableMinor:Math.round(Number(w?.balance||0)*100),balance:Number(w?.balance||0),locked:Boolean(w?.locked)},preferences:p[0]||{language:'id',timezone:'Asia/Jakarta'}});
 }catch(e){next(e)}});
@@ -145,7 +145,7 @@ app.put('/api/member-profile',memberAuth,async(req,res,next)=>{try{await complet
 app.get('/api/member-profile',memberAuth,async(req,res,next)=>{try{const [r]=await pool.query('SELECT id,username,email,display_name displayName,phone,referral_code referralCode FROM users WHERE id=?',[req.user.id]);ok(res,{profile:r[0]||null})}catch(e){next(e)}});
 app.post('/api/member-onboarding',memberAuth,async(req,res,next)=>{try{await completeOnboarding(req.user.id,req.body||{});await audit(req,'member.onboarding.complete','user',req.user.id);ok(res,{completed:true})}catch(e){next(e)}});
 app.get('/api/member-bank-account',memberAuth,async(req,res,next)=>{try{const [r]=await pool.query('SELECT id,type,provider,account_number accountNumber,account_name accountName FROM bank_accounts WHERE user_id=? ORDER BY created_at DESC LIMIT 1',[req.user.id]);ok(res,{bankAccount:r[0]||null})}catch(e){next(e)}});
-app.put('/api/member-bank-account',memberAuth,async(req,res,next)=>{try{const b=req.body||{};if(!b.provider||!b.accountNumber||!b.accountName)return fail(res,400,'invalid_bank_account');const id=newId();await pool.query('INSERT INTO bank_accounts(id,user_id,type,provider,account_number,account_name) VALUES(?,?,?,?,?,?)',[id,req.user.id,b.type||'bank',b.provider,String(b.accountNumber).replace(/\D/g,''),b.accountName]);await audit(req,'member.bank.update','bank_account',id);const [r]=await pool.query('SELECT id,type,provider,account_number accountNumber,account_name accountName FROM bank_accounts WHERE id=?',[id]);ok(res,{bankAccount:r[0]})}catch(e){next(e)}});
+app.put('/api/member-bank-account',memberAuth,async(req,res,next)=>{try{const b=req.body||{};if(!b.provider||!b.accountNumber||!b.accountName)return fail(res,400,'invalid_bank_account');const id=newId();await pool.query('INSERT INTO bank_accounts(id,user_id,type,provider,account_number,account_name,routing_type,routing_value) VALUES(?,?,?,?,?,?,?,?)',[id,req.user.id,b.type||'bank',b.provider,String(b.accountNumber).replace(/\D/g,''),b.accountName,b.routingType||null,b.routingValue||null]);await audit(req,'member.bank.update','bank_account',id);const [r]=await pool.query('SELECT id,type,provider,account_number accountNumber,account_name accountName FROM bank_accounts WHERE id=?',[id]);ok(res,{bankAccount:r[0]})}catch(e){next(e)}});
 
 app.get('/api/wallet',memberAuth,async(req,res,next)=>{try{const [[w]]=await pool.query('SELECT balance,locked FROM wallets WHERE user_id=?',[req.user.id]);ok(res,{balance:Number(w?.balance||0),availableMinor:Math.round(Number(w?.balance||0)*100),locked:Boolean(w?.locked)})}catch(e){next(e)}});
 app.get('/api/transactions',memberAuth,async(req,res,next)=>{try{const [r]=await pool.query('SELECT id,type,amount,status,reference,created_at createdAt FROM transactions WHERE user_id=? ORDER BY created_at DESC LIMIT 200',[req.user.id]);ok(res,{transactions:r})}catch(e){next(e)}});
