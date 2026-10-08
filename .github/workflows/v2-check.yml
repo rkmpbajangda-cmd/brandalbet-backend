@@ -7,6 +7,19 @@ on:
 jobs:
   check:
     runs-on: ubuntu-latest
+    services:
+      mysql:
+        image: mysql:8.4.11
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: brandalbet_test
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -proot"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=20
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -16,3 +29,11 @@ jobs:
       - run: npm install
       - run: npm run check
       - run: npm test
+      - name: Apply database schema
+        env:
+          DATABASE_URL: mysql://root:root@127.0.0.1:3306/brandalbet_test
+        run: npm run migrate
+      - name: Verify migration is idempotent
+        env:
+          DATABASE_URL: mysql://root:root@127.0.0.1:3306/brandalbet_test
+        run: npm run migrate
