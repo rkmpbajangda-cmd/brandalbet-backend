@@ -12,7 +12,7 @@ This document is a delivery checklist, not a claim that features are production-
 - [ ] Deploy a non-production DwaCloud staging instance with Node 22 and MySQL 8.4.
 - [ ] Migrate the Member and Backoffice XML from legacy Firebase/Cloudflare auth to the V2 Bearer-session API contract.
 - [ ] Verify data migration and reconcile all opening wallet balances and ledger entries.
-- [ ] Complete GoldslotPalase sandbox callback, launch, idempotency, cancellation/reversal and settlement tests.
+- [ ] Obtain and archive the current GoldslotPalase V4 Swagger/OpenAPI specification or written provider guide; verify launch URL TTL/single-use semantics, player creation, response envelopes, callback auth, transaction/reversal behavior, and balance units.\n- [ ] Complete GoldslotPalase sandbox callback, launch, idempotency, cancellation/reversal and settlement tests.
 - [x] Separate catalog refresh from launch: member GET reads MySQL only; provider catalog requests happen on explicit Backoffice sync; launch URL is requested only on the member's Main Game action.
 - [ ] Complete Xendit test-mode deposit, payout, webhook replay, timeout, failure and reconciliation tests.
 - [ ] Verify backup restoration, monitoring, TLS, CORS allowlists and operational rollback.
@@ -42,6 +42,19 @@ This document is a delivery checklist, not a claim that features are production-
 - A post-hardening review found provider-account creation was still called during login; that call is now removed and provider-user creation occurs only in the explicit game-launch handler.
 - MySQL numeric boolean values (`0`/`1`) are now handled explicitly for registration, wallet/payment gates, withdrawal-password policy, and provider/game active flags. Regression coverage was added.
 - The duplicate `/api/backoffice-provider` `sync` action is now rejected with a clear instruction to use the canonical `/api/backoffice-game-catalog` sync endpoint, preventing the old route from updating games without updating provider records.
+
+## GoldslotPalase contract verification gate
+
+The repository's Goldslot client is server-to-server and keeps the provider token off the browser. Catalog normalization now accepts the observed V4 field names `provider_id`, `provider_name`, `status`, `game_code`, `game_name`, `locale_name`, `game_image_narrow`, `game_image`, and `launch_enable`. Provider status `2` is treated as unavailable for launch (fail-closed); the exact meaning must still be confirmed with the provider's current specification.
+
+**Important:** the official Swagger UI currently fails to load its API definition because `/swagger/v4/swagger.json` returns Not Found. Therefore the following details are not certified from a currently accessible official spec and must not be treated as production-verified:
+- whether the returned game URL is single-use, reusable, and/or expires, and its actual TTL;
+- whether `/v4/user/create` is required before first launch, and the provider's duplicate-name/idempotency behavior;
+- exact launch response envelope and required/optional `/v4/game/game-url` fields;
+- status code meanings and provider maintenance semantics;
+- callback authentication header, transaction/cancel idempotency, and exact balance units.
+
+Until the provider supplies a working current Swagger/OpenAPI file or written integration guide, do not infer these items from another provider's documentation. Keep live-money readiness disabled and run only mocked tests. The local ten-minute launch expiry is currently an application-side guard, not proof of GoldslotPalase's actual URL expiry.
 
 ## Contract evidence limitation
 
