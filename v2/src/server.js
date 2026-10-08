@@ -119,7 +119,14 @@ app.get('/api/member-config',async(_,res,next)=>{try{
  ok(res,{minimumDeposit:Number(pay?.minDeposit??config.minDeposit),minimumWithdrawal:Number(pay?.minWithdrawal??config.minWithdrawal),maxDeposit:pay?.maxDeposit==null?null:Number(pay.maxDeposit),maxWithdrawal:pay?.maxWithdrawal==null?null:Number(pay.maxWithdrawal),depositEnabled:Boolean(pay?.depositEnabled??true),withdrawalEnabled:Boolean(pay?.withdrawalEnabled??true),depositFee:Number(pay?.depositFee||0),withdrawalFee:Number(pay?.withdrawalFee||0),maintenanceMode:Boolean(site?.maintenanceMode),gameLaunchEnabled:Boolean(site?.gameLaunchEnabled),registrationEnabled:Boolean(site?.registrationEnabled),promotionsEnabled:true,memberWalletEnabled:Boolean(site?.walletEnabled),site:{...site,heroConfig:j(site?.heroConfig),navigationConfig:j(site?.navigationConfig),footerConfig:j(site?.footerConfig),extraConfig:j(site?.extraConfig)},rewards:{...reward,rules:j(reward?.rules),extraConfig:j(reward?.extraConfig)}})
  }catch(e){next(e)}});
 
-app.get('/api/games',async(_,res,next)=>{try{const [r]=await pool.query('SELECT id,provider_code providerCode,provider_id providerId,game_code gameCode,name,category,image_url imageUrl,is_active isActive,is_popular isPopular,is_new isNew,sort_order sortOrder,metadata FROM games WHERE is_active=1 ORDER BY sort_order,id');ok(res,{games:r})}catch(e){next(e)}});
+app.get('/api/games',async(_,res,next)=>{try{
+ const [r]=await pool.query(`SELECT g.id,g.provider_code providerCode,g.provider_id providerId,g.game_code gameCode,g.name,g.category,g.image_url imageUrl,g.is_active isActive,
+   CASE WHEN EXISTS(SELECT 1 FROM game_display_settings d WHERE d.game_id=g.id AND d.section='popular' AND d.is_visible=1) THEN 1 ELSE g.is_popular END isPopular,
+   CASE WHEN EXISTS(SELECT 1 FROM game_display_settings d WHERE d.game_id=g.id AND d.section='terbaru' AND d.is_visible=1) THEN 1 ELSE g.is_new END isNew,
+   COALESCE((SELECT MIN(d.display_order) FROM game_display_settings d WHERE d.game_id=g.id AND d.section='all' AND d.is_visible=1),g.sort_order) sortOrder,g.metadata
+   FROM games g WHERE g.is_active=1 AND NOT EXISTS(SELECT 1 FROM game_display_settings h WHERE h.game_id=g.id AND h.section='all' AND h.is_visible=0)
+   ORDER BY sortOrder,g.id`);
+ ok(res,{games:r})}catch(e){next(e)}});
 app.get('/api/promotions',async(_,res,next)=>{try{const [r]=await pool.query('SELECT id,title,description,image_url imageUrl,start_at startAt,end_at endAt FROM promotions WHERE is_active=1 AND (start_at IS NULL OR start_at<=NOW()) AND (end_at IS NULL OR end_at>=NOW()) ORDER BY sort_order,id');ok(res,{promotions:r})}catch(e){next(e)}});
 
 app.post('/api/game-launch',memberAuth,async(req,res,next)=>{try{
@@ -424,7 +431,15 @@ app.post('/api/backoffice-game-display',adminAuth,role('admin','superadmin'),asy
 }catch(e){next(e)}});
 
 app.get('/api/backoffice-promotions-content',adminAuth,async(req,res,next)=>{try{const [items]=await pool.query('SELECT * FROM promotions_content ORDER BY display_order,id');ok(res,{items})}catch(e){next(e)}});
-app.post('/api/backoffice-promotions-content',adminAuth,role('admin','superadmin'),async(req,res,next)=>{try{const b=req.body||{},id=b.id||newId();await pool.query('INSERT INTO promotions_content(id,title,slug,description,image_url,start_at,end_at,is_active,display_order,extra_config,created_by,updated_by) VALUES(?,?,?,?,?,?,?,?,?,?,?,?) ON DUPLICATE KEY UPDATE title=VALUES(title),slug=VALUES(slug),description=VALUES(description),image_url=VALUES(image_url),start_at=VALUES(start_at),end_at=VALUES(end_at),is_active=VALUES(is_active),display_order=VALUES(display_order),extra_config=VALUES(extra_config),updated_by=VALUES(updated_by)',[id,b.title,b.slug,b.description||null,b.imageUrl||null,b.startAt||null,b.endAt||null,b.isActive!==false,Number(b.displayOrder||0),JSON.stringify(b.extraConfig||{}),req.user.id,req.user.id]);await audit(req,'promotion.content.upsert','promotion',id,{title:b.title});ok(res,{id})}catch(e){next(e)}});
+app.post('/api/backoffice-promotions-content',adminAuth,role('admin','superadmin'),async(req,res,next)=>{try{
+ const b=req.body||{},id=b.id||newId(),title=String(b.title||'').trim(),slug=String(b.slug||title.toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'')).slice(0,190);
+ if(!title||!slug)return fail(res,400,'promotion_title_required');
+ await withTransaction(async conn=>{
+  await conn.query('INSERT INTO promotions_content(id,title,slug,description,image_url,start_at,end_at,is_active,display_order,extra_config,created_by,updated_by) VALUES(?,?,?,?,?,?,?,?,?,?,?,?) ON DUPLICATE KEY UPDATE title=VALUES(title),slug=VALUES(slug),description=VALUES(description),image_url=VALUES(image_url),start_at=VALUES(start_at),end_at=VALUES(end_at),is_active=VALUES(is_active),display_order=VALUES(display_order),extra_config=VALUES(extra_config),updated_by=VALUES(updated_by)',[id,title,slug,b.description||null,b.imageUrl||null,b.startAt||null,b.endAt||null,b.isActive!==false,Number(b.displayOrder||0),JSON.stringify(b.extraConfig||{}),req.user.id,req.user.id]);
+  await conn.query('INSERT INTO promotions(id,title,description,image_url,start_at,end_at,is_active,sort_order) VALUES(?,?,?,?,?,?,?,?) ON DUPLICATE KEY UPDATE title=VALUES(title),description=VALUES(description),image_url=VALUES(image_url),start_at=VALUES(start_at),end_at=VALUES(end_at),is_active=VALUES(is_active),sort_order=VALUES(sort_order)',[id,title,b.description||null,b.imageUrl||null,b.startAt||null,b.endAt||null,b.isActive!==false,Number(b.displayOrder||0)]);
+ });
+ await audit(req,'promotion.content.upsert','promotion',id,{title});ok(res,{id,saved:true})
+}catch(e){next(e)}});
 
 app.get('/api/backoffice-permissions',adminAuth,role('admin','superadmin'),async(req,res,next)=>{try{const [items]=await pool.query('SELECT * FROM admin_permissions ORDER BY role,permission_key');ok(res,{items})}catch(e){next(e)}});
 app.post('/api/backoffice-permissions',adminAuth,role('superadmin'),async(req,res,next)=>{try{const b=req.body||{};if(!b.role||!b.permissionKey)return fail(res,400,'permission_required');await pool.query('INSERT INTO admin_permissions(id,role,permission_key,allowed,updated_by) VALUES(?,?,?,?,?) ON DUPLICATE KEY UPDATE allowed=VALUES(allowed),updated_by=VALUES(updated_by)',[newId(),String(b.role),String(b.permissionKey),b.allowed!==false,req.user.id]);await audit(req,'permission.update','role',String(b.role),{permissionKey:b.permissionKey,allowed:b.allowed!==false});ok(res,{saved:true})}catch(e){next(e)}});
