@@ -56,6 +56,13 @@ test('critical backend columns are present',()=>{
  assert.deepEqual(missing,[]);
 });
 
-test('migration contains required compatibility and seed operations',()=>{
- for(const s of ['INSERT IGNORE INTO website_settings(id) VALUES(1)','INSERT IGNORE INTO payment_settings(id) VALUES(1)','INSERT IGNORE INTO reward_settings(id) VALUES(1)','INSERT IGNORE INTO schema_migrations(id) VALUES (?)','ADD COLUMN IF NOT EXISTS command','ADD COLUMN IF NOT EXISTS trans_guid','ADD COLUMN IF NOT EXISTS cancel_trans_guid','ADD COLUMN IF NOT EXISTS response_json']) assert.ok(migration.includes(s),s);
+test('migration uses safe compatibility-column checks',()=>{ 
+  for(const s of [
+    'INFORMATION_SCHEMA.COLUMNS',
+    'ensureCompatibilityColumns',
+    'INSERT IGNORE INTO website_settings(id) VALUES(1)',
+    'INSERT IGNORE INTO payment_settings(id) VALUES(1)',
+    'INSERT IGNORE INTO reward_settings(id) VALUES(1)',
+    'INSERT IGNORE INTO schema_migrations(id) VALUES (?)'
+  ]) assert.ok(migration.includes(s),s);
 });
