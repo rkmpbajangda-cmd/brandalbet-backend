@@ -49,7 +49,7 @@ export async function createDeposit(user,body){
 export async function createWithdrawal(user,body){
  const [[site]]=await pool.query('SELECT maintenance_mode,wallet_enabled FROM website_settings WHERE id=1');
  if(site?.maintenance_mode)fail('maintenance_mode',503);
- if(site?.wallet_enabled===false)fail('wallet_disabled',403);
+ if(site&&Number(site.wallet_enabled)===0)fail('wallet_disabled',403);
  const [[ps]]=await pool.query('SELECT withdrawal_enabled,min_withdrawal,max_withdrawal FROM payment_settings WHERE id=1');
  if(ps&&Number(ps.withdrawal_enabled)===0)fail('withdrawal_disabled',403);
  if(!xendit.configured)fail('payment_adapter_unavailable',503);
