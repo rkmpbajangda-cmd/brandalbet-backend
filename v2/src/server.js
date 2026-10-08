@@ -149,8 +149,9 @@ app.post('/api/member-device-session',memberAuth,async(req,res,next)=>{try{
 
 app.get('/api/member/profile',memberAuth,async(req,res,next)=>{try{
  const [[u],[p],[b]] = await Promise.all([pool.query('SELECT id,username,email,display_name displayName,phone,referral_code referralCode FROM users WHERE id=?',[req.user.id]),pool.query('SELECT language,timezone,avatar_url avatarUrl FROM member_profiles WHERE user_id=?',[req.user.id]),pool.query('SELECT id,type,provider,account_number accountNumber,account_name accountName,routing_type routingType,routing_value routingValue,is_primary isPrimary,verified_at verifiedAt FROM bank_accounts WHERE user_id=? ORDER BY created_at DESC LIMIT 1',[req.user.id])]);
- const [[w]]=await pool.query('SELECT balance,locked FROM wallets WHERE user_id=?',[req.user.id]);
- ok(res,{profile:u[0]||null,bankAccount:b[0]||null,wallet:{availableMinor:Math.round(Number(w?.balance||0)*100),balance:Number(w?.balance||0),locked:Boolean(w?.locked)},preferences:p[0]||{language:'id',timezone:'Asia/Jakarta'}});
+ const [[w]]=await pool.query('SELECT balance,locked_balance,locked FROM wallets WHERE user_id=?',[req.user.id]);
+ const balance=Number(w?.balance||0),available=getAvailableBalance(balance,w?.locked_balance||0);
+ ok(res,{profile:u[0]||null,bankAccount:b[0]||null,wallet:{availableMinor:Math.round(available*100),balance,availableBalance:available,locked:Boolean(w?.locked)},preferences:p[0]||{language:'id',timezone:'Asia/Jakarta'}});
 }catch(e){next(e)}});
 app.put('/api/member-profile',memberAuth,async(req,res,next)=>{try{await completeOnboarding(req.user.id,req.body||{});await audit(req,'member.profile.update','user',req.user.id);const [r]=await pool.query('SELECT id,username,email,display_name displayName,phone,referral_code referralCode FROM users WHERE id=?',[req.user.id]);ok(res,{profile:r[0]})}catch(e){next(e)}});
 app.get('/api/member-profile',memberAuth,async(req,res,next)=>{try{const [r]=await pool.query('SELECT id,username,email,display_name displayName,phone,referral_code referralCode FROM users WHERE id=?',[req.user.id]);ok(res,{profile:r[0]||null})}catch(e){next(e)}});
