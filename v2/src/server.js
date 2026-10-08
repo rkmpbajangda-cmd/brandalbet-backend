@@ -221,7 +221,7 @@ app.post('/api/provider/callback',async(req,res,next)=>{try{
  if(pu[0].status!=='active')return res.status(403).json({result:22,status:'USER_INACTIVE'});
  const userId=pu[0].id;
  const [[w]]=await pool.query('SELECT balance,locked_balance FROM wallets WHERE user_id=?',[userId]);const currentBalance=Number(w?.balance||0);const availableBalance=Math.max(0,currentBalance-Number(w?.locked_balance||0));
- if(command==='authenticate'||command==='balance')return res.json({result:0,status:'OK',data:{account,balance:currentBalance}});
+ if(command==='authenticate'||command==='balance')return res.json({result:0,status:'OK',data:{account,balance:availableBalance}});
  const transGuid=String(d.trans_guid??'').trim();if(!transGuid)return res.status(400).json({result:41,status:'TRANSACTION_INVALID'});
  if(command==='status'){
   const [tx]=await pool.query('SELECT status FROM provider_transactions WHERE provider_code="goldslotpalase" AND provider_transaction_id=? LIMIT 1',[transGuid]);
