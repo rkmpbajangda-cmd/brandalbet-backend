@@ -360,19 +360,9 @@ app.post('/api/backoffice-game-catalog',adminAuth,role('admin','superadmin'),asy
 }catch(e){next(e)}});
 app.get('/api/backoffice-rtp/:userId',adminAuth,role('admin','superadmin'),async(req,res,next)=>{try{
  const [r]=await pool.query('SELECT user_id userId,enabled,rtp,min_rtp minRtp,max_rtp maxRtp,reason,updated_by updatedBy,updated_at updatedAt FROM member_rtp_settings WHERE user_id=?',[req.params.userId]);
- ok(res,{settings:r[0]||{userId:req.params.userId,enabled:false,rtp:null}}); 
-}catch(e){next(e)}});
-app.post('/api/backoffice-rtp/:userId',adminAuth,role('admin','superadmin'),async(req,res,next)=>{try{
- const enabled=req.body?.enabled===true,rtp=req.body?.rtp==null||req.body?.rtp===''?null:Number(req.body.rtp),reason=String(req.body?.reason||'').slice(0,500);
- if(enabled&&(!Number.isFinite(rtp)||rtp<0||rtp>100))return fail(res,400,'invalid_rtp');
- const [[old]]=await pool.query('SELECT rtp FROM member_rtp_settings WHERE user_id=?',[req.params.userId]);
- await withTransaction(async conn=>{
-  await conn.query('INSERT INTO member_rtp_settings(user_id,enabled,rtp,reason,updated_by) VALUES(?,?,?,?,?) ON DUPLICATE KEY UPDATE enabled=VALUES(enabled),rtp=VALUES(rtp),reason=VALUES(reason),updated_by=VALUES(updated_by)',[req.params.userId,enabled,enabled?rtp:null,reason||null,req.user.id]);
-  await conn.query('INSERT INTO rtp_audit_logs(id,user_id,old_rtp,new_rtp,enabled,actor_user_id,reason) VALUES(?,?,?,?,?,?,?)',[newId(),req.params.userId,old?.rtp??null,enabled?rtp:null,enabled,req.user.id,reason||null]);
- });
- await audit(req,'member.rtp.update','user',req.params.userId,{enabled,rtp,reason});
- ok(res,{userId:req.params.userId,enabled,rtp:enabled?rtp:null});
-}catch(e){next(e)}});
+ ok(res,{perMemberOverrideEnabled:false,policy:'per-member RTP overrides are disabled to protect fair game odds',settings:r[0]||{userId:req.params.userId,enabled:false,rtp:null}});
+ }catch(e){next(e)}});
+app.post('/api/backoffice-rtp/:userId',adminAuth,role('admin','superadmin'),async(req,res)=>fail(res,403,'per_member_rtp_disabled'));
 app.post('/api/backoffice-provider',adminAuth,role('admin','superadmin'),async(req,res,next)=>{try{
  const b=req.body||{},action=String(b.action||'check');
  if(action==='check'||action==='health'){const info=await provider.info();return ok(res,{status:'READY',message:'GoldslotPalase API dapat dihubungi.',provider:info,capabilities:{agentInfo:true,agentRtp:true,userCreate:true,userInfo:true,providerCatalog:true,gameCatalog:true,gameLaunch:true,userRtpAtLaunch:true,onlineGames:true,bonusCall:true,freeRound:true,transactions:true,roundDetails:true,statistics:true,transferWallet:true,callbackAuth:Boolean(config.providerCallbackToken)}})}
@@ -388,7 +378,7 @@ app.post('/api/backoffice-provider',adminAuth,role('admin','superadmin'),async(r
   await audit(req,'provider.catalog.sync','provider','goldslotpalase',{count});return ok(res,{count,provider:p,status:'READY'});
  }
  if(action==='get-user-rtp'){const userId=String(b.userId||'');if(!userId)return fail(res,400,'user_id_required');const [r]=await pool.query('SELECT user_id userId,enabled,rtp,min_rtp minRtp,max_rtp maxRtp,reason,updated_at updatedAt FROM member_rtp_settings WHERE user_id=?',[userId]);return ok(res,{settings:r[0]||{userId,enabled:false,rtp:null}});}
- if(action==='set-user-rtp'){const userId=String(b.userId||''),enabled=b.enabled!==false,rtp=Number(b.rtp);if(!userId||!Number.isFinite(rtp)||rtp<0||rtp>100)return fail(res,400,'invalid_user_rtp');const [[old]]=await pool.query('SELECT rtp FROM member_rtp_settings WHERE user_id=?',[userId]);await withTransaction(async conn=>{await conn.query('INSERT INTO member_rtp_settings(user_id,enabled,rtp,reason,updated_by) VALUES(?,?,?,?,?) ON DUPLICATE KEY UPDATE enabled=VALUES(enabled),rtp=VALUES(rtp),reason=VALUES(reason),updated_by=VALUES(updated_by)',[userId,enabled,enabled?rtp:null,String(b.reason||'').slice(0,500)||null,req.user.id]);await conn.query('INSERT INTO rtp_audit_logs(id,user_id,old_rtp,new_rtp,enabled,actor_user_id,reason) VALUES(?,?,?,?,?,?,?)',[newId(),userId,old?.rtp??null,enabled?rtp:null,enabled,req.user.id,String(b.reason||'').slice(0,500)||null]);});await audit(req,'member.rtp.update','user',userId,{enabled,rtp});return ok(res,{userId,enabled,rtp:enabled?rtp:null});}
+ if(action==='set-user-rtp')return fail(res,403,'per_member_rtp_disabled');
  if(action==='set-rtp'){const rtp=Number(b.rtp);if(!Number.isFinite(rtp)||rtp<0||rtp>100)return fail(res,400,'invalid_rtp');const out=await provider.setRtp(rtp);await audit(req,'provider.rtp.update','provider','goldslotpalase',{rtp});return ok(res,{provider:out,rtp})}
  if(action==='callback-test')return ok(res,{provider:await provider.callbackTest(b.payload||{})});
  if(action==='bonuscall-config')return ok(res,{provider:await provider.callConfig(b.payload||{})});
