@@ -15,7 +15,7 @@ const compatibilityColumns = {
   wallets: { locked_balance:'DECIMAL(20,2) NOT NULL DEFAULT 0' },
   bank_accounts: { routing_type:'VARCHAR(40) NULL', routing_value:'VARCHAR(120) NULL', is_primary:'BOOLEAN NOT NULL DEFAULT 1', verified_at:'TIMESTAMP NULL' },
   deposits: { payment_request_id:'VARCHAR(190) NULL' },
-  withdrawals: { payout_id:'VARCHAR(190) NULL' }
+  withdrawals: { payout_id:'VARCHAR(190) NULL', idempotency_key:'VARCHAR(190) NULL' }
 };
 
 async function ensureCompatibilityColumns(connection) {
