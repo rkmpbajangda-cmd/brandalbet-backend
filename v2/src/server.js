@@ -12,6 +12,7 @@ import {sendOk,sendError} from './http.js';
 import {provider,verifyProviderCallback} from './provider.js';
 import {creditWallet,debitWallet,id as newId,money} from './wallet.js';
 import {encryptJson} from './vault.js';
+import {normalizeReferralCode} from './referral.js';
 import {xendit,createDeposit,createWithdrawal,handleXenditPaymentWebhook,handleXenditPayoutWebhook} from './xendit-payment.js';
 
 const app=express();
@@ -95,8 +96,8 @@ app.post('/api/auth/register',async(req,res,next)=>{try{
  const b=req.body||{};if(!/^[a-zA-Z0-9_]{3,32}$/.test(String(b.username||'')))return fail(res,400,'invalid_username');
  if(!String(b.email||'').includes('@')||String(b.password||'').length<8)return fail(res,400,'invalid_registration');
  const [exists]=await pool.query('SELECT id FROM users WHERE username=? OR email=? LIMIT 1',[b.username,String(b.email).toLowerCase()]);if(exists[0])return fail(res,409,'account_exists');
- const referralCode=String(b.referralCode||'').trim().toUpperCase();
- if(referralCode&&!/^[A-Z0-9_-]{4,32}$/.test(referralCode))return fail(res,400,'invalid_referral_code');
+ let referralCode;
+ try{referralCode=normalizeReferralCode(b.referralCode)}catch(e){return fail(res,400,'invalid_referral_code')}
  let referralOwner=null;
  if(referralCode){
   const [owners]=await pool.query('SELECT id,referral_code,status,role FROM users WHERE referral_code=? LIMIT 1',[referralCode]);
