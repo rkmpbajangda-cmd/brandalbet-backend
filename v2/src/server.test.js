@@ -31,3 +31,9 @@ test('money rejects negative, non-finite and zero-value wallet movements are han
  assert.throws(()=>money(Number.NaN),e=>e.code==='invalid_amount');
  assert.equal(money(20000.555),20000.56);
 });
+const {providerLedgerReference}=await import('./provider.js');
+test('provider reversal ledger references cannot collide with original transaction',()=>{
+ assert.equal(providerLedgerReference('bet','TX1',''),'GSP-TX1');
+ assert.equal(providerLedgerReference('cancel','CANCEL1','TX1'),'GSP-REV-TX1-CANCEL1');
+ assert.notEqual(providerLedgerReference('cancel','CANCEL1','TX1'),providerLedgerReference('bet','TX1',''));
+});
