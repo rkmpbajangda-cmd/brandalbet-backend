@@ -132,7 +132,16 @@ app.post('/api/payment-withdraw',memberAuth,async(req,res,next)=>{try{
  const amount=money(req.body?.amountRupiah);if(amount<config.minWithdrawal)return fail(res,400,'minimum_withdrawal');
  const [banks]=await pool.query('SELECT id FROM bank_accounts WHERE user_id=? ORDER BY created_at DESC LIMIT 1',[req.user.id]);if(!banks[0])return fail(res,400,'bank_account_required');
  const id=newId(),ref='WD-'+Date.now().toString(36).toUpperCase()+'-'+crypto.randomBytes(4).toString('hex').toUpperCase();
- await withTransaction(async c=>{const [[w]]=await c.query('SELECT balance,locked FROM wallets WHERE user_id=? FOR UPDATE',[req.user.id]);if(!w||w.locked)throw Object.assign(new Error('wallet_locked'),{code:'wallet_locked',status:409});if(Number(w.balance)<amount)throw Object.assign(new Error('insufficient_balance'),{code:'insufficient_balance',status:409});await c.query('UPDATE wallets SET balance=balance-? WHERE user_id=?',[amount,req.user.id]);await c.query('INSERT INTO withdrawals(id,user_id,amount,status,bank_account_id,gateway_reference) VALUES(?,?,?,?,?,?)',[id,req.user.id,amount,'pending',banks[0].id,ref]);await c.query('INSERT INTO transactions(id,user_id,type,amount,status,reference,metadata) VALUES(?,?,?,?,?,?,?)',[newId(),req.user.id,'withdrawal_hold',amount,'pending',ref,JSON.stringify({withdrawalId:id})])});
+ await withTransaction(async c=>{
+  const [[w]]=await c.query('SELECT balance,locked FROM wallets WHERE user_id=? FOR UPDATE',[req.user.id]);
+  if(!w||w.locked)throw Object.assign(new Error('wallet_locked'),{code:'wallet_locked',status:409});
+  const before=Number(w.balance);if(before<amount)throw Object.assign(new Error('insufficient_balance'),{code:'insufficient_balance',status:409});
+  const after=before-amount,txId=newId();
+  await c.query('UPDATE wallets SET balance=? WHERE user_id=?',[after,req.user.id]);
+  await c.query('INSERT INTO withdrawals(id,user_id,amount,status,bank_account_id,gateway_reference) VALUES(?,?,?,?,?,?)',[id,req.user.id,amount,'pending',banks[0].id,ref]);
+  await c.query('INSERT INTO transactions(id,user_id,type,amount,status,reference,metadata) VALUES(?,?,?,?,?,?,?)',[txId,req.user.id,'withdrawal_hold',amount,'pending',ref,JSON.stringify({withdrawalId:id})]);
+  await c.query('INSERT INTO wallet_ledger(id,user_id,transaction_id,reference,direction,amount,balance_before,balance_after,reason,metadata) VALUES(?,?,?,?,?,?,?,?,?,?)',[newId(),req.user.id,txId,ref,'debit',amount,before,after,'withdrawal_hold',JSON.stringify({withdrawalId:id})]);
+ });
  await audit(req,'withdrawal.create','withdrawal',id,{amount,reference:ref});
  if(!config.paymentBaseUrl)return ok(res,{withdraw:{id,reference:ref,status:'pending'}});
  return ok(res,{withdraw:{id,reference:ref,status:'pending'}});
