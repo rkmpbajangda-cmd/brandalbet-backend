@@ -125,3 +125,81 @@ CREATE TABLE IF NOT EXISTS rtp_audit_logs(
  enabled BOOLEAN NOT NULL,actor_user_id CHAR(36),reason VARCHAR(500),created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
  INDEX(user_id,created_at),FOREIGN KEY(user_id) REFERENCES users(id),FOREIGN KEY(actor_user_id) REFERENCES users(id)
 ) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS website_settings (
+ id TINYINT PRIMARY KEY DEFAULT 1,
+ site_name VARCHAR(120) NOT NULL DEFAULT 'BrandalBet',
+ logo_url TEXT, favicon_url TEXT, primary_color VARCHAR(20), secondary_color VARCHAR(20),
+ maintenance_mode BOOLEAN NOT NULL DEFAULT 0, registration_enabled BOOLEAN NOT NULL DEFAULT 1,
+ game_launch_enabled BOOLEAN NOT NULL DEFAULT 1, wallet_enabled BOOLEAN NOT NULL DEFAULT 1,
+ seo_title VARCHAR(180), seo_description TEXT, seo_keywords TEXT,
+ hero_config JSON, navigation_config JSON, footer_config JSON, extra_config JSON,
+ updated_by CHAR(36), updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+ FOREIGN KEY(updated_by) REFERENCES users(id)
+) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS game_display_settings (
+ id CHAR(36) PRIMARY KEY, game_id CHAR(36) NOT NULL,
+ section ENUM('popular','terbaru','all') NOT NULL DEFAULT 'all',
+ display_order INT NOT NULL DEFAULT 0, is_visible BOOLEAN NOT NULL DEFAULT 1,
+ custom_title VARCHAR(160), custom_image_url TEXT, extra_config JSON,
+ updated_by CHAR(36), updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+ UNIQUE KEY uq_game_section(game_id,section), INDEX(section,is_visible,display_order),
+ FOREIGN KEY(game_id) REFERENCES games(id), FOREIGN KEY(updated_by) REFERENCES users(id)
+) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS provider_display_settings (
+ id CHAR(36) PRIMARY KEY, provider_id CHAR(36) NOT NULL,
+ display_order INT NOT NULL DEFAULT 0, is_visible BOOLEAN NOT NULL DEFAULT 1,
+ extra_config JSON, updated_by CHAR(36), updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+ UNIQUE KEY uq_provider_display(provider_id),
+ FOREIGN KEY(provider_id) REFERENCES providers(id), FOREIGN KEY(updated_by) REFERENCES users(id)
+) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS payment_settings (
+ id TINYINT PRIMARY KEY DEFAULT 1,
+ deposit_enabled BOOLEAN NOT NULL DEFAULT 1, withdrawal_enabled BOOLEAN NOT NULL DEFAULT 1,
+ min_deposit DECIMAL(20,2) NOT NULL DEFAULT 20000, max_deposit DECIMAL(20,2),
+ min_withdrawal DECIMAL(20,2) NOT NULL DEFAULT 50000, max_withdrawal DECIMAL(20,2),
+ deposit_fee DECIMAL(20,2) NOT NULL DEFAULT 0, withdrawal_fee DECIMAL(20,2) NOT NULL DEFAULT 0,
+ channels JSON, extra_config JSON, updated_by CHAR(36),
+ updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+ FOREIGN KEY(updated_by) REFERENCES users(id)
+) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS reward_settings (
+ id TINYINT PRIMARY KEY DEFAULT 1,
+ cashback_enabled BOOLEAN NOT NULL DEFAULT 0, referral_enabled BOOLEAN NOT NULL DEFAULT 0,
+ rules JSON, extra_config JSON, updated_by CHAR(36),
+ updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+ FOREIGN KEY(updated_by) REFERENCES users(id)
+) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS member_security_settings (
+ user_id CHAR(36) PRIMARY KEY,
+ one_device_only BOOLEAN NOT NULL DEFAULT 1, login_enabled BOOLEAN NOT NULL DEFAULT 1,
+ require_password_for_withdrawal BOOLEAN NOT NULL DEFAULT 1,
+ extra_config JSON, updated_by CHAR(36), updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+ FOREIGN KEY(user_id) REFERENCES users(id), FOREIGN KEY(updated_by) REFERENCES users(id)
+) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS promotions_content (
+ id CHAR(36) PRIMARY KEY, title VARCHAR(180) NOT NULL, slug VARCHAR(190) NOT NULL UNIQUE,
+ description TEXT, image_url TEXT, start_at TIMESTAMP NULL, end_at TIMESTAMP NULL,
+ is_active BOOLEAN NOT NULL DEFAULT 1, display_order INT NOT NULL DEFAULT 0,
+ extra_config JSON, created_by CHAR(36), updated_by CHAR(36),
+ created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+ FOREIGN KEY(created_by) REFERENCES users(id), FOREIGN KEY(updated_by) REFERENCES users(id)
+) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS admin_permissions (
+ id CHAR(36) PRIMARY KEY, role VARCHAR(40) NOT NULL, permission_key VARCHAR(120) NOT NULL,
+ allowed BOOLEAN NOT NULL DEFAULT 1, updated_by CHAR(36), updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+ UNIQUE KEY uq_role_permission(role,permission_key), FOREIGN KEY(updated_by) REFERENCES users(id)
+) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS system_jobs (
+ job_key VARCHAR(120) PRIMARY KEY, enabled BOOLEAN NOT NULL DEFAULT 1,
+ last_run_at TIMESTAMP NULL, last_success_at TIMESTAMP NULL, last_error TEXT,
+ state_json JSON, updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+) ENGINE=InnoDB;
