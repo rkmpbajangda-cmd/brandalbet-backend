@@ -40,3 +40,40 @@ test('provider user mapping returns its code to game launch for both existing an
   assert.match(source, /await pool\.query\('INSERT INTO provider_users\(id,user_id,provider_code,provider_user_code\) VALUES\(\?,\?,\?,\?\)'[\s\S]*?return providerUser;/);
   assert.match(source, /const providerUser=await ensureProviderUser\(req\.user\.id,req\.user\.username\)/);
 });
+
+
+test('member catalog endpoint reads MySQL snapshot and applies short HTTP caching without provider calls', async () => {
+  const source = await readFile(serverPath, 'utf8');
+  const start = source.indexOf("app.get('/api/games'");
+  const end = source.indexOf("app.get('/api/promotions'", start);
+  assert.ok(start >= 0 && end > start);
+  const route = source.slice(start, end);
+  assert.match(route, /FROM games g/);
+  assert.match(route, /FROM providers p/);
+  assert.doesNotMatch(route, /provider\.(providers|allGames|games)\s*\(/);
+  assert.match(route, /Cache-Control/);
+});
+
+test('provider account creation is deferred until the member launches a game', async () => {
+  const source = await readFile(serverPath, 'utf8');
+  const loginStart = source.indexOf('async function login(');
+  const launchStart = source.indexOf("app.post('/api/game-launch'");
+  assert.ok(loginStart >= 0 && launchStart > loginStart);
+  const loginRoute = source.slice(loginStart, launchStart);
+  assert.doesNotMatch(loginRoute, /ensureProviderUser\s*\(/);
+  const launchRoute = source.slice(launchStart, source.indexOf("app.post('/api/payment-deposit'", launchStart));
+  assert.match(launchRoute, /ensureProviderUser\(req\.user\.id,req\.user\.username\)/);
+  assert.match(launchRoute, /provider\.launch\(launchPayload\)/);
+});
+
+test('game launch rejects reused idempotency keys for a different game and unsafe URLs', async () => {
+  const source = await readFile(serverPath, 'utf8');
+  const launchStart = source.indexOf("app.post('/api/game-launch'");
+  const launchEnd = source.indexOf("app.post('/api/payment-deposit'", launchStart);
+  const route = source.slice(launchStart, launchEnd);
+  assert.match(route, /idempotency_key_reused/);
+  assert.match(route, /launch_request_expired/);
+  assert.match(route, /parsedLaunchUrl\.protocol!=='https:'/);
+  assert.match(route, /parsedLaunchUrl\.username\|\|parsedLaunchUrl\.password/);
+  assert.match(route, /launchRequestId/);
+});
