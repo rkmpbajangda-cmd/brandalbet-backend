@@ -53,6 +53,9 @@ export function createXendit({apiKey,apiVersion='2025-09-01'}){
       const data=await request('/v3/payouts',{apiKey,method:'POST',body,headers:{'api-version':apiVersion,'idempotency-key':String(input.idempotencyKey||referenceId)}});
       return {raw:data,id:data?.payout_id||null,status:data?.status||null};
     },
+    async getPaymentRequest(paymentRequestId){
+      return request('/v3/payment_requests/'+encodeURIComponent(paymentRequestId),{apiKey,headers:{'api-version':'2024-11-11'}});
+    },
     async getPayout(payoutId){
       return request('/v3/payouts/'+encodeURIComponent(payoutId),{apiKey,headers:{'api-version':apiVersion}});
     },
