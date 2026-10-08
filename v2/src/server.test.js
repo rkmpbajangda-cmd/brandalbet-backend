@@ -9,3 +9,12 @@ test('provider game normalization maps documented fields',()=>{
 });
 test('provider game normalization rejects incomplete game',()=>assert.equal(normalizeProviderGame({provider_id:1}),null));
 test('health contract is documented',()=>assert.equal('/api/health','/api/health'));
+
+const {normalizeReferralCode}=await import('./referral.js');
+
+test('referral code is normalized to uppercase',()=>assert.equal(normalizeReferralCode('  bb8k92x '),'BB8K92X'));
+test('empty referral code means no attribution',()=>assert.equal(normalizeReferralCode('  '),null));
+test('referral code rejects malformed values',()=>{
+ assert.throws(()=>normalizeReferralCode('bad code'),e=>e.code==='invalid_referral_code'&&e.status===400);
+ assert.throws(()=>normalizeReferralCode('abc'),e=>e.code==='invalid_referral_code');
+});
