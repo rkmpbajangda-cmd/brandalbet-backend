@@ -83,7 +83,7 @@ test('MySQL numeric zero disables registration, wallet, deposits, withdrawals, a
   const server = await readFile(serverPath, 'utf8');
   const payment = await readFile(new URL('../src/xendit-payment.js', import.meta.url), 'utf8');
   assert.match(server, /Number\(site\.registration_enabled\)===0/);
-  assert.match(payment, /Number\(site\.wallet_enabled\)===0/);
+  assert.equal((payment.match(/Number\(site\.wallet_enabled\)===0/g)||[]).length, 2);
   assert.match(payment, /Number\(ps\.deposit_enabled\)===0/);
   assert.match(payment, /Number\(ps\.withdrawal_enabled\)===0/);
   assert.match(payment, /Number\(sec\?\.require_password_for_withdrawal\?\?1\)!==0/);
