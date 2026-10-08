@@ -9,7 +9,7 @@ import {config} from './config.js';
 import {pool,pingDatabase,withTransaction,closeDatabase} from './db.js';
 import {requestContext,timeout,notFound,errorHandler} from './middleware.js';
 import {sendOk,sendError} from './http.js';
-import {provider,verifyProviderCallback} from './provider.js';
+import {provider,verifyProviderCallback,providerLedgerReference} from './provider.js';
 import {creditWallet,debitWallet,id as newId,money,availableBalance as getAvailableBalance} from './wallet.js';
 import {encryptJson} from './vault.js';
 import {normalizeReferralCode} from './referral.js';
@@ -228,7 +228,7 @@ app.post('/api/provider/callback',async(req,res,next)=>{try{
   if(!tx[0]) return res.status(404).json({result:42,status:'TRANSACTION_NOT_FOUND',data:{account,trans_guid:transGuid}});
   return res.json({result:0,status:'OK',data:{account,trans_guid:transGuid,status:tx[0].status==='canceled'?'CANCELED':'OK'}});
  }
- const cancelGuid=String(d.cancel_trans_guid??'').trim(),amount=money(d.amount??0),providerType=command==='bet'?'Bet':command==='win'?'Win':'Cancel';
+ const cancelGuid=String(d.cancel_trans_guid??'').trim(),rawAmount=Number(d.amount??0);if(!Number.isFinite(rawAmount)||rawAmount<0||(['bet','win'].includes(command)&&rawAmount<=0))return res.status(400).json({result:1012,status:'PARAMETERS_INVALID'});const amount=money(rawAmount),providerType=command==='bet'?'Bet':command==='win'?'Win':'Cancel';
  const eventKey=command+':'+transGuid+':'+cancelGuid;
  const payloadHash=hash(JSON.stringify(b));
  const response=await withTransaction(async conn=>{
@@ -257,7 +257,7 @@ app.post('/api/provider/callback',async(req,res,next)=>{try{
    else return {result:43,status:'TRANSACTION_NOT_FOUND'};
    await conn.query('UPDATE provider_transactions SET canceled_at=NOW(),status="canceled" WHERE provider_code="goldslotpalase" AND provider_transaction_id=?',[cancelGuid]);
   }
-  const txId=newId(),ref='GSP-'+(command==='cancel'&&cancelGuid?cancelGuid:transGuid);
+  const txId=newId(),ref=providerLedgerReference(command,transGuid,cancelGuid);
   await conn.query('UPDATE wallets SET balance=? WHERE user_id=?',[after,userId]);
   await conn.query('INSERT INTO transactions(id,user_id,type,amount,status,reference,metadata) VALUES(?,?,?,?,?,?,?)',[txId,userId,command==='cancel'?'provider_reversal':'provider_'+command,ledgerAmount,'completed',ref,JSON.stringify({provider:'goldslotpalase',transGuid,cancelGuid,gplayId:d.gplay_id??null,roundId:d.round_id??null,providerId:d.provider_id??null,gameCode:d.game_code??null})]);
   await conn.query('INSERT INTO wallet_ledger(id,user_id,transaction_id,reference,direction,amount,balance_before,balance_after,reason,metadata) VALUES(?,?,?,?,?,?,?,?,?,?)',[newId(),userId,txId,ref,ledgerDirection,ledgerAmount,before,after,reason,JSON.stringify({provider:'goldslotpalase',transGuid,cancelGuid})]);
