@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {normalizeProviderGame} from './provider.js';
+process.env.DATABASE_URL ||= 'mysql://unit:unit@127.0.0.1:3306/unit';
+const {normalizeProviderGame}=await import('./provider.js');
 
 test('provider game normalization maps documented fields',()=>{
  const g=normalizeProviderGame({provider_id:12,game_symbol:'abc',name:'ABC',category:'Slots',image:'https://example.com/a.png'});
