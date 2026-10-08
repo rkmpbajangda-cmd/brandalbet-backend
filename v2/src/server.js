@@ -222,7 +222,12 @@ app.post('/api/provider/callback',async(req,res,next)=>{try{
   return res.json({result:0,status:'OK',data:{account,trans_guid:transGuid,status:tx[0].status==='canceled'?'CANCELED':'OK'}});
  }
  const cancelGuid=String(d.cancel_trans_guid??'').trim(),amount=money(d.amount??0),providerType=command==='bet'?'Bet':command==='win'?'Win':'Cancel';
+ const eventKey=command+':'+transGuid+':'+cancelGuid;
+ const payloadHash=hash(JSON.stringify(b));
  const response=await withTransaction(async conn=>{
+  await conn.query('INSERT IGNORE INTO provider_events(id,provider_code,event_key,command,raw_json,payload_hash,processing_status) VALUES(?,?,?,?,?,?,?)',[newId(),'goldslotpalase',eventKey,command,JSON.stringify(b),payloadHash,'processing']);
+  const [eventRows]=await conn.query('SELECT response_json,processing_status FROM provider_events WHERE provider_code="goldslotpalase" AND event_key=? FOR UPDATE',[eventKey]);
+  if(eventRows[0]?.response_json)return JSON.parse(eventRows[0].response_json);
   const lookupId=transGuid;
   const [existing]=await conn.query('SELECT response_json FROM provider_transactions WHERE provider_code="goldslotpalase" AND provider_transaction_id=? FOR UPDATE',[lookupId]);
   if(existing[0]?.response_json)return JSON.parse(existing[0].response_json);
@@ -251,6 +256,7 @@ app.post('/api/provider/callback',async(req,res,next)=>{try{
   await conn.query('INSERT INTO wallet_ledger(id,user_id,transaction_id,reference,direction,amount,balance_before,balance_after,reason,metadata) VALUES(?,?,?,?,?,?,?,?,?,?)',[newId(),userId,txId,ref,ledgerDirection,ledgerAmount,before,after,reason,JSON.stringify({provider:'goldslotpalase',transGuid,cancelGuid})]);
   const out={result:0,status:'OK',data:{account,balance:after}};
   await conn.query('INSERT INTO provider_transactions(id,provider_code,provider_transaction_id,user_id,type,amount,status,raw_json,command,trans_guid,cancel_trans_guid,account,gplay_id,round_id,provider_id,game_code,balance_after,response_json) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',[newId(),'goldslotpalase',lookupId,userId,providerType,ledgerAmount,'completed',JSON.stringify(b),command,transGuid,cancelGuid||null,account,String(d.gplay_id??''),String(d.round_id??''),String(d.provider_id??''),String(d.game_code??''),after,JSON.stringify(out)]);
+  await conn.query('UPDATE provider_events SET response_json=?,processing_status="completed",processed_at=NOW() WHERE provider_code="goldslotpalase" AND event_key=?',[JSON.stringify(out),eventKey]);
   return out;
  });
  return res.json(response);
