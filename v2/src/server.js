@@ -299,6 +299,23 @@ app.get('/api/backoffice-dashboard',adminAuth,async(req,res,next)=>{try{
  ok(res,{members:Number(m[0].count),depositToday:Number(d[0].amount),withdrawToday:Number(wd[0].amount),walletTotal:Number(w[0].balance),depositTotal:Number(d[0].amount),withdrawalTotal:Number(wd[0].amount),activeGames:Number(ph[0].count),providerHealth:provider.configured?'ready':'unconfigured',pendingDeposits:Number(pd[0].count),pendingWithdrawals:Number(pw[0].count),pendingReconciliation:Number(pr[0].count),transactionTrend:trend.map(x=>({date:x.day,deposits:Number(x.deposits),withdrawals:Number(x.withdrawals)})),memberTrend:'LIVE',depositTrend:'LIVE',withdrawTrend:'LIVE',activity:[],provider:{configured:provider.configured}});
 }catch(e){next(e)}});
 app.get('/api/backoffice-members',adminAuth,async(req,res,next)=>{try{const [r]=await pool.query('SELECT u.id,u.username,u.email,u.display_name displayName,u.phone,u.status,u.role,u.referral_code referralCode,u.created_at createdAt,u.last_login_at lastLoginAt,w.balance,w.locked FROM users u LEFT JOIN wallets w ON w.user_id=u.id WHERE u.role="member" ORDER BY u.created_at DESC LIMIT 500');ok(res,{members:r,items:r})}catch(e){next(e)}});
+app.post('/api/backoffice-members',adminAuth,role('admin','superadmin'),async(req,res,next)=>{try{
+ const b=req.body||{},userId=String(b.userId||b.id||'').trim(),action=String(b.action||'set-status');
+ if(!userId)return fail(res,400,'user_id_required');
+ if(action==='revoke-sessions'){
+  const [r]=await pool.query('UPDATE user_sessions s JOIN users u ON u.id=s.user_id SET s.revoked_at=NOW() WHERE s.user_id=? AND u.role="member" AND s.revoked_at IS NULL',[userId]);
+  await audit(req,'member.sessions.revoke','user',userId,{revoked:r.affectedRows||0});
+  return ok(res,{userId,revoked:true,count:r.affectedRows||0});
+ }
+ if(action!=='set-status')return fail(res,400,'unknown_member_action');
+ const status=String(b.status||'').toLowerCase();
+ if(!['active','suspended','blocked','pending'].includes(status))return fail(res,400,'invalid_member_status');
+ const [result]=await pool.query('UPDATE users SET status=? WHERE id=? AND role="member"',[status,userId]);
+ if(!result.affectedRows){const [exists]=await pool.query('SELECT id FROM users WHERE id=? AND role="member"',[userId]);if(!exists[0])return fail(res,404,'member_not_found')}
+ if(status!=='active')await pool.query('UPDATE user_sessions SET revoked_at=NOW() WHERE user_id=? AND revoked_at IS NULL',[userId]);
+ await audit(req,'member.status.update','user',userId,{status});
+ ok(res,{userId,status,sessionsRevoked:status!=='active'});
+ }catch(e){next(e)}});
 app.get('/api/backoffice-finance',adminAuth,async(req,res,next)=>{try{
  const [d]=await pool.query('SELECT d.id,d.user_id userId,u.username member,d.amount,d.status,d.gateway channel,d.gateway_reference gatewayReference,d.gateway_reference reference,d.created_at createdAt FROM deposits d JOIN users u ON u.id=d.user_id ORDER BY d.created_at DESC LIMIT 200');
  const [w]=await pool.query('SELECT w.id,w.user_id userId,u.username member,w.amount,w.status,w.bank_account_id bankAccountId,w.gateway_reference gatewayReference,CONCAT("WD-",LEFT(w.id,12)) reference,CONCAT(ba.provider," • ",RIGHT(ba.account_number,4)) destinationMasked,w.reject_reason rejectReason,w.created_at createdAt FROM withdrawals w JOIN users u ON u.id=w.user_id LEFT JOIN bank_accounts ba ON ba.id=w.bank_account_id ORDER BY w.created_at DESC LIMIT 200');
