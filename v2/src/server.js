@@ -149,19 +149,30 @@ app.post('/api/payment-withdraw',memberAuth,async(req,res,next)=>{try{
 
 app.post('/webhooks/v1/payments/:provider',async(req,res,next)=>{try{
  if(!config.paymentWebhookSecret)return fail(res,503,'payment_webhook_unconfigured');
- const supplied=String(req.get('X-Webhook-Secret')||req.get('X-Signature')||'');if(supplied!==config.paymentWebhookSecret)return fail(res,401,'webhook_unauthorized');
- const b=req.body||{},eventKey=String(b.eventId||b.id||b.reference||'');if(!eventKey)return fail(res,400,'webhook_event_required');
- const [exists]=await pool.query('SELECT id,processed_at FROM webhook_events WHERE source=? AND event_key=?',[req.params.provider,eventKey]);if(exists[0])return ok(res,{received:true,idempotent:true});
- const amount=Number(b.amount??b.amountRupiah??0),reference=String(b.reference||b.orderId||b.merchantReference||'');
- await pool.query('INSERT INTO webhook_events(id,source,event_key,signature_valid,amount,payload) VALUES(?,?,?,?,?,?)',[newId(),req.params.provider,eventKey,true,amount,JSON.stringify(b)]);
- if(String(b.status||'').toLowerCase()!=='paid'&&String(b.status||'').toLowerCase()!=='success')return ok(res,{received:true});
- const [orders]=await pool.query('SELECT * FROM payment_orders WHERE reference=? FOR UPDATE',[reference]);if(!orders[0])return fail(res,404,'payment_order_not_found');
- if(Number(orders[0].amount)!==amount)return fail(res,409,'payment_amount_mismatch');
- if(orders[0].status==='paid')return ok(res,{received:true,idempotent:true});
- await creditWallet(orders[0].user_id,amount,'payment_deposit',reference,{provider:req.params.provider,eventKey});
- await pool.query('UPDATE payment_orders SET status="paid",provider_reference=? WHERE id=?',[String(b.transactionId||b.providerReference||eventKey),orders[0].id]);
- await pool.query('UPDATE deposits SET status="completed",gateway_reference=? WHERE id=?',[String(b.transactionId||b.providerReference||eventKey),orders[0].id]);
- ok(res,{received:true});
+ const supplied=String(req.get('X-Webhook-Secret')||req.get('X-Signature')||'');const a=Buffer.from(supplied),b=Buffer.from(config.paymentWebhookSecret);
+ if(a.length!==b.length||!crypto.timingSafeEqual(a,b))return fail(res,401,'webhook_unauthorized');
+ const body=req.body||{},eventKey=String(body.eventId||body.id||body.reference||body.orderId||'').trim();if(!eventKey)return fail(res,400,'webhook_event_required');
+ const amount=money(body.amount??body.amountRupiah??0),reference=String(body.reference||body.orderId||body.merchantReference||'').trim();
+ const result=await withTransaction(async conn=>{
+  const [existing]=await conn.query('SELECT processed_at,payload FROM webhook_events WHERE source=? AND event_key=? LIMIT 1 FOR UPDATE',[req.params.provider,eventKey]);
+  if(existing[0]?.processed_at)return {received:true,idempotent:true};
+  await conn.query('INSERT INTO webhook_events(id,source,event_key,signature_valid,amount,payload) VALUES(?,?,?,?,?,?) ON DUPLICATE KEY UPDATE amount=VALUES(amount),payload=VALUES(payload)',[newId(),req.params.provider,eventKey,true,amount,JSON.stringify(body)]);
+  const status=String(body.status||'').toLowerCase();
+  if(!['paid','success','completed'].includes(status)){await conn.query('UPDATE webhook_events SET processed_at=NOW() WHERE source=? AND event_key=?',[req.params.provider,eventKey]);return {received:true,ignored:true};}
+  const [orders]=await conn.query('SELECT * FROM payment_orders WHERE reference=? FOR UPDATE',[reference]);if(!orders[0])throw Object.assign(new Error('payment_order_not_found'),{code:'payment_order_not_found',status:404});
+  const order=orders[0];if(Number(order.amount)!==amount)throw Object.assign(new Error('payment_amount_mismatch'),{code:'payment_amount_mismatch',status:409});
+  if(order.status==='paid'){await conn.query('UPDATE webhook_events SET processed_at=NOW() WHERE source=? AND event_key=?',[req.params.provider,eventKey]);return {received:true,idempotent:true};}
+  const [[w]]=await conn.query('SELECT balance,locked FROM wallets WHERE user_id=? FOR UPDATE',[order.user_id]);if(!w||w.locked)throw Object.assign(new Error('wallet_locked'),{code:'wallet_locked',status:409});
+  const before=Number(w.balance),after=before+amount,txId=newId(),ref='PAY-'+reference;
+  await conn.query('UPDATE wallets SET balance=? WHERE user_id=?',[after,order.user_id]);
+  await conn.query('INSERT INTO transactions(id,user_id,type,amount,status,reference,metadata) VALUES(?,?,?,?,?,?,?)',[txId,order.user_id,'payment_deposit',amount,'completed',ref,JSON.stringify({provider:req.params.provider,eventKey,reference})]);
+  await conn.query('INSERT INTO wallet_ledger(id,user_id,transaction_id,reference,direction,amount,balance_before,balance_after,reason,metadata) VALUES(?,?,?,?,?,?,?,?,?,?)',[newId(),order.user_id,txId,ref,'credit',amount,before,after,'payment_deposit',JSON.stringify({provider:req.params.provider,eventKey,reference})]);
+  await conn.query('UPDATE payment_orders SET status="paid",provider_reference=? WHERE id=?',[String(body.transactionId||body.providerReference||eventKey),order.id]);
+  await conn.query('INSERT INTO deposits(id,user_id,amount,status,gateway,gateway_reference,metadata) VALUES(?,?,?,?,?,?,?) ON DUPLICATE KEY UPDATE status=VALUES(status),gateway_reference=VALUES(gateway_reference),metadata=VALUES(metadata)',[newId(),order.user_id,amount,'completed',req.params.provider,String(body.transactionId||body.providerReference||eventKey),JSON.stringify({paymentOrderId:order.id,reference})]);
+  await conn.query('UPDATE webhook_events SET processed_at=NOW() WHERE source=? AND event_key=?',[req.params.provider,eventKey]);
+  return {received:true,credited:true,balance:after};
+ });
+ ok(res,result);
 }catch(e){next(e)}});
 
 app.post('/api/provider/callback',async(req,res,next)=>{try{
