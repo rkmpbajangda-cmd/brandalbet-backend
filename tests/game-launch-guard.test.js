@@ -8,6 +8,15 @@ const common = {
   loadProfile: async () => ({ uid: actor.uid, username: 'member', onboardingCompleted: true }),
   loadWallet: async () => ({ uid: actor.uid, currency: 'IDR', balanceMinor: 0, availableMinor: 0, status: 'active' }),
   ensurePlayer: async () => ({ userCode: 77 }),
+  loadCatalog: async () => ({
+    games: ['slot_guard', 'slot_distributed_guard', 'another_game', 'slot_retry'].map(gameSymbol => ({
+      providerId: gameSymbol === 'another_game' ? 10 : 9,
+      gameSymbol,
+      launchEnabled: true,
+    })),
+    providers: [],
+    snapshotStale: false,
+  }),
 };
 
 function launchClient(counter, implementation) {
