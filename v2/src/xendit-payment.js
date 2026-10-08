@@ -49,7 +49,13 @@ export async function createWithdrawal(user,body){
   await settleWithdrawal(withdrawalId,user.id,amount,payout);
   return {withdrawalId,reference,payoutId:payout.id,status:payout.status};
  }catch(error){
-  await releaseWithdrawal(withdrawalId,user.id,amount,'gateway_request_failed',error.code||error.message);
+  // A network/5xx timeout is ambiguous: Xendit may have accepted the payout.
+  // Keep funds reserved and let the payout webhook/reconciliation resolve it.
+  if(Number(error.status)>=400&&Number(error.status)<500){
+   await releaseWithdrawal(withdrawalId,user.id,amount,'gateway_rejected',error.code||error.message);
+  }else{
+   await withTransaction(async c=>{await c.query('UPDATE withdrawals SET status="processing",reject_reason=?,updated_at=NOW() WHERE id=?',[String('gateway_unknown:'+ (error.code||error.message)).slice(0,500),withdrawalId])});
+  }
   throw error;
  }
 }
