@@ -1,5 +1,3 @@
--- Baseline migration for BrandalBet V2.
--- Apply this file to a new MySQL/MariaDB database before starting the API.
--- The schema remains in ../schema.sql as a human-readable reference.
-
-SOURCE schema.sql;
+-- Baseline marker for migration history.
+-- The executable baseline is v2/schema.sql and is applied by src/migrate.js.
+-- This file is intentionally non-executable by itself.
