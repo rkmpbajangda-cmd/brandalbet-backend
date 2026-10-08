@@ -393,11 +393,7 @@ app.post('/api/backoffice-provider',adminAuth,role('admin','superadmin'),async(r
  if(action==='user-info')return ok(res,{provider:await provider.userInfo(Number(b.userCode))});
  if(action==='create-user'){const name=String(b.name||'').trim();if(!/^[_a-zA-Z0-9]{2,50}$/.test(name))return fail(res,400,'invalid_provider_username');return ok(res,{provider:await provider.createUser(name)})}
  if(action==='online-games')return ok(res,{provider:await provider.onlineGames(b.payload||{})});
- if(action==='sync'){
-  const p=await provider.providers(),g=await provider.allGames({});const raw=g?.data?.games||g?.games||g?.data||[];const list=Array.isArray(raw)?raw:[];let count=0;const {normalizeProviderGame}=await import('./provider.js');
-  for(const x of list){const game=normalizeProviderGame(x);if(!game)continue;await pool.query('INSERT INTO games(id,provider_code,provider_id,game_code,name,category,image_url,is_active,metadata) VALUES(?,?,?,?,?,?,?,?,?) ON DUPLICATE KEY UPDATE provider_id=VALUES(provider_id),name=VALUES(name),category=VALUES(category),image_url=VALUES(image_url),is_active=VALUES(is_active),metadata=VALUES(metadata)',[newId(),game.providerCode,game.providerId,game.gameCode,game.name,game.category,game.imageUrl,game.isActive,JSON.stringify(game.metadata)]);count++}
-  await audit(req,'provider.catalog.sync','provider','goldslotpalase',{count});return ok(res,{count,provider:p,status:'READY'});
- }
+ if(action==='sync')return fail(res,409,'use_backoffice_game_catalog_sync');
  if(action==='get-user-rtp'){const userId=String(b.userId||'');if(!userId)return fail(res,400,'user_id_required');const [r]=await pool.query('SELECT user_id userId,enabled,rtp,min_rtp minRtp,max_rtp maxRtp,reason,updated_at updatedAt FROM member_rtp_settings WHERE user_id=?',[userId]);return ok(res,{settings:r[0]||{userId,enabled:false,rtp:null}});}
  if(action==='set-user-rtp')return fail(res,403,'per_member_rtp_disabled');
  if(action==='set-rtp'){const rtp=Number(b.rtp);if(!Number.isFinite(rtp)||rtp<0||rtp>100)return fail(res,400,'invalid_rtp');const out=await provider.setRtp(rtp);await audit(req,'provider.rtp.update','provider','goldslotpalase',{rtp});return ok(res,{provider:out,rtp})}
