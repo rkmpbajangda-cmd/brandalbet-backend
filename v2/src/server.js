@@ -10,7 +10,7 @@ import {pool,pingDatabase,withTransaction,closeDatabase} from './db.js';
 import {requestContext,timeout,notFound,errorHandler} from './middleware.js';
 import {sendOk,sendError} from './http.js';
 import {provider,verifyProviderCallback} from './provider.js';
-import {creditWallet,debitWallet,id as newId,money} from './wallet.js';
+import {creditWallet,debitWallet,id as newId,money,availableBalance as getAvailableBalance} from './wallet.js';
 import {encryptJson} from './vault.js';
 import {normalizeReferralCode} from './referral.js';
 import {xendit,createDeposit,createWithdrawal,handleXenditPaymentWebhook,handleXenditPayoutWebhook} from './xendit-payment.js';
@@ -220,7 +220,7 @@ app.post('/api/provider/callback',async(req,res,next)=>{try{
  if(!pu[0])return res.status(404).json({result:21,status:'USER_NOT_FOUND'});
  if(pu[0].status!=='active')return res.status(403).json({result:22,status:'USER_INACTIVE'});
  const userId=pu[0].id;
- const [[w]]=await pool.query('SELECT balance,locked_balance FROM wallets WHERE user_id=?',[userId]);const currentBalance=Number(w?.balance||0);const availableBalance=Math.max(0,currentBalance-Number(w?.locked_balance||0));
+ const [[w]]=await pool.query('SELECT balance,locked_balance FROM wallets WHERE user_id=?',[userId]);const currentBalance=Number(w?.balance||0);const availableBalance=getAvailableBalance(currentBalance,w?.locked_balance||0);
  if(command==='authenticate'||command==='balance')return res.json({result:0,status:'OK',data:{account,balance:availableBalance}});
  const transGuid=String(d.trans_guid??'').trim();if(!transGuid)return res.status(400).json({result:41,status:'TRANSACTION_INVALID'});
  if(command==='status'){
@@ -243,7 +243,7 @@ app.post('/api/provider/callback',async(req,res,next)=>{try{
   if(wallet.locked)return {result:22,status:'USER_INACTIVE'};
   let before=Number(wallet.balance),after=before,ledgerDirection=null,ledgerAmount=amount,reason='provider_'+command;
   if(command==='bet'){
-   if(before-Number(wallet.locked_balance||0)<amount)return {result:31,status:'BALANCE_NOT_ENOUGH',data:{account,balance:before}};
+   if(getAvailableBalance(before,wallet.locked_balance||0)<amount)return {result:31,status:'BALANCE_NOT_ENOUGH',data:{account,balance:before}};
    after=before-amount;ledgerDirection='debit';
   }else if(command==='win'){after=before+amount;ledgerDirection='credit';
   }else{
