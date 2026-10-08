@@ -18,6 +18,12 @@ const compatibilityColumns = {
   withdrawals: { payout_id:'VARCHAR(190) NULL', idempotency_key:'VARCHAR(190) NULL' }
 };
 
+async function ensureCompatibilityIndexes(connection) {
+  const [rows] = await connection.query('SELECT INDEX_NAME FROM INFORMATION_SCHEMA.STATISTICS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?', ['withdrawals']);
+  const names = new Set(rows.map(row => String(row.INDEX_NAME).toLowerCase()));
+  if (!names.has('uq_withdrawal_idempotency')) await connection.query('ALTER TABLE withdrawals ADD UNIQUE KEY uq_withdrawal_idempotency (idempotency_key)');
+}
+
 async function ensureCompatibilityColumns(connection) {
   for (const [table, columns] of Object.entries(compatibilityColumns)) {
     const [existing] = await connection.query('SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?', [table]);
@@ -32,6 +38,7 @@ async function ensureCompatibilityColumns(connection) {
 try {
   await c.query(schema);
   await ensureCompatibilityColumns(c);
+  await ensureCompatibilityIndexes(c);
   await c.query('INSERT IGNORE INTO website_settings(id) VALUES(1)');
   await c.query('INSERT IGNORE INTO payment_settings(id) VALUES(1)');
   await c.query('INSERT IGNORE INTO reward_settings(id) VALUES(1)');
