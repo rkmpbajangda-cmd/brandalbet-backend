@@ -37,3 +37,9 @@ test('provider reversal ledger references cannot collide with original transacti
  assert.equal(providerLedgerReference('cancel','CANCEL1','TX1'),'GSP-REV-TX1-CANCEL1');
  assert.notEqual(providerLedgerReference('cancel','CANCEL1','TX1'),providerLedgerReference('bet','TX1',''));
 });
+const {normalizeError}=await import('./middleware.js');
+test('API error normalization preserves safe expected status and hides server internals',()=>{
+ assert.deepEqual(normalizeError(Object.assign(new Error('no funds'),{code:'insufficient_balance',status:409})),{status:409,code:'insufficient_balance'});
+ assert.deepEqual(normalizeError(Object.assign(new Error('SQL details'),{code:'ER_DUP_ENTRY'})),{status:500,code:'internal_error'});
+ assert.deepEqual(normalizeError(Object.assign(new Error('bad'),{code:'bad_input',status:200})),{status:500,code:'internal_error'});
+});
