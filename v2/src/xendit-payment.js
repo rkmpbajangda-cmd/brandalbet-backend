@@ -180,7 +180,9 @@ export async function handleXenditPayoutWebhook(req){
   }else if(status==='SUCCEEDED'&&['pending','processing','pending_compliance'].includes(wd.status)){
    const amount=Number(wd.amount),before=Number(w.balance),after=before-amount,locked=Math.max(0,Number(w.locked_balance)-amount);if(before<amount)fail('wallet_balance_invariant',409);
    const txId=newId(),ref='PAY-OUT-'+wd.id;await c.query('UPDATE wallets SET balance=?,locked_balance=? WHERE user_id=?',[after,locked,wd.user_id]);await c.query('INSERT INTO transactions(id,user_id,type,amount,status,reference,metadata) VALUES(?,?,?,?,?,?,?)',[txId,wd.user_id,'payment_withdrawal',amount,'completed',ref,JSON.stringify({provider:'xendit',payoutId})]);await c.query('INSERT INTO wallet_ledger(id,user_id,transaction_id,reference,direction,amount,balance_before,balance_after,reason,metadata) VALUES(?,?,?,?,?,?,?,?,?,?)',[newId(),wd.user_id,txId,ref,'debit',amount,before,after,'payment_withdrawal',JSON.stringify({provider:'xendit',payoutId})]);await c.query('UPDATE withdrawals SET status="completed",updated_at=NOW() WHERE id=?',[wd.id]);
-   }else if(status==='PENDING_COMPLIANCE_ASSESSMENT')await c.query('UPDATE withdrawals SET status="pending_compliance",updated_at=NOW() WHERE id=?',[wd.id]);
+   }else if(status==='SUCCEEDED'&&['failed','reversed'].includes(wd.status)){
+   await c.query('UPDATE withdrawals SET status="reconciliation_required",reject_reason="Conflicting terminal payout status received",updated_at=NOW() WHERE id=?',[wd.id]);
+  }else if(status==='PENDING_COMPLIANCE_ASSESSMENT')await c.query('UPDATE withdrawals SET status="pending_compliance",updated_at=NOW() WHERE id=?',[wd.id]);
   await c.query('UPDATE webhook_events SET processed_at=NOW() WHERE source="xendit_payout" AND event_key=?',[eventKey]);return {received:true,processed:true};
  });
 }
