@@ -20,8 +20,8 @@ export async function createDeposit(user,body){
  const created=await xendit.paymentRequest({referenceId:reference,amount,channelCode,channelProperties,idempotencyKey:String(body?.idempotencyKey||reference),metadata:{userId:user.id}});
  const orderId=newId();
  await withTransaction(async c=>{
-  await c.query('INSERT INTO payment_orders(id,user_id,reference,amount,channel,status,provider_reference,payment_url,qr_image_url,raw_json) VALUES(?,?,?,?,?,?,?,?,?,?)',[orderId,user.id,reference,amount,channelCode,created.status==='SUCCEEDED'?'paid':'pending',created.id,created.paymentUrl||null,created.qrString||null,JSON.stringify(created.raw)]);
-  await c.query('INSERT INTO deposits(id,user_id,amount,status,gateway,gateway_reference,payment_request_id,payment_url,qr_image_url,metadata) VALUES(?,?,?,?,?,?,?,?,?,?)',[newId(),user.id,amount,created.status==='SUCCEEDED'?'completed':'pending','xendit',created.id,created.id,created.paymentUrl||null,created.qrString||null,JSON.stringify({channelCode,reference})]);
+  await c.query('INSERT INTO payment_orders(id,user_id,reference,amount,channel,status,provider_reference,payment_url,qr_image_url,raw_json) VALUES(?,?,?,?,?,?,?,?,?,?)',[orderId,user.id,reference,amount,channelCode,'pending',created.id,created.paymentUrl||null,created.qrString||null,JSON.stringify(created.raw)]);
+  await c.query('INSERT INTO deposits(id,user_id,amount,status,gateway,gateway_reference,payment_request_id,payment_url,qr_image_url,metadata) VALUES(?,?,?,?,?,?,?,?,?,?)',[newId(),user.id,amount,'pending','xendit',created.id,created.id,created.paymentUrl||null,created.qrString||null,JSON.stringify({channelCode,reference})]);
  });
  return {reference,paymentRequestId:created.id,status:created.status,paymentUrl:created.paymentUrl,qrString:created.qrString,vaNumber:created.vaNumber,channelCode};
 }
