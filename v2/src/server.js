@@ -172,8 +172,10 @@ app.get('/api/member-config',async(_,res,next)=>{try{
 
 app.get('/api/games',async(_,res,next)=>{try{
  const [r]=await pool.query(`SELECT g.id,g.provider_code providerCode,g.provider_id providerId,g.game_code gameCode,g.name,g.category,g.image_url imageUrl,g.is_active isActive,
-   CASE WHEN EXISTS(SELECT 1 FROM game_display_settings d WHERE d.game_id=g.id AND d.section='popular' AND d.is_visible=1) THEN 1 ELSE g.is_popular END isPopular,
-   CASE WHEN EXISTS(SELECT 1 FROM game_display_settings d WHERE d.game_id=g.id AND d.section='terbaru' AND d.is_visible=1) THEN 1 ELSE g.is_new END isNew,
+   CASE WHEN EXISTS(SELECT 1 FROM game_display_settings d WHERE d.game_id=g.id AND d.section='popular') THEN (SELECT d.is_visible FROM game_display_settings d WHERE d.game_id=g.id AND d.section='popular' LIMIT 1) ELSE g.is_popular END isPopular,
+   CASE WHEN EXISTS(SELECT 1 FROM game_display_settings d WHERE d.game_id=g.id AND d.section='terbaru') THEN (SELECT d.is_visible FROM game_display_settings d WHERE d.game_id=g.id AND d.section='terbaru' LIMIT 1) ELSE g.is_new END isNew,
+   COALESCE((SELECT MIN(d.display_order) FROM game_display_settings d WHERE d.game_id=g.id AND d.section='popular' AND d.is_visible=1),g.sort_order) popularOrder,
+   COALESCE((SELECT MIN(d.display_order) FROM game_display_settings d WHERE d.game_id=g.id AND d.section='terbaru' AND d.is_visible=1),g.sort_order) newestOrder,
    COALESCE((SELECT MIN(d.display_order) FROM game_display_settings d WHERE d.game_id=g.id AND d.section='all' AND d.is_visible=1),g.sort_order) sortOrder,g.metadata
    FROM games g WHERE g.is_active=1 AND NOT EXISTS(SELECT 1 FROM game_display_settings h WHERE h.game_id=g.id AND h.section='all' AND h.is_visible=0)
    AND NOT EXISTS(SELECT 1 FROM providers p LEFT JOIN provider_display_settings pd ON pd.provider_id=p.id WHERE p.id=g.provider_id AND (p.is_active=0 OR pd.is_visible=0))
