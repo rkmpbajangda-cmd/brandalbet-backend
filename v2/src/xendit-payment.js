@@ -34,7 +34,7 @@ export async function createWithdrawal(user,body){
  if(amount<min)fail('minimum_withdrawal'); if(max!=null&&amount>max)fail('maximum_withdrawal');
  const [[sec]]=await pool.query('SELECT require_password_for_withdrawal FROM member_security_settings WHERE user_id=?',[user.id]);
  if(sec?.require_password_for_withdrawal!==false){const password=String(body?.password||'');if(!password||!(await argon2.verify(user.password_hash,password)))fail('withdrawal_password_invalid',401)}
- const bankId=String(body?.bankAccountId||'').trim();const [banks]=await pool.query('SELECT * FROM bank_accounts WHERE user_id=? AND id=? LIMIT 1',[user.id,bankId]);if(!banks[0])fail('bank_account_required');
+ const requestedBankId=String(body?.bankAccountId||'').trim();const bankSql=requestedBankId?'SELECT * FROM bank_accounts WHERE user_id=? AND id=? LIMIT 1':'SELECT * FROM bank_accounts WHERE user_id=? ORDER BY is_primary DESC,created_at DESC LIMIT 1';const bankArgs=requestedBankId?[user.id,requestedBankId]:[user.id];const [banks]=await pool.query(bankSql,bankArgs);if(!banks[0])fail('bank_account_required');
  const ba=banks[0];const routingType=String(ba.routing_type||config.xenditBankRoutingType||'').trim();const routingValue=String(ba.routing_value||'').trim();if(!routingType||!routingValue)fail('bank_routing_unconfigured');
  const reference='WD-'+newId();
  const withdrawalId=await withTransaction(async c=>{
