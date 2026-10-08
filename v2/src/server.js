@@ -116,7 +116,7 @@ app.post('/api/auth/register',async(req,res,next)=>{try{
   if(referralOwner)await c.query('INSERT INTO referrals(id,referrer_id,referred_id,code) VALUES(?,?,?,?)',[newId(),referralOwner.id,uid,referralOwner.referral_code]);
  });
  return login(req,res,b.username,b.password,b.deviceId);
-}catch(e){next(e)}});
+}catch(e){if(e.code==='ER_DUP_ENTRY')return fail(res,409,'account_exists');next(e)}});
 
 app.post('/api/auth/login',async(req,res,next)=>{try{return login(req,res,req.body?.username,req.body?.password,req.body?.deviceId)}catch(e){next(e)}});
 app.post('/api/auth/logout',auth,async(req,res,next)=>{try{await pool.query('UPDATE user_sessions SET revoked_at=NOW() WHERE id=?',[req.user.session_id]);await audit(req,'auth.logout','user',req.user.id);ok(res,{loggedOut:true})}catch(e){next(e)}});
@@ -512,10 +512,23 @@ app.post('/api/backoffice-master-control',adminAuth,role('superadmin'),async(req
 
 app.post('/api/bootstrap-superadmin',async(req,res,next)=>{try{
  if(!config.masterBootstrapToken||String(req.get('X-Bootstrap-Token')||'')!==config.masterBootstrapToken)return fail(res,403,'bootstrap_forbidden');
- const b=req.body||{};if(!b.email||!b.password||String(b.password).length<12)return fail(res,400,'invalid_bootstrap');
- const [existing]=await pool.query('SELECT id FROM users WHERE role="superadmin" LIMIT 1');if(existing[0])return fail(res,409,'superadmin_exists');
- const uid=newId(),pw=await argon2.hash(b.password);await pool.query('INSERT INTO users(id,username,email,password_hash,role,status,display_name) VALUES(?,?,?,?,"superadmin","active",?)',[uid,b.username||'superadmin',String(b.email).toLowerCase(),pw,b.displayName||'Superadmin']);await pool.query('INSERT INTO wallets(user_id,balance) VALUES(?,0)',[uid]);await pool.query('INSERT INTO cashback_accounts(user_id,balance) VALUES(?,0)',[uid]);ok(res,{created:true,id:uid});
-}catch(e){next(e)}});
+ const b=req.body||{},email=String(b.email||'').trim().toLowerCase(),username=String(b.username||'superadmin').trim();
+ if(!email.includes('@')||String(b.password||'').length<12)return fail(res,400,'invalid_bootstrap');
+ const uid=newId(),pw=await argon2.hash(b.password);
+ const created=await withTransaction(async c=>{
+  await c.query('INSERT IGNORE INTO system_settings(setting_key,value_json) VALUES("bootstrap_superadmin_lock",JSON_OBJECT("locked",true))');
+  await c.query('SELECT setting_key FROM system_settings WHERE setting_key="bootstrap_superadmin_lock" FOR UPDATE');
+  const [existing]=await c.query('SELECT id FROM users WHERE role="superadmin" LIMIT 1 FOR UPDATE');
+  if(existing[0])return false;
+  await c.query('INSERT INTO users(id,username,email,password_hash,role,status,display_name) VALUES(?,?,?,?,"superadmin","active",?)',[uid,username,email,pw,b.displayName||'Superadmin']);
+  await c.query('INSERT INTO wallets(user_id,balance) VALUES(?,0)',[uid]);
+  await c.query('INSERT INTO cashback_accounts(user_id,balance) VALUES(?,0)',[uid]);
+  return true;
+ });
+ if(!created)return fail(res,409,'superadmin_exists');
+ await audit({...req,user:{id:uid}},'auth.bootstrap_superadmin','user',uid);
+ ok(res,{created:true,id:uid});
+}catch(e){if(e.code==='ER_DUP_ENTRY')return fail(res,409,'superadmin_exists');next(e)}});
 
 app.post('/api/provider/callback-test',adminAuth,role('admin','superadmin'),async(req,res,next)=>{try{const r=await provider.callbackTest(req.body||{});ok(res,{provider:r})}catch(e){next(e)}});
 app.post('/api/backoffice-ledger/adjust',adminAuth,role('finance','admin','superadmin'),async(req,res,next)=>{try{
