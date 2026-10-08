@@ -94,7 +94,7 @@ app.get('/api/me',auth,(req,res)=>ok(res,{user:{id:req.user.id,username:req.user
 app.post('/api/auth/register',async(req,res,next)=>{try{
  const [[site]] = await pool.query('SELECT registration_enabled,maintenance_mode FROM website_settings WHERE id=1');
  if(site?.maintenance_mode) return fail(res,503,'maintenance_mode');
- if(site?.registration_enabled===false) return fail(res,403,'registration_disabled');
+ if(site&&Number(site.registration_enabled)===0) return fail(res,403,'registration_disabled');
  const b=req.body||{};if(!/^[a-zA-Z0-9_]{3,32}$/.test(String(b.username||'')))return fail(res,400,'invalid_username');
  if(!String(b.email||'').includes('@')||String(b.password||'').length<8)return fail(res,400,'invalid_registration');
  const [exists]=await pool.query('SELECT id FROM users WHERE username=? OR email=? LIMIT 1',[b.username,String(b.email).toLowerCase()]);if(exists[0])return fail(res,409,'account_exists');
