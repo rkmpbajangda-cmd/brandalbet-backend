@@ -29,6 +29,7 @@ export async function createDeposit(user,body){
   return {reference,paymentRequestId:existing[0].provider_reference,status:existing[0].status==='paid'?'SUCCEEDED':'PENDING',paymentUrl:existing[0].payment_url,qrString:existing[0].qr_image_url,vaNumber:null,channelCode,idempotent:true};
  }
  const created=await xendit.paymentRequest({referenceId:reference,amount,channelCode,channelProperties,idempotencyKey:stableKey,metadata:{userId:user.id}});
+ if(!created?.id)fail('xendit_invalid_payment_response',502);
  const orderId=newId();
  try{
   await withTransaction(async c=>{
@@ -132,7 +133,7 @@ export async function handleXenditPaymentWebhook(req){
     await c.query('INSERT INTO transactions(id,user_id,type,amount,status,reference,metadata) VALUES(?,?,?,?,?,?,?)',[txId,order.user_id,'payment_deposit',amount,'completed',ref,JSON.stringify({provider:'xendit',paymentId,requestId,reference})]);
     await c.query('INSERT INTO wallet_ledger(id,user_id,transaction_id,reference,direction,amount,balance_before,balance_after,reason,metadata) VALUES(?,?,?,?,?,?,?,?,?,?)',[newId(),order.user_id,txId,ref,'credit',amount,before,after,'payment_deposit',JSON.stringify({provider:'xendit',paymentId,requestId})]);
     await c.query('UPDATE payment_orders SET status="paid",provider_reference=? WHERE id=?',[paymentId,order.id]);
-    await c.query('UPDATE deposits SET status="completed",gateway_reference=?,metadata=JSON_SET(COALESCE(metadata,JSON_OBJECT()),"$.paymentId",?) WHERE payment_request_id=?',[paymentId,paymentId,requestId]);
+    await c.query('UPDATE deposits SET status="completed",gateway_reference=?,metadata=JSON_SET(COALESCE(metadata,JSON_OBJECT()),"$.paymentId",?) WHERE payment_request_id=? OR gateway_reference=? OR gateway_reference=?',[paymentId,paymentId,requestId,order.provider_reference,paymentId]);
    }
   }else if(event==='payment.failure'||event==='payment_request.expiry'){
    const reference=String(d.reference_id||'');await c.query('UPDATE payment_orders SET status="failed" WHERE reference=? AND status<>"paid"',[reference]);await c.query('UPDATE deposits SET status="failed" WHERE payment_request_id=? AND status<>"completed"',[requestId]);
@@ -149,7 +150,7 @@ export async function handleXenditPayoutWebhook(req){
  return withTransaction(async c=>{
   const [exists]=await c.query('SELECT processed_at FROM webhook_events WHERE source="xendit_payout" AND event_key=? FOR UPDATE',[eventKey]);if(exists[0]?.processed_at)return {received:true,idempotent:true};
   await c.query('INSERT INTO webhook_events(id,source,event_key,signature_valid,amount,payload) VALUES(?,?,?,?,?,?) ON DUPLICATE KEY UPDATE payload=VALUES(payload),signature_valid=VALUES(signature_valid)',[newId(),'xendit_payout',eventKey,true,Number(d.source_amount||0),JSON.stringify(body)]);
-  const [rows]=await c.query('SELECT * FROM withdrawals WHERE payout_id=? OR gateway_reference=? FOR UPDATE',[payoutId,reference]);if(!rows[0])fail('withdrawal_not_found',404);
+  const [rows]=await c.query('SELECT * FROM withdrawals WHERE (payout_id=? AND ?<>"") OR gateway_reference=? OR JSON_UNQUOTE(JSON_EXTRACT(metadata,"$.reference"))=? FOR UPDATE',[payoutId,payoutId,reference,reference]);if(!rows[0])fail('withdrawal_not_found',404);
   const wd=rows[0],status=String(d.status||'').toUpperCase();
   const [[w]]=await c.query('SELECT balance,locked_balance FROM wallets WHERE user_id=? FOR UPDATE',[wd.user_id]);if(!w)fail('wallet_not_found',404);
   if(status==='REVERSED'&&wd.status==='completed'){
