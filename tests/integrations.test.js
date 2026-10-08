@@ -66,7 +66,6 @@ test('launch uses documented V4 defaults and Indonesian language code', async ()
     min_bet: 0,
     max_bet: 0,
     round_max_win: 0,
-    rtp: 0,
     is_finish_jackpot: true,
   });
 });
@@ -190,15 +189,17 @@ test('launch service returns only validated HTTPS one-time launch URL', async ()
   const actor = { uid: 'u1', email: 'member@example.invalid' };
   const result = await launchGoldslotGame(actor, { providerId: 9, gameSymbol: 'slot_x' }, {
     client: { launch: async input => {
-      assert.deepEqual(input, { userCode: 77, providerId: 9, gameSymbol: 'slot_x', language: 9 });
+      assert.deepEqual(input, { userCode: 77, providerId: 9, gameSymbol: 'slot_x', language: undefined });
       return { game_url: 'https://games.example.test/play?token=opaque' };
     } },
     loadProfile: async () => ({ uid: 'u1', username: 'member', onboardingCompleted: true }),
     loadWallet: async () => ({ uid: 'u1', currency: 'IDR', balanceMinor: 1000, availableMinor: 1000, status: 'active' }),
     ensurePlayer: async () => ({ userCode: 77 }),
+    loadCatalog: async () => ({ games: [{ providerId: 9, gameSymbol: 'slot_x', launchEnabled: true }], providers: [] }),
   });
   assert.equal(result.launchUrl, 'https://games.example.test/play?token=opaque');
   assert.equal(result.oneTimeUse, true);
+  assert.equal(result.walletMode, 'seamless');
   assert.equal(result.expiresInSeconds, 600);
 });
 
@@ -208,6 +209,7 @@ test('launch service rejects unsafe provider launch URL', async () => {
     loadProfile: async () => ({ username: 'member', onboardingCompleted: true }),
     loadWallet: async () => ({ status: 'active' }),
     ensurePlayer: async () => ({ userCode: 1 }),
+    loadCatalog: async () => ({ games: [{ providerId: 1, gameSymbol: 'slot', launchEnabled: true }], providers: [] }),
   }), { code: 'provider_invalid_launch_url' });
 });
 

@@ -326,7 +326,8 @@ export function createGoldslotClient({ env = process.env, fetchImpl = fetch, tim
         min_bet: 0,
         max_bet: 0,
         round_max_win: 0,
-        rtp: 0,
+        // Individual RTP override remains disabled until the provider resolves
+        // the documented rtp vs win_ratio field conflict in authenticated staging.
         is_finish_jackpot: true,
       }, true);
     },

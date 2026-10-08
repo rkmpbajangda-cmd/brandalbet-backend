@@ -102,7 +102,7 @@ test('wallet bridge blocks launch while a financial transfer is unresolved', asy
   }), { code: 'game_wallet_transfer_pending' });
 });
 
-test('game launch prepares provider balance before requesting one-time URL', async () => {
+test('game launch uses Seamless mode and does not query or transfer provider wallet balance', async () => {
   const order = [];
   const result = await launchGoldslotGame(actor, {
     providerId: 9,
@@ -111,7 +111,7 @@ test('game launch prepares provider balance before requesting one-time URL', asy
   }, {
     env: transferEnv,
     client: {
-      userInfo: async () => ({ balance: 0 }),
+      userInfo: async () => { throw new Error('Seamless launch must not query provider wallet balance'); },
       launch: async () => {
         order.push('launch');
         return { game_url: 'https://games.example.test/play?token=opaque' };
@@ -120,14 +120,15 @@ test('game launch prepares provider balance before requesting one-time URL', asy
     loadProfile: async () => ({ uid: 'u1', username: 'member', onboardingCompleted: true }),
     loadWallet: async () => wallet,
     ensurePlayer: async () => player,
-    prepareBalance: async (_actor, input) => {
-      order.push('bridge');
-      assert.equal(input.launchRequestId, 'launch-request-002');
-      return { mode: 'transfer', providerBalanceMinor: 1000, transferredMinor: 1000, internalAvailableMinor: 0 };
-    },
+    loadCatalog: async () => ({
+      games: [{ providerId: 9, gameSymbol: 'slot_x', launchEnabled: true }],
+      providers: [],
+      snapshotStale: false,
+    }),
+    prepareBalance: async () => { throw new Error('Seamless launch must not transfer funds'); },
   });
-  assert.deepEqual(order, ['bridge', 'launch']);
-  assert.equal(result.walletBridge.providerBalanceMinor, 1000);
+  assert.deepEqual(order, ['launch']);
+  assert.equal(result.walletMode, 'seamless');
   assert.equal(result.launchUrl, 'https://games.example.test/play?token=opaque');
 });
 
