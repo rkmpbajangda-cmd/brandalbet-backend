@@ -8,6 +8,7 @@ import {id as newId,money} from './wallet.js';
 export const xendit=createXendit({apiKey:config.xenditApiKey,apiVersion:config.xenditApiVersion});
 
 function fail(code,status=400,message=code){throw Object.assign(new Error(message),{code,status})}
+function paymentAction(raw,descriptor){try{const data=typeof raw==='string'?JSON.parse(raw):raw;return (Array.isArray(data?.actions)?data.actions:[]).find(x=>x.descriptor===descriptor)?.value||null}catch{return null}}
 
 export async function createDeposit(user,body){
  const [[site]]=await pool.query('SELECT maintenance_mode,wallet_enabled FROM website_settings WHERE id=1');
@@ -23,10 +24,10 @@ export async function createDeposit(user,body){
  const clientKey=String(body?.idempotencyKey||'').trim();
  const stableKey=clientKey?crypto.createHash('sha256').update(user.id+':deposit:'+clientKey).digest('hex').toUpperCase():newId().replace(/-/g,'').toUpperCase();
  const reference='DEP-'+stableKey.slice(0,40);
- const [existing]=await pool.query('SELECT amount,channel,status,provider_reference,payment_url,qr_image_url FROM payment_orders WHERE user_id=? AND reference=? LIMIT 1',[user.id,reference]);
+ const [existing]=await pool.query('SELECT amount,channel,status,provider_reference,payment_url,qr_image_url,raw_json FROM payment_orders WHERE user_id=? AND reference=? LIMIT 1',[user.id,reference]);
  if(existing[0]){
   if(Number(existing[0].amount)!==amount||String(existing[0].channel)!==channelCode)fail('idempotency_conflict',409);
-  return {reference,paymentRequestId:existing[0].provider_reference,status:existing[0].status==='paid'?'SUCCEEDED':'PENDING',paymentUrl:existing[0].payment_url,qrString:existing[0].qr_image_url,vaNumber:null,channelCode,idempotent:true};
+  return {reference,paymentRequestId:existing[0].provider_reference,status:existing[0].status==='paid'?'SUCCEEDED':'PENDING',paymentUrl:existing[0].payment_url,qrString:existing[0].qr_image_url,vaNumber:paymentAction(existing[0].raw_json,'VIRTUAL_ACCOUNT_NUMBER'),channelCode,idempotent:true};
  }
  const created=await xendit.paymentRequest({referenceId:reference,amount,channelCode,channelProperties,idempotencyKey:stableKey,metadata:{userId:user.id}});
  if(!created?.id)fail('xendit_invalid_payment_response',502);
@@ -39,7 +40,7 @@ export async function createDeposit(user,body){
  }catch(e){
   if(e.code==='ER_DUP_ENTRY'){
    const [r]=await pool.query('SELECT amount,channel,status,provider_reference,payment_url,qr_image_url FROM payment_orders WHERE user_id=? AND reference=? LIMIT 1',[user.id,reference]);
-   if(r[0]&&Number(r[0].amount)===amount&&String(r[0].channel)===channelCode)return {reference,paymentRequestId:r[0].provider_reference,status:r[0].status==='paid'?'SUCCEEDED':'PENDING',paymentUrl:r[0].payment_url,qrString:r[0].qr_image_url,vaNumber:null,channelCode,idempotent:true};
+   if(r[0]&&Number(r[0].amount)===amount&&String(r[0].channel)===channelCode)return {reference,paymentRequestId:r[0].provider_reference,status:r[0].status==='paid'?'SUCCEEDED':'PENDING',paymentUrl:r[0].payment_url,qrString:r[0].qr_image_url,vaNumber:paymentAction(r[0].raw_json,'VIRTUAL_ACCOUNT_NUMBER'),channelCode,idempotent:true};
   }
   throw e;
  }
