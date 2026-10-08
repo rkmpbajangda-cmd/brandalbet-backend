@@ -1,5 +1,8 @@
 # BrandalBet Backend
 
+> **Architecture warning (important):** This repository currently contains conflicting runtime documentation. The root files and the sections below describe a Cloudflare Worker + Firebase/Firestore runtime, while the V2 work in `v2/` and PR #31 targets Node.js 22 + MySQL 8.4. Do not deploy the V2 branch using the Cloudflare instructions below, and do not assume the root Worker implementation is the V2 backend. The production runtime/source of truth must be explicitly reconciled before deployment.
+
+
 Secure server-side backend API untuk BrandalBet.
 
 ## Runtime utama
