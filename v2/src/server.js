@@ -18,7 +18,7 @@ import {xendit,createDeposit,createWithdrawal,handleXenditPaymentWebhook,handleX
 const app=express();
 app.set('trust proxy',config.trustProxy);app.disable('x-powered-by');
 app.use(requestContext);app.use(helmet({contentSecurityPolicy:false}));
-app.use(cors({origin:(o,cb)=>!o||config.corsOrigins.includes(o)?cb(null,true):cb(new Error('origin_not_allowed')),credentials:true}));
+app.use(cors({origin:(o,cb)=>!o||config.corsOrigins.includes(o)?cb(null,true):cb(Object.assign(new Error('origin_not_allowed'),{code:'origin_not_allowed',status:403})),credentials:true}));
 app.use(timeout(config.requestTimeoutMs));app.use(express.json({limit:config.bodyLimit,strict:true}));
 app.use(rateLimit({windowMs:60000,limit:180,standardHeaders:true,legacyHeaders:false,skip:req=>req.path.startsWith('/webhooks/')||req.path.startsWith('/api/provider/callback')}));
 const hash=v=>crypto.createHash('sha256').update(String(v)).digest('hex');
