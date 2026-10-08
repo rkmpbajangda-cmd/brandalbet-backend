@@ -42,15 +42,17 @@ async function auth(req,res,next){
 async function memberAuth(req,res,next){await auth(req,res,()=>req.user?.role==='member'?next():fail(res,403,'member_only'))}
 async function adminAuth(req,res,next){await auth(req,res,()=>role('operator','finance','admin','superadmin')(req,res,next))}
 async function ensureProviderUser(userId,username){
- if(!provider.configured)return;
- try{
-  const [existing]=await pool.query('SELECT provider_user_code FROM provider_users WHERE user_id=? AND provider_code="goldslotpalase" LIMIT 1',[userId]);
-  if(existing[0]?.provider_user_code)return; // Never create a second provider account for an existing member mapping.
+ if(!provider.configured)return null;
+ return withTransaction(async c=>{
+  await c.query('SELECT id FROM users WHERE id=? FOR UPDATE',[userId]);
+  const [existing]=await c.query('SELECT provider_user_code FROM provider_users WHERE user_id=? AND provider_code="goldslotpalase" LIMIT 1',[userId]);
+  if(existing[0]?.provider_user_code)return String(existing[0].provider_user_code);
   const created=await provider.createUser(username);
   const providerUser=String(created?.data?.user_code??created?.user_code??'');
-  if(!providerUser)return;
-  await pool.query('INSERT INTO provider_users(id,user_id,provider_code,provider_user_code) VALUES(?,?,?,?)',[newId(),userId,'goldslotpalase',providerUser]);
- }catch(e){console.error('provider_user_sync_failed',e.code||e.message)}
+  if(!providerUser)throw Object.assign(new Error('provider_user_create_invalid'),{code:'provider_invalid_response',status:502});
+  await c.query('INSERT INTO provider_users(id,user_id,provider_code,provider_user_code) VALUES(?,?,?,?)',[newId(),userId,'goldslotpalase',providerUser]);
+  return providerUser;
+ });
 }
 async function completeOnboarding(userId,body){
  const b=body||{};
@@ -83,7 +85,7 @@ async function login(req,res,username,password,deviceId){
   await c.query('UPDATE users SET last_login_at=NOW() WHERE id=?',[u.id]);
  });
  await audit({...req,user:{id:u.id}},'auth.login','user',u.id,{sessionType:type});
- void ensureProviderUser(u.id,u.username);
+ void ensureProviderUser(u.id,u.username).catch(e=>console.error('provider_user_sync_failed',e.code||e.message));
  return ok(res,{token:raw,expiresAt:expires.toISOString(),user:{id:u.id,username:u.username,email:u.email,role:u.role,displayName:u.display_name}});
 }
 
@@ -201,9 +203,8 @@ app.post('/api/game-launch',memberAuth,async(req,res,next)=>{try{
  if(previousLaunch[0]) return ok(res,{game:{launchUrl:previousLaunch[0].launch_url,expiresAt:previousLaunch[0].expires_at,status:previousLaunch[0].status,gameId:previousLaunch[0].game_id},idempotent:true});
  const [games]=await pool.query('SELECT * FROM games WHERE provider_code="goldslotpalase" AND provider_id=? AND game_code=? AND is_active=1 LIMIT 1',[providerId,symbol]);
  if(!games[0])return fail(res,404,'game_not_found');
- const [pu]=await pool.query('SELECT provider_user_code FROM provider_users WHERE user_id=? AND provider_code="goldslotpalase"',[req.user.id]);
- let providerUser=pu[0]?.provider_user_code;
- if(!providerUser){const created=await provider.createUser(req.user.username);providerUser=String(created?.data?.user_code??created?.user_code??'');if(!providerUser)throw Object.assign(new Error('provider_user_create_invalid'),{code:'provider_invalid_response',status:502});await pool.query('INSERT INTO provider_users(id,user_id,provider_code,provider_user_code) VALUES(?,?,?,?)',[newId(),req.user.id,'goldslotpalase',providerUser])}
+ const providerUser=await ensureProviderUser(req.user.id,req.user.username);
+ if(!providerUser)throw Object.assign(new Error('provider_unconfigured'),{code:'provider_unconfigured',status:503});
  // Use provider defaults for odds and limits; do not accept member-controlled game parameters.
  const launchPayload={user_code:Number(providerUser),provider_id:Number(providerId),game_symbol:symbol,lang:Number(req.body.lang??9),return_url:config.memberOrigins[0]||'https://brandalbet.blogspot.com',min_bet:0,max_bet:0,round_max_win:0,rtp:0,is_finish_jackpot:true};
  Object.keys(launchPayload).forEach(k=>launchPayload[k]===undefined||launchPayload[k]===null||launchPayload[k]===''?delete launchPayload[k]:0);
