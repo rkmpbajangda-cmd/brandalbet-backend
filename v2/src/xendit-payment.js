@@ -39,7 +39,7 @@ export async function createDeposit(user,body){
   });
  }catch(e){
   if(e.code==='ER_DUP_ENTRY'){
-   const [r]=await pool.query('SELECT amount,channel,status,provider_reference,payment_url,qr_image_url FROM payment_orders WHERE user_id=? AND reference=? LIMIT 1',[user.id,reference]);
+   const [r]=await pool.query('SELECT amount,channel,status,provider_reference,payment_url,qr_image_url,raw_json FROM payment_orders WHERE user_id=? AND reference=? LIMIT 1',[user.id,reference]);
    if(r[0]&&Number(r[0].amount)===amount&&String(r[0].channel)===channelCode)return {reference,paymentRequestId:r[0].provider_reference,status:r[0].status==='paid'?'SUCCEEDED':'PENDING',paymentUrl:r[0].payment_url,qrString:r[0].qr_image_url,vaNumber:paymentAction(r[0].raw_json,'VIRTUAL_ACCOUNT_NUMBER'),channelCode,idempotent:true};
   }
   throw e;
