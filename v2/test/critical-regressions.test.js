@@ -33,3 +33,10 @@ test('numeric MySQL boolean settings are respected for login and one-device sess
   assert.doesNotMatch(source, /security\.login_enabled===false/);
   assert.doesNotMatch(source, /security\?\.one_device_only!==false/);
 });
+
+test('provider user mapping returns its code to game launch for both existing and newly created users', async () => {
+  const source = await readFile(serverPath, 'utf8');
+  assert.match(source, /if\(existing\[0\]\?\.provider_user_code\)return existing\[0\]\.provider_user_code/);
+  assert.match(source, /await pool\.query\('INSERT INTO provider_users\(id,user_id,provider_code,provider_user_code\) VALUES\(\?,\?,\?,\?\)'[\s\S]*?return providerUser;/);
+  assert.match(source, /const providerUser=await ensureProviderUser\(req\.user\.id,req\.user\.username\)/);
+});
