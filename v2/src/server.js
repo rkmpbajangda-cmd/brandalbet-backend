@@ -379,9 +379,12 @@ app.post('/api/backoffice-game-catalog',adminAuth,role('admin','superadmin'),asy
   });
   await audit(req,'catalog.display.update','system','game_display',{revision});return ok(res,{display});
  }
- const gid=b.id||newId();
- await pool.query('INSERT INTO games(id,provider_code,provider_id,game_code,name,category,image_url,is_active,is_popular,is_new,sort_order,metadata) VALUES(?,?,?,?,?,?,?,?,?,?,?,?) ON DUPLICATE KEY UPDATE provider_id=VALUES(provider_id),name=VALUES(name),category=VALUES(category),image_url=VALUES(image_url),is_active=VALUES(is_active),is_popular=VALUES(is_popular),is_new=VALUES(is_new),sort_order=VALUES(sort_order),metadata=VALUES(metadata)',[gid,b.providerCode||'goldslotpalase',b.providerId||null,b.gameCode,b.name,b.category||null,b.imageUrl||null,b.isActive!==false,b.isPopular===true,b.isNew===true,Number(b.sortOrder||0),JSON.stringify(b.metadata||{})]);
- await audit(req,'catalog.game.upsert','game',gid,{gameCode:b.gameCode});ok(res,{id:gid});
+ const providerCode=String(b.providerCode||'goldslotpalase').trim(),gameCode=String(b.gameCode||'').trim(),name=String(b.name||'').trim();
+ if(!gameCode||!name)return fail(res,400,'game_code_and_name_required');
+ let gid=String(b.id||'').trim();
+ if(!gid){const [existing]=await pool.query('SELECT id FROM games WHERE provider_code=? AND game_code=? LIMIT 1',[providerCode,gameCode]);gid=existing[0]?.id||newId()}
+ await pool.query('INSERT INTO games(id,provider_code,provider_id,game_code,name,category,image_url,is_active,is_popular,is_new,sort_order,metadata) VALUES(?,?,?,?,?,?,?,?,?,?,?,?) ON DUPLICATE KEY UPDATE provider_id=VALUES(provider_id),name=VALUES(name),category=VALUES(category),image_url=VALUES(image_url),is_active=VALUES(is_active),is_popular=VALUES(is_popular),is_new=VALUES(is_new),sort_order=VALUES(sort_order),metadata=VALUES(metadata)',[gid,providerCode,b.providerId||null,gameCode,name,b.category||null,b.imageUrl||null,b.isActive!==false,b.isPopular===true,b.isNew===true,Number(b.sortOrder||0),JSON.stringify(b.metadata||{})]);
+ await audit(req,'catalog.game.upsert','game',gid,{gameCode,providerCode});ok(res,{id:gid});
 }catch(e){next(e)}});
 app.get('/api/backoffice-rtp/:userId',adminAuth,role('admin','superadmin'),async(req,res,next)=>{try{
  const [r]=await pool.query('SELECT user_id userId,enabled,rtp,min_rtp minRtp,max_rtp maxRtp,reason,updated_by updatedBy,updated_at updatedAt FROM member_rtp_settings WHERE user_id=?',[req.params.userId]);
