@@ -18,3 +18,16 @@ test('referral code rejects malformed values',()=>{
  assert.throws(()=>normalizeReferralCode('bad code'),e=>e.code==='invalid_referral_code'&&e.status===400);
  assert.throws(()=>normalizeReferralCode('abc'),e=>e.code==='invalid_referral_code');
 });
+
+const {availableBalance,money}=await import('./wallet.js');
+
+test('available balance excludes funds reserved for withdrawal',()=>{
+ assert.equal(availableBalance(100000,25000),75000);
+ assert.equal(availableBalance(100000,150000),0);
+ assert.equal(availableBalance(100000,0),100000);
+});
+test('money rejects negative, non-finite and zero-value wallet movements are handled by wallet mutation guard',()=>{
+ assert.throws(()=>money(-1),e=>e.code==='invalid_amount'&&e.status===400);
+ assert.throws(()=>money(Number.NaN),e=>e.code==='invalid_amount');
+ assert.equal(money(20000.555),20000.56);
+});
