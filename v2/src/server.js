@@ -207,11 +207,41 @@ app.post('/api/backoffice-game-catalog',adminAuth,role('admin','superadmin'),asy
  await pool.query('INSERT INTO games(id,provider_code,provider_id,game_code,name,category,image_url,is_active,is_popular,is_new,sort_order,metadata) VALUES(?,?,?,?,?,?,?,?,?,?,?,?) ON DUPLICATE KEY UPDATE provider_id=VALUES(provider_id),name=VALUES(name),category=VALUES(category),image_url=VALUES(image_url),is_active=VALUES(is_active),is_popular=VALUES(is_popular),is_new=VALUES(is_new),sort_order=VALUES(sort_order),metadata=VALUES(metadata)',[gid,b.providerCode||'goldslotpalase',b.providerId||null,b.gameCode,b.name,b.category||null,b.imageUrl||null,b.isActive!==false,b.isPopular===true,b.isNew===true,Number(b.sortOrder||0),JSON.stringify(b.metadata||{})]);
  await audit(req,'catalog.game.upsert','game',gid,{gameCode:b.gameCode});ok(res,{id:gid});
 }catch(e){next(e)}});
-app.post('/api/backoffice-provider',adminAuth,role('admin','superadmin'),async(req,res,next)=>{try{const action=req.body?.action||'health';if(action==='health'){const info=await provider.info();return ok(res,{provider:info})}if(action==='sync'){const p=await provider.providers();const g=await provider.allGames({});let games=[];const raw=g?.data?.games||g?.games||g?.data||[];if(Array.isArray(raw))games=raw;let count=0;for(const x of games){const game=(await import('./provider.js')).normalizeProviderGame(x);if(!game)continue;await pool.query('INSERT INTO games(id,provider_code,provider_id,game_code,name,category,image_url,is_active,metadata) VALUES(?,?,?,?,?,?,?,?,?) ON DUPLICATE KEY UPDATE provider_id=VALUES(provider_id),name=VALUES(name),category=VALUES(category),image_url=VALUES(image_url),is_active=VALUES(is_active),metadata=VALUES(metadata)',[newId(),game.providerCode,game.providerId,game.gameCode,game.name,game.category,game.imageUrl,game.isActive,JSON.stringify(game.metadata)]);count++}await audit(req,'provider.catalog.sync','provider','goldslotpalase',{count});return ok(res,{count,provider:p})}return fail(res,400,'unknown_provider_action')}catch(e){next(e)}});
+app.post('/api/backoffice-provider',adminAuth,role('admin','superadmin'),async(req,res,next)=>{try{
+ const b=req.body||{},action=b.action||'check';
+ if(action==='check'||action==='health'){const info=await provider.info();return ok(res,{status:'READY',message:'GoldslotPalase API dapat dihubungi.',provider:info,capabilities:{catalogSync:true,gameLaunch:true,transactionIncrementalSync:false,transferWallet:true,callbackAuth:Boolean(config.providerCallbackToken)}})}
+ if(action==='sync'){
+  const p=await provider.providers(),g=await provider.allGames({});const raw=g?.data?.games||g?.games||g?.data||[];const list=Array.isArray(raw)?raw:[];let count=0;const {normalizeProviderGame}=await import('./provider.js');
+  for(const x of list){const game=normalizeProviderGame(x);if(!game)continue;await pool.query('INSERT INTO games(id,provider_code,provider_id,game_code,name,category,image_url,is_active,metadata) VALUES(?,?,?,?,?,?,?,?,?) ON DUPLICATE KEY UPDATE provider_id=VALUES(provider_id),name=VALUES(name),category=VALUES(category),image_url=VALUES(image_url),is_active=VALUES(is_active),metadata=VALUES(metadata)',[newId(),game.providerCode,game.providerId,game.gameCode,game.name,game.category,game.imageUrl,game.isActive,JSON.stringify(game.metadata)]);count++}
+  await audit(req,'provider.catalog.sync','provider','goldslotpalase',{count});return ok(res,{count,provider:p,status:'READY'});
+ }
+ if(action==='set-rtp'){const rtp=Number(b.rtp);if(!Number.isFinite(rtp)||rtp<0||rtp>100)return fail(res,400,'invalid_rtp');const out=await provider.setRtp(rtp);await audit(req,'provider.rtp.update','provider','goldslotpalase',{rtp});return ok(res,{provider:out,rtp})}
+ if(action==='callback-test')return ok(res,{provider:await provider.callbackTest(b.payload||{})});
+ if(action==='bonuscall-config')return ok(res,{provider:await provider.callConfig(b.payload||{})});
+ if(action==='bonuscall-start')return ok(res,{provider:await provider.callStart(b.payload||{})});
+ if(action==='bonuscall-cancel')return ok(res,{provider:await provider.callCancel(b.payload||{})});
+ if(action==='freeround-create')return ok(res,{provider:await provider.freeRoundCreate(b.payload||{})});
+ if(action==='freeround-cancel')return ok(res,{provider:await provider.freeRoundCancel(b.payload||{})});
+ if(action==='transactions')return ok(res,{provider:await provider.transactions(b.payload||{})});
+ if(action==='transaction-id')return ok(res,{provider:await provider.transactionId(b.payload||{})});
+ if(action==='round-details')return ok(res,{provider:await provider.roundDetails(b.payload||{})});
+ if(action==='statistics-user')return ok(res,{provider:await provider.statisticsUser(b.payload||{})});
+ if(action==='sync-transactions')return fail(res,503,'provider_transaction_sync_gated');
+ return fail(res,400,'unknown_provider_action');
+}catch(e){next(e)}});
 app.get('/api/backoffice-provider',adminAuth,async(req,res,next)=>{try{
  let info=null,status='UNCONFIGURED',message='Provider token belum dikonfigurasi.';
  if(provider.configured){try{info=await provider.info();status='READY';message='GoldslotPalase API dapat dihubungi.'}catch(e){status='ERROR';message=e.code||e.message}}
  ok(res,{configured:provider.configured,status,message,provider:info,capabilities:{catalogSync:provider.configured,gameLaunch:provider.configured,transactionIncrementalSync:false,transferWallet:provider.configured,callbackAuth:Boolean(config.providerCallbackToken)},lastSync:null});
+}catch(e){next(e)}});
+app.post('/api/backoffice-payment-connections',adminAuth,role('admin','superadmin'),async(req,res,next)=>{try{
+ const b=req.body||{},id=b.id||newId(),providerName=String(b.provider||'').trim().toLowerCase(),label=String(b.label||b.name||providerName||'Payment Gateway').trim(),mode=String(b.mode||'production');
+ if(!providerName)return fail(res,400,'payment_provider_required');
+ const credentials=b.credentials&&typeof b.credentials==='object'?b.credentials:{};
+ const serialized=JSON.stringify(credentials);
+ await pool.query('INSERT INTO payment_connections(id,name,provider,mode,encrypted_config,is_active) VALUES(?,?,?,?,?,?) ON DUPLICATE KEY UPDATE name=VALUES(name),provider=VALUES(provider),mode=VALUES(mode),encrypted_config=VALUES(encrypted_config)',[id,label,providerName,mode,serialized,false]);
+ await audit(req,'payment.connection.save','payment_connection',id,{provider:providerName,mode});
+ ok(res,{id,saved:true,operational:false,status:'GATED',message:'Credential tersimpan, tetapi adapter payment belum diaktifkan sebelum kontrak provider resmi diverifikasi.'});
 }catch(e){next(e)}});
 app.get('/api/backoffice-payment-connections',adminAuth,async(req,res,next)=>{try{const [r]=await pool.query('SELECT id,name,provider,mode,is_active isActive,created_at createdAt FROM payment_connections ORDER BY created_at DESC');ok(res,{items:r,connections:r,configured:Boolean(config.paymentBaseUrl&&config.paymentApiKey),vaultConfigured:Boolean(config.paymentBaseUrl&&config.paymentApiKey)})}catch(e){next(e)}});
 app.get('/api/backoffice-promotions',adminAuth,async(req,res,next)=>{try{const [r]=await pool.query('SELECT * FROM promotions ORDER BY sort_order,id');ok(res,{items:r,promotions:r})}catch(e){next(e)}});
