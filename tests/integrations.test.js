@@ -195,6 +195,7 @@ test('launch service returns only validated HTTPS one-time launch URL', async ()
     loadProfile: async () => ({ uid: 'u1', username: 'member', onboardingCompleted: true }),
     loadWallet: async () => ({ uid: 'u1', currency: 'IDR', balanceMinor: 1000, availableMinor: 1000, status: 'active' }),
     ensurePlayer: async () => ({ userCode: 77 }),
+    loadCatalog: async () => ({ games: [{ providerId: 9, gameSymbol: 'slot_x', launchEnabled: true }], providers: [] }),
   });
   assert.equal(result.launchUrl, 'https://games.example.test/play?token=opaque');
   assert.equal(result.oneTimeUse, true);
@@ -208,6 +209,7 @@ test('launch service rejects unsafe provider launch URL', async () => {
     loadProfile: async () => ({ username: 'member', onboardingCompleted: true }),
     loadWallet: async () => ({ status: 'active' }),
     ensurePlayer: async () => ({ userCode: 1 }),
+    loadCatalog: async () => ({ games: [{ providerId: 1, gameSymbol: 'slot', launchEnabled: true }], providers: [] }),
   }), { code: 'provider_invalid_launch_url' });
 });
 
