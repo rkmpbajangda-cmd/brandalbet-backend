@@ -90,7 +90,7 @@ app.get('/api/member/profile',memberAuth,async(req,res,next)=>{try{
  ok(res,{profile:u[0]||null,bankAccount:b[0]||null,wallet:{availableMinor:Math.round(Number(w?.balance||0)*100),balance:Number(w?.balance||0),locked:Boolean(w?.locked)},preferences:p[0]||{language:'id',timezone:'Asia/Jakarta'}});
 }catch(e){next(e)}});
 app.put('/api/member-profile',memberAuth,async(req,res,next)=>{try{await completeOnboarding(req.user.id,req.body||{});await audit(req,'member.profile.update','user',req.user.id);const [r]=await pool.query('SELECT id,username,email,display_name displayName,phone,referral_code referralCode FROM users WHERE id=?',[req.user.id]);ok(res,{profile:r[0]})}catch(e){next(e)}});
-app.get('/api/member-profile',memberAuth,(req,res,next)=>next());
+app.get('/api/member-profile',memberAuth,async(req,res,next)=>{try{const [r]=await pool.query('SELECT id,username,email,display_name displayName,phone,referral_code referralCode FROM users WHERE id=?',[req.user.id]);ok(res,{profile:r[0]||null})}catch(e){next(e)}});
 app.post('/api/member-onboarding',memberAuth,async(req,res,next)=>{try{await completeOnboarding(req.user.id,req.body||{});await audit(req,'member.onboarding.complete','user',req.user.id);ok(res,{completed:true})}catch(e){next(e)}});
 app.get('/api/member-bank-account',memberAuth,async(req,res,next)=>{try{const [r]=await pool.query('SELECT id,type,provider,account_number accountNumber,account_name accountName FROM bank_accounts WHERE user_id=? ORDER BY created_at DESC LIMIT 1',[req.user.id]);ok(res,{bankAccount:r[0]||null})}catch(e){next(e)}});
 app.put('/api/member-bank-account',memberAuth,async(req,res,next)=>{try{const b=req.body||{};if(!b.provider||!b.accountNumber||!b.accountName)return fail(res,400,'invalid_bank_account');const id=newId();await pool.query('INSERT INTO bank_accounts(id,user_id,type,provider,account_number,account_name) VALUES(?,?,?,?,?,?)',[id,req.user.id,b.type||'bank',b.provider,String(b.accountNumber).replace(/\D/g,''),b.accountName]);await audit(req,'member.bank.update','bank_account',id);const [r]=await pool.query('SELECT id,type,provider,account_number accountNumber,account_name accountName FROM bank_accounts WHERE id=?',[id]);ok(res,{bankAccount:r[0]})}catch(e){next(e)}});
@@ -110,7 +110,7 @@ app.post('/api/game-launch',memberAuth,async(req,res,next)=>{try{
  if(!games[0])return fail(res,404,'game_not_found');
  const [pu]=await pool.query('SELECT provider_user_code FROM provider_users WHERE user_id=? AND provider_code="goldslotpalase"',[req.user.id]);
  let providerUser=pu[0]?.provider_user_code;
- if(!providerUser){const created=await provider.createUser(req.user.username);providerUser=String(created?.data?.user_code??created?.user_code??'');if(!providerUser)throw Object.assign(new Error('provider_user_create_invalid'),{code:'provider_invalid_response',status:502});await pool.query('INSERT INTO provider_users(id,user_id,provider_code,provider_user_code) VALUES(?,?,?,?,?)'.replace('?,?,?,?,?','?,?,?,?'),[newId(),req.user.id,'goldslotpalase',providerUser])}
+ if(!providerUser){const created=await provider.createUser(req.user.username);providerUser=String(created?.data?.user_code??created?.user_code??'');if(!providerUser)throw Object.assign(new Error('provider_user_create_invalid'),{code:'provider_invalid_response',status:502});await pool.query('INSERT INTO provider_users(id,user_id,provider_code,provider_user_code) VALUES(?,?,?,?)',[newId(),req.user.id,'goldslotpalase',providerUser])}
  const launched=await provider.launch({user_code:Number(providerUser),provider_id:Number(providerId),game_symbol:symbol,lang:9,return_url:req.body.returnUrl||undefined});
  const launchUrl=launched?.data?.game_url??launched?.data?.url??launched?.game_url??launched?.url;
  if(typeof launchUrl!=='string'||!/^https:\/\//i.test(launchUrl))return fail(res,502,'provider_invalid_launch_url');
@@ -167,7 +167,7 @@ app.post('/api/provider/callback',express.json({limit:'256kb'}),async(req,res,ne
   if(command==='bet')await debitWallet(userId,amount,'provider_bet',txRef,{providerPayload:b});
   else if(command==='win')await creditWallet(userId,amount,'provider_win',txRef,{providerPayload:b});
   else if(command==='cancel'&&amount>0)await creditWallet(userId,amount,'provider_cancel',txRef,{providerPayload:b});
-  await pool.query('UPDATE provider_events SET processed_at=NOW() WHERE id=?',(ev[0]?.id||'').toString()?['UPDATE provider_events SET processed_at=NOW() WHERE id=?',[ev[0]?.id||'']]:['SELECT 1']);
+  if(ev[0]) await pool.query('UPDATE provider_events SET processed_at=NOW() WHERE id=?',[ev[0].id]); else await pool.query('UPDATE provider_events SET processed_at=NOW() WHERE provider_code="goldslotpalase" AND event_key=?',[eventKey]);
   const [[nw]]=await pool.query('SELECT balance FROM wallets WHERE user_id=?',[userId]);return res.json({result:0,status:'OK',data:{account,balance:Number(nw?.balance||0)}});
  }
  return res.status(400).json({result:1012,status:'PARAMETERS_INVALID'});
