@@ -46,7 +46,7 @@ async function ensureProviderUser(userId,username){
  return withTransaction(async c=>{
   await c.query('SELECT id FROM users WHERE id=? FOR UPDATE',[userId]);
   const [existing]=await c.query('SELECT provider_user_code FROM provider_users WHERE user_id=? AND provider_code="goldslotpalase" LIMIT 1',[userId]);
-  if(existing[0]?.provider_user_code)return String(existing[0].provider_user_code);
+  if(existing[0]?.provider_user_code){const code=String(existing[0].provider_user_code);if(/^[1-9][0-9]*$/.test(code))return code;throw Object.assign(new Error('provider_user_mapping_invalid'),{code:'provider_invalid_response',status:502})}
   const created=await provider.createUser(username);
   const providerUser=String(created?.data?.user_code??created?.user_code??'');
   if(!/^[1-9][0-9]*$/.test(providerUser))throw Object.assign(new Error('provider_user_create_invalid'),{code:'provider_invalid_response',status:502});
