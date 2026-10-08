@@ -123,6 +123,10 @@ Backoffice admin/superadmin dapat memakai readiness endpoint untuk melihat boole
 - Bootstrap default OFF dan UID target hanya diterima dari server-side environment.
 - Provider token, Firebase credential, UID bootstrap, dan payment secret tidak dikirim ke Blogger.
 
+## GoldslotPalase integration contract
+
+The endpoint inventory, Seamless-versus-Transfer wallet rules, callback invariants, durable transaction-ledger requirements, and staging release checklist are documented in [docs/GOLDSLOTPALASE-INTEGRATION-RECONCILIATION.md](docs/GOLDSLOTPALASE-INTEGRATION-RECONCILIATION.md). This document is a release gate, not evidence that provider staging tests have passed.
+
 ## GoldslotPalase call policy
 
 - Member `GET /games` membaca persistent snapshot lokal.
