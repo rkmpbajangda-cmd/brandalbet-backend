@@ -75,11 +75,11 @@ CREATE TABLE IF NOT EXISTS game_launches(
 ) ENGINE=InnoDB;
 CREATE TABLE IF NOT EXISTS provider_transactions(
  id CHAR(36) PRIMARY KEY,provider_code VARCHAR(64) NOT NULL,provider_transaction_id VARCHAR(190) NOT NULL,user_id CHAR(36),type VARCHAR(40) NOT NULL,
- amount DECIMAL(20,2) NOT NULL,status VARCHAR(30) NOT NULL,raw_json JSON,created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+ amount DECIMAL(20,2) NOT NULL,status VARCHAR(30) NOT NULL,raw_json JSON,command VARCHAR(40),trans_guid VARCHAR(190),cancel_trans_guid VARCHAR(190),account VARCHAR(120),gplay_id VARCHAR(120),round_id VARCHAR(190),provider_id VARCHAR(64),game_code VARCHAR(120),balance_after DECIMAL(20,2),response_json JSON,canceled_at TIMESTAMP NULL,created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
  UNIQUE KEY uq_provider_tx(provider_code,provider_transaction_id),INDEX(user_id,created_at),FOREIGN KEY(user_id) REFERENCES users(id)
 ) ENGINE=InnoDB;
 CREATE TABLE IF NOT EXISTS provider_events(
- id CHAR(36) PRIMARY KEY,provider_code VARCHAR(64) NOT NULL,event_key VARCHAR(190) NOT NULL,command VARCHAR(40),raw_json JSON,
+ id CHAR(36) PRIMARY KEY,provider_code VARCHAR(64) NOT NULL,event_key VARCHAR(190) NOT NULL,command VARCHAR(40),raw_json JSON,payload_hash CHAR(64),processing_status VARCHAR(30) NOT NULL DEFAULT 'received',response_json JSON,
  processed_at TIMESTAMP NULL,created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,UNIQUE KEY uq_provider_event(provider_code,event_key)
 ) ENGINE=InnoDB;
 CREATE TABLE IF NOT EXISTS promotions(
