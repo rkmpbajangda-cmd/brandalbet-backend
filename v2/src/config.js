@@ -9,6 +9,7 @@ export const config=Object.freeze({
  providerToken:process.env.GOLDSLOTPALASE_API_TOKEN||'',providerCallbackToken:process.env.GOLDSLOTPALASE_CALLBACK_TOKEN||'',
  providerTimeoutMs:num('PROVIDER_TIMEOUT_MS',12000,1000),paymentBaseUrl:(process.env.PAYMENT_API_BASE||'').replace(/\/+$/,''),
  paymentApiKey:process.env.PAYMENT_API_KEY||'',paymentApiSecret:process.env.PAYMENT_API_SECRET||'',paymentWebhookSecret:process.env.PAYMENT_WEBHOOK_SECRET||'',
+ xenditApiKey:process.env.XENDIT_API_KEY||'',xenditApiVersion:process.env.XENDIT_API_VERSION||'2025-09-01',xenditWebhookToken:process.env.XENDIT_WEBHOOK_TOKEN||'',xenditDefaultChannel:process.env.XENDIT_DEFAULT_CHANNEL||'QRIS',xenditBankRoutingType:process.env.XENDIT_BANK_ROUTING_TYPE||'SWIFT',
  paymentProvider:process.env.PAYMENT_PROVIDER||'',paymentVaultKey:process.env.PAYMENT_VAULT_KEY||'',minDeposit:num('MIN_DEPOSIT_IDR',20000,0),minWithdrawal:num('MIN_WITHDRAWAL_IDR',50000,0),
  masterBootstrapToken:process.env.BOOTSTRAP_SUPERADMIN_TOKEN||'',memberOrigins:csv(process.env.MEMBER_ORIGINS||'https://brandalbet.blogspot.com'),
  backofficeOrigins:csv(process.env.BACKOFFICE_ORIGINS||'https://backoffic.blogspot.com')
