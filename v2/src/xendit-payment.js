@@ -130,18 +130,18 @@ export async function handleXenditPayoutWebhook(req){
   const [rows]=await c.query('SELECT * FROM withdrawals WHERE payout_id=? OR gateway_reference=? FOR UPDATE',[payoutId,reference]);if(!rows[0])fail('withdrawal_not_found',404);
   const wd=rows[0],status=String(d.status||'').toUpperCase();
   const [[w]]=await c.query('SELECT balance,locked_balance FROM wallets WHERE user_id=? FOR UPDATE',[wd.user_id]);if(!w)fail('wallet_not_found',404);
-  if(['FAILED','REJECTED','CANCELLED','REVERSED','EXPIRED'].includes(status)&&['pending','processing','pending_compliance'].includes(wd.status)){
-   await c.query('UPDATE wallets SET locked_balance=GREATEST(0,locked_balance-?) WHERE user_id=?',[Number(wd.amount),wd.user_id]);await c.query('UPDATE withdrawals SET status="failed",reject_reason=?,updated_at=NOW() WHERE id=?',[String(d.failure_code||status),wd.id]);
-  }else if(status==='SUCCEEDED'&&wd.status!=='completed'){
-   const amount=Number(wd.amount),before=Number(w.balance),after=before-amount,locked=Math.max(0,Number(w.locked_balance)-amount);if(before<amount)fail('wallet_balance_invariant',409);
-   const txId=newId(),ref='PAY-OUT-'+wd.id;await c.query('UPDATE wallets SET balance=?,locked_balance=? WHERE user_id=?',[after,locked,wd.user_id]);await c.query('INSERT INTO transactions(id,user_id,type,amount,status,reference,metadata) VALUES(?,?,?,?,?,?,?)',[txId,wd.user_id,'payment_withdrawal',amount,'completed',ref,JSON.stringify({provider:'xendit',payoutId})]);await c.query('INSERT INTO wallet_ledger(id,user_id,transaction_id,reference,direction,amount,balance_before,balance_after,reason,metadata) VALUES(?,?,?,?,?,?,?,?,?,?)',[newId(),wd.user_id,txId,ref,'debit',amount,before,after,'payment_withdrawal',JSON.stringify({provider:'xendit',payoutId})]);await c.query('UPDATE withdrawals SET status="completed",updated_at=NOW() WHERE id=?',[wd.id]);
-  }else if(status==='REVERSED'&&wd.status==='completed'){
+  if(status==='REVERSED'&&wd.status==='completed'){
    const amount=Number(wd.amount),before=Number(w.balance),after=before+amount,txId=newId(),ref='PAY-OUT-REV-'+wd.id;
    await c.query('UPDATE wallets SET balance=? WHERE user_id=?',[after,wd.user_id]);
    await c.query('INSERT INTO transactions(id,user_id,type,amount,status,reference,metadata) VALUES(?,?,?,?,?,?,?)',[txId,wd.user_id,'payment_withdrawal_reversal',amount,'completed',ref,JSON.stringify({provider:'xendit',payoutId,reason:'reversed'})]);
    await c.query('INSERT INTO wallet_ledger(id,user_id,transaction_id,reference,direction,amount,balance_before,balance_after,reason,metadata) VALUES(?,?,?,?,?,?,?,?,?,?)',[newId(),wd.user_id,txId,ref,'credit',amount,before,after,'payment_withdrawal_reversal',JSON.stringify({provider:'xendit',payoutId})]);
    await c.query('UPDATE withdrawals SET status="reversed",reject_reason="Xendit payout reversed",updated_at=NOW() WHERE id=?',[wd.id]);
-  }else if(status==='PENDING_COMPLIANCE_ASSESSMENT')await c.query('UPDATE withdrawals SET status="pending_compliance",updated_at=NOW() WHERE id=?',[wd.id]);
+  }else if(['FAILED','REJECTED','CANCELLED','EXPIRED'].includes(status)&&['pending','processing','pending_compliance'].includes(wd.status)){
+   await c.query('UPDATE wallets SET locked_balance=GREATEST(0,locked_balance-?) WHERE user_id=?',[Number(wd.amount),wd.user_id]);await c.query('UPDATE withdrawals SET status="failed",reject_reason=?,updated_at=NOW() WHERE id=?',[String(d.failure_code||status),wd.id]);
+  }else if(status==='SUCCEEDED'&&wd.status!=='completed'){
+   const amount=Number(wd.amount),before=Number(w.balance),after=before-amount,locked=Math.max(0,Number(w.locked_balance)-amount);if(before<amount)fail('wallet_balance_invariant',409);
+   const txId=newId(),ref='PAY-OUT-'+wd.id;await c.query('UPDATE wallets SET balance=?,locked_balance=? WHERE user_id=?',[after,locked,wd.user_id]);await c.query('INSERT INTO transactions(id,user_id,type,amount,status,reference,metadata) VALUES(?,?,?,?,?,?,?)',[txId,wd.user_id,'payment_withdrawal',amount,'completed',ref,JSON.stringify({provider:'xendit',payoutId})]);await c.query('INSERT INTO wallet_ledger(id,user_id,transaction_id,reference,direction,amount,balance_before,balance_after,reason,metadata) VALUES(?,?,?,?,?,?,?,?,?,?)',[newId(),wd.user_id,txId,ref,'debit',amount,before,after,'payment_withdrawal',JSON.stringify({provider:'xendit',payoutId})]);await c.query('UPDATE withdrawals SET status="completed",updated_at=NOW() WHERE id=?',[wd.id]);
+else if(status==='PENDING_COMPLIANCE_ASSESSMENT')await c.query('UPDATE withdrawals SET status="pending_compliance",updated_at=NOW() WHERE id=?',[wd.id]);
   await c.query('UPDATE webhook_events SET processed_at=NOW() WHERE source="xendit_payout" AND event_key=?',[eventKey]);return {received:true,processed:true};
  });
 }
