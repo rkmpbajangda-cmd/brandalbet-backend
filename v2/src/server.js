@@ -33,7 +33,7 @@ async function auth(req,res,next){
  try{
   const h=req.get('authorization')||'';
   if(!h.startsWith('Bearer '))return fail(res,401,'unauthorized');
-  const [rows]=await pool.query('SELECT u.*,s.id session_id,s.device_id,s.session_type FROM user_sessions s JOIN users u ON u.id=s.user_id WHERE s.token_hash=? AND s.revoked_at IS NULL AND s.expires_at>NOW() LIMIT 1',[hash(h.slice(7))]);
+  const [rows]=await pool.query('SELECT u.*,s.id session_id,s.device_id,s.session_type,s.expires_at FROM user_sessions s JOIN users u ON u.id=s.user_id WHERE s.token_hash=? AND s.revoked_at IS NULL AND s.expires_at>NOW() LIMIT 1',[hash(h.slice(7))]);
   if(!rows[0])return fail(res,401,'session_invalid');
   if(rows[0].status!=='active')return fail(res,403,'account_not_active');
   req.user=rows[0];next();
@@ -75,9 +75,11 @@ async function login(req,res,username,password,deviceId){
  const [rows]=await pool.query('SELECT * FROM users WHERE (username=? OR email=?) AND status="active" LIMIT 1',[username,username]);
  if(!rows[0]||!(await argon2.verify(rows[0].password_hash,password)))return fail(res,401,'invalid_credentials');
  const u=rows[0],sid=newId(),raw=token(),expires=new Date(Date.now()+config.sessionTtlDays*86400000),type=u.role==='member'?'member':'backoffice';
+ const [[security]]=u.role==='member'?await pool.query('SELECT login_enabled,one_device_only FROM member_security_settings WHERE user_id=?',[u.id]):[[null]];
+ if(security&&security.login_enabled===false)return fail(res,403,'login_disabled');
  await withTransaction(async c=>{
-  await c.query('UPDATE user_sessions SET revoked_at=NOW() WHERE user_id=? AND session_type=? AND revoked_at IS NULL',[u.id,type]);
-  await c.query('INSERT INTO user_sessions(id,user_id,token_hash,device_id,session_type,ip,user_agent,expires_at) VALUES(?,?,?,?,?,?,?,?,?)',[sid,u.id,hash(raw),deviceId||null,type,req.ip,req.get('user-agent')||null,expires]);
+  if(type==='backoffice'||security?.one_device_only!==false)await c.query('UPDATE user_sessions SET revoked_at=NOW() WHERE user_id=? AND session_type=? AND revoked_at IS NULL',[u.id,type]);
+  await c.query('INSERT INTO user_sessions(id,user_id,token_hash,device_id,session_type,ip,user_agent,expires_at) VALUES(?,?,?,?,?,?,?,?)',[sid,u.id,hash(raw),deviceId||null,type,req.ip,req.get('user-agent')||null,expires]);
   await c.query('UPDATE users SET last_login_at=NOW() WHERE id=?',[u.id]);
  });
  await audit({...req,user:{id:u.id}},'auth.login','user',u.id,{sessionType:type});
@@ -156,7 +158,7 @@ app.post('/api/member-onboarding',memberAuth,async(req,res,next)=>{try{await com
 app.get('/api/member-bank-account',memberAuth,async(req,res,next)=>{try{const [r]=await pool.query('SELECT id,type,provider,account_number accountNumber,account_name accountName FROM bank_accounts WHERE user_id=? ORDER BY created_at DESC LIMIT 1',[req.user.id]);ok(res,{bankAccount:r[0]||null})}catch(e){next(e)}});
 app.put('/api/member-bank-account',memberAuth,async(req,res,next)=>{try{const b=req.body||{};if(!b.provider||!b.accountNumber||!b.accountName)return fail(res,400,'invalid_bank_account');const id=newId();await pool.query('INSERT INTO bank_accounts(id,user_id,type,provider,account_number,account_name,routing_type,routing_value) VALUES(?,?,?,?,?,?,?,?)',[id,req.user.id,b.type||'bank',b.provider,String(b.accountNumber).replace(/\D/g,''),b.accountName,b.routingType||null,b.routingValue||null]);await audit(req,'member.bank.update','bank_account',id);const [r]=await pool.query('SELECT id,type,provider,account_number accountNumber,account_name accountName FROM bank_accounts WHERE id=?',[id]);ok(res,{bankAccount:r[0]})}catch(e){next(e)}});
 
-app.get('/api/wallet',memberAuth,async(req,res,next)=>{try{const [[w]]=await pool.query('SELECT balance,locked FROM wallets WHERE user_id=?',[req.user.id]);ok(res,{balance:Number(w?.balance||0),availableMinor:Math.round(Number(w?.balance||0)*100),locked:Boolean(w?.locked)})}catch(e){next(e)}});
+app.get('/api/wallet',memberAuth,async(req,res,next)=>{try{const [[w]]=await pool.query('SELECT balance,locked_balance,locked FROM wallets WHERE user_id=?',[req.user.id]);const balance=Number(w?.balance||0),lockedBalance=Number(w?.locked_balance||0);ok(res,{balance,lockedBalance,availableBalance:Math.max(0,balance-lockedBalance),availableMinor:Math.round(Math.max(0,balance-lockedBalance)*100),locked:Boolean(w?.locked)})}catch(e){next(e)}});
 app.get('/api/transactions',memberAuth,async(req,res,next)=>{try{const [r]=await pool.query('SELECT id,type,amount,status,reference,created_at createdAt FROM transactions WHERE user_id=? ORDER BY created_at DESC LIMIT 200',[req.user.id]);ok(res,{transactions:r})}catch(e){next(e)}});
 app.get('/api/member-rewards',memberAuth,async(req,res,next)=>{try{const [[a]]=await pool.query('SELECT balance FROM cashback_accounts WHERE user_id=?',[req.user.id]);const [h]=await pool.query('SELECT id,amount,type,status,reference,created_at createdAt FROM cashback_transactions WHERE user_id=? ORDER BY created_at DESC LIMIT 200',[req.user.id]);ok(res,{balance:Number(a?.balance||0),history:h})}catch(e){next(e)}});
 app.get('/api/member-config',async(_,res,next)=>{try{
