@@ -59,16 +59,25 @@ export async function createWithdrawal(user,body){
  if(sec?.require_password_for_withdrawal!==false){const password=String(body?.password||'');if(!password||!(await argon2.verify(user.password_hash,password)))fail('withdrawal_password_invalid',401)}
  const requestedBankId=String(body?.bankAccountId||'').trim();const bankSql=requestedBankId?'SELECT * FROM bank_accounts WHERE user_id=? AND id=? LIMIT 1':'SELECT * FROM bank_accounts WHERE user_id=? ORDER BY is_primary DESC,created_at DESC LIMIT 1';const bankArgs=requestedBankId?[user.id,requestedBankId]:[user.id];const [banks]=await pool.query(bankSql,bankArgs);if(!banks[0])fail('bank_account_required');
  const ba=banks[0];const routingType=String(ba.routing_type||config.xenditBankRoutingType||'').trim();const routingValue=String(ba.routing_value||'').trim();if(!routingType||!routingValue)fail('bank_routing_unconfigured');
- const reference='WD-'+newId();
+ const clientKey=String(body?.idempotencyKey||'').trim(),idempotencyKey=clientKey?crypto.createHash('sha256').update(user.id+':withdraw:'+clientKey).digest('hex'):null;
+ const reference='WD-'+(idempotencyKey?idempotencyKey.slice(0,32).toUpperCase():newId().replace(/-/g,'').toUpperCase());
+ if(idempotencyKey){
+  const [existing]=await pool.query('SELECT id,amount,status,bank_account_id,payout_id,metadata FROM withdrawals WHERE user_id=? AND idempotency_key=? LIMIT 1',[user.id,idempotencyKey]);
+  if(existing[0]){
+   let meta=existing[0].metadata||{};if(typeof meta==='string'){try{meta=JSON.parse(meta)}catch{meta={}}}
+   if(Number(existing[0].amount)!==amount||String(existing[0].bank_account_id)!==String(ba.id))fail('idempotency_conflict',409);
+   return {withdrawalId:existing[0].id,reference:meta.reference||reference,payoutId:existing[0].payout_id||null,status:String(existing[0].status).toUpperCase(),idempotent:true};
+  }
+ }
  const withdrawalId=await withTransaction(async c=>{
   const [[w]]=await c.query('SELECT balance,locked_balance,locked FROM wallets WHERE user_id=? FOR UPDATE',[user.id]);if(!w)fail('wallet_not_found',404);if(w.locked)fail('wallet_locked',403);
   const available=Number(w.balance)-Number(w.locked_balance||0);if(available<amount)fail('balance_not_enough');
   const [dupe]=await c.query('SELECT id FROM withdrawals WHERE user_id=? AND status IN ("pending","processing","pending_compliance") LIMIT 1',[user.id]);if(dupe[0])fail('withdrawal_already_pending',409);
   await c.query('UPDATE wallets SET locked_balance=locked_balance+? WHERE user_id=?',[amount,user.id]);
-  const id=newId();await c.query('INSERT INTO withdrawals(id,user_id,amount,status,bank_account_id,metadata) VALUES(?,?,?,?,?,?)',[id,user.id,amount,'pending',ba.id,JSON.stringify({provider:'xendit',reference,bankProvider:ba.provider,accountMasked:String(ba.account_number).slice(-4)})]);return id;
+  const id=newId();await c.query('INSERT INTO withdrawals(id,user_id,amount,status,bank_account_id,metadata,idempotency_key) VALUES(?,?,?,?,?,?,?)',[id,user.id,amount,'pending',ba.id,JSON.stringify({provider:'xendit',reference,bankProvider:ba.provider,accountMasked:String(ba.account_number).slice(-4)}),idempotencyKey]);return id;
  });
  try{
-  const payout=await xendit.payout({referenceId:reference,amount,accountName:ba.account_name,accountNumber:ba.account_number,routingType,routingValue,description:reference,idempotencyKey:reference});
+  const payout=await xendit.payout({referenceId:reference,amount,accountName:ba.account_name,accountNumber:ba.account_number,routingType,routingValue,description:reference,idempotencyKey:idempotencyKey||reference});
   await settleWithdrawal(withdrawalId,user.id,amount,payout);
   return {withdrawalId,reference,payoutId:payout.id,status:payout.status};
  }catch(error){
