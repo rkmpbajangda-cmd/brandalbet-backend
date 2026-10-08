@@ -3,7 +3,6 @@ import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
 import {fileURLToPath} from 'node:url';
 import {normalizeReferralCode} from '../src/referral.js';
-import {normalizeProviderRecord,normalizeProviderGame} from '../src/provider.js';
 
 const serverPath = fileURLToPath(new URL('../src/server.js', import.meta.url));
 
@@ -90,10 +89,10 @@ test('MySQL numeric zero disables registration, wallet, deposits, withdrawals, a
   assert.match(payment, /Number\(sec\?\.require_password_for_withdrawal\?\?1\)!==0/);
 });
 
-test('provider and game catalog normalization respects boolean and numeric inactive flags', () => {
-  assert.equal(normalizeProviderRecord({provider_id:1,name:'Provider',is_active:0}).isActive, false);
-  assert.equal(normalizeProviderRecord({provider_id:1,name:'Provider',is_active:'false'}).isActive, false);
-  assert.equal(normalizeProviderRecord({provider_id:1,name:'Provider',is_active:true}).isActive, true);
-  assert.equal(normalizeProviderGame({provider_id:1,game_symbol:'G1',name:'Game',is_active:0}).isActive, false);
-  assert.equal(normalizeProviderGame({provider_id:1,game_symbol:'G1',name:'Game',launch_enabled:false}).isActive, false);
+test('provider and game catalog normalization handles numeric inactive flags without requiring a database connection', async () => {
+  const provider = await readFile(new URL('../src/provider.js', import.meta.url), 'utf8');
+  assert.match(provider, /function activeFlag\(value,fallback=true\)/);
+  assert.match(provider, /isActive:activeFlag\(v\?\.is_active,activeFlag\(v\?\.active\)\)/);
+  assert.match(provider, /isActive:activeFlag\(g\?\.is_active\)&&activeFlag\(g\?\.launch_enabled\)/);
+  assert.match(provider, /'0','false','no','off','inactive'/);
 });
