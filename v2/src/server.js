@@ -176,8 +176,10 @@ app.get('/api/games',async(_,res,next)=>{try{
    CASE WHEN EXISTS(SELECT 1 FROM game_display_settings d WHERE d.game_id=g.id AND d.section='terbaru' AND d.is_visible=1) THEN 1 ELSE g.is_new END isNew,
    COALESCE((SELECT MIN(d.display_order) FROM game_display_settings d WHERE d.game_id=g.id AND d.section='all' AND d.is_visible=1),g.sort_order) sortOrder,g.metadata
    FROM games g WHERE g.is_active=1 AND NOT EXISTS(SELECT 1 FROM game_display_settings h WHERE h.game_id=g.id AND h.section='all' AND h.is_visible=0)
+   AND NOT EXISTS(SELECT 1 FROM providers p LEFT JOIN provider_display_settings pd ON pd.provider_id=p.id WHERE p.id=g.provider_id AND (p.is_active=0 OR pd.is_visible=0))
    ORDER BY sortOrder,g.id`);
- ok(res,{games:r})}catch(e){next(e)}});
+ const [providers]=await pool.query(`SELECT p.id,p.code,p.name,COALESCE(d.display_order,p.sort_order) sortOrder FROM providers p LEFT JOIN provider_display_settings d ON d.provider_id=p.id WHERE p.is_active=1 AND COALESCE(d.is_visible,1)=1 ORDER BY sortOrder,p.name`);
+ ok(res,{games:r,providers})}catch(e){next(e)}});
 app.get('/api/promotions',async(_,res,next)=>{try{const [r]=await pool.query('SELECT id,title,description,image_url imageUrl,start_at startAt,end_at endAt FROM promotions WHERE is_active=1 AND (start_at IS NULL OR start_at<=NOW()) AND (end_at IS NULL OR end_at>=NOW()) ORDER BY sort_order,id');ok(res,{promotions:r})}catch(e){next(e)}});
 
 app.post('/api/game-launch',memberAuth,async(req,res,next)=>{try{
