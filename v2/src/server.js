@@ -51,11 +51,22 @@ async function ensureProviderUser(userId,username){
  }catch(e){console.error('provider_user_sync_failed',e.code||e.message)}
 }
 async function completeOnboarding(userId,body){
- await pool.query('INSERT INTO member_profiles(user_id,language,timezone) VALUES(?,?,?) ON DUPLICATE KEY UPDATE language=VALUES(language),timezone=VALUES(timezone)',[userId,body.language||'id',body.timezone||'Asia/Jakarta']);
- if(body.displayName!==undefined||body.phone!==undefined)await pool.query('UPDATE users SET display_name=COALESCE(?,display_name),phone=COALESCE(?,phone) WHERE id=?',[body.displayName||null,body.phone||null,userId]);
- if(body.bankAccount?.provider&&body.bankAccount?.accountNumber&&body.bankAccount?.accountName){
-  await pool.query('INSERT INTO bank_accounts(id,user_id,type,provider,account_number,account_name) VALUES(?,?,?,?,?,?)',[newId(),userId,body.bankAccount.type||'bank',body.bankAccount.provider,String(body.bankAccount.accountNumber).replace(/\D/g,''),body.bankAccount.accountName]);
- }
+ const b=body||{};
+ await withTransaction(async c=>{
+  await c.query('INSERT INTO member_profiles(user_id,language,timezone) VALUES(?,?,?) ON DUPLICATE KEY UPDATE language=VALUES(language),timezone=VALUES(timezone)',[userId,b.language||'id',b.timezone||'Asia/Jakarta']);
+  if(b.displayName!==undefined||b.phone!==undefined){
+   await c.query('UPDATE users SET display_name=COALESCE(?,display_name),phone=COALESCE(?,phone) WHERE id=?',[b.displayName||null,b.phone||null,userId]);
+  }
+  if(b.bankAccount?.provider&&b.bankAccount?.accountNumber&&b.bankAccount?.accountName){
+   const accountNumber=String(b.bankAccount.accountNumber).replace(/\D/g,'');
+   const [existing]=await c.query('SELECT id FROM bank_accounts WHERE user_id=? ORDER BY created_at DESC LIMIT 1 FOR UPDATE',[userId]);
+   if(existing[0]){
+    await c.query('UPDATE bank_accounts SET type=?,provider=?,account_number=?,account_name=? WHERE id=?',[b.bankAccount.type||'bank',b.bankAccount.provider,accountNumber,b.bankAccount.accountName,existing[0].id]);
+   }else{
+    await c.query('INSERT INTO bank_accounts(id,user_id,type,provider,account_number,account_name) VALUES(?,?,?,?,?,?)',[newId(),userId,b.bankAccount.type||'bank',b.bankAccount.provider,accountNumber,b.bankAccount.accountName]);
+   }
+  }
+ });
 }
 async function login(req,res,username,password,deviceId){
  if(!username||!password)return fail(res,400,'credentials_required');
