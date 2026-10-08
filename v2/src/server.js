@@ -77,6 +77,9 @@ app.get('/api/readiness',async(_,res)=>{try{await pingDatabase();ok(res,{ready:t
 app.get('/api/me',auth,(req,res)=>ok(res,{user:{id:req.user.id,username:req.user.username,email:req.user.email,role:req.user.role,displayName:req.user.display_name,phone:req.user.phone}}));
 
 app.post('/api/auth/register',async(req,res,next)=>{try{
+ const [[site]] = await pool.query('SELECT registration_enabled,maintenance_mode FROM website_settings WHERE id=1');
+ if(site?.maintenance_mode) return fail(res,503,'maintenance_mode');
+ if(site?.registration_enabled===false) return fail(res,403,'registration_disabled');
  const b=req.body||{};if(!/^[a-zA-Z0-9_]{3,32}$/.test(String(b.username||'')))return fail(res,400,'invalid_username');
  if(!String(b.email||'').includes('@')||String(b.password||'').length<8)return fail(res,400,'invalid_registration');
  const [exists]=await pool.query('SELECT id FROM users WHERE username=? OR email=? LIMIT 1',[b.username,String(b.email).toLowerCase()]);if(exists[0])return fail(res,409,'account_exists');
@@ -85,6 +88,7 @@ app.post('/api/auth/register',async(req,res,next)=>{try{
   await c.query('INSERT INTO users(id,username,email,password_hash,display_name,phone,referral_code,referred_by) VALUES(?,?,?,?,?,?,?,?)',[uid,b.username,String(b.email).toLowerCase(),pw,b.displayName||null,b.phone||null,ref,b.referralCode||null]);
   await c.query('INSERT INTO wallets(user_id,balance) VALUES(?,0)',[uid]);await c.query('INSERT INTO cashback_accounts(user_id,balance) VALUES(?,0)',[uid]);
   await c.query('INSERT INTO member_profiles(user_id) VALUES(?)',[uid]);
+  await c.query('INSERT INTO member_security_settings(user_id,one_device_only,login_enabled,require_password_for_withdrawal) VALUES(?,1,1,1)',[uid]);
   if(b.bankAccount)await c.query('INSERT INTO bank_accounts(id,user_id,type,provider,account_number,account_name) VALUES(?,?,?,?,?,?)',[newId(),uid,b.bankAccount.type||'bank',b.bankAccount.provider||'',String(b.bankAccount.accountNumber||'').replace(/\D/g,''),b.bankAccount.accountName||'']);
   if(b.referralCode){const [rr]=await c.query('SELECT id FROM users WHERE referral_code=? LIMIT 1',[b.referralCode]);if(rr[0])await c.query('INSERT IGNORE INTO referrals(id,referrer_id,referred_id,code) VALUES(?,?,?,?)',[newId(),rr[0].id,uid,b.referralCode])}
  });
@@ -130,8 +134,13 @@ app.get('/api/games',async(_,res,next)=>{try{
 app.get('/api/promotions',async(_,res,next)=>{try{const [r]=await pool.query('SELECT id,title,description,image_url imageUrl,start_at startAt,end_at endAt FROM promotions WHERE is_active=1 AND (start_at IS NULL OR start_at<=NOW()) AND (end_at IS NULL OR end_at>=NOW()) ORDER BY sort_order,id');ok(res,{promotions:r})}catch(e){next(e)}});
 
 app.post('/api/game-launch',memberAuth,async(req,res,next)=>{try{
+ const [[site]] = await pool.query('SELECT maintenance_mode,game_launch_enabled FROM website_settings WHERE id=1');
+ if(site?.maintenance_mode) return fail(res,503,'maintenance_mode');
+ if(site?.game_launch_enabled===false) return fail(res,403,'game_launch_disabled');
  const b=req.body||{},requestId=String(b.launchRequestId||req.get('Idempotency-Key')||'').trim(),providerId=String(b.providerId||''),symbol=String(b.gameSymbol||'').trim();
  if(!requestId||!providerId||!symbol)return fail(res,400,'invalid_launch_request');
+ const [previousLaunch]=await pool.query('SELECT game_id,launch_url,expires_at,status FROM game_launches WHERE user_id=? AND request_id=? LIMIT 1',[req.user.id,requestId]);
+ if(previousLaunch[0]) return ok(res,{game:{launchUrl:previousLaunch[0].launch_url,expiresAt:previousLaunch[0].expires_at,status:previousLaunch[0].status,gameId:previousLaunch[0].game_id},idempotent:true});
  const [games]=await pool.query('SELECT * FROM games WHERE provider_code="goldslotpalase" AND provider_id=? AND game_code=? AND is_active=1 LIMIT 1',[providerId,symbol]);
  if(!games[0])return fail(res,404,'game_not_found');
  const [pu]=await pool.query('SELECT provider_user_code FROM provider_users WHERE user_id=? AND provider_code="goldslotpalase"',[req.user.id]);
@@ -209,7 +218,8 @@ app.post('/api/provider/callback',async(req,res,next)=>{try{
  const transGuid=String(d.trans_guid??'').trim();if(!transGuid)return res.status(400).json({result:41,status:'TRANSACTION_INVALID'});
  if(command==='status'){
   const [tx]=await pool.query('SELECT status FROM provider_transactions WHERE provider_code="goldslotpalase" AND provider_transaction_id=? LIMIT 1',[transGuid]);
-  return res.json({result:0,status:'OK',data:{account,trans_guid:transGuid,status:tx[0]?.status==='canceled'?'CANCELED':tx[0]?'OK':'CANCELED'}});
+  if(!tx[0]) return res.status(404).json({result:42,status:'TRANSACTION_NOT_FOUND',data:{account,trans_guid:transGuid}});
+  return res.json({result:0,status:'OK',data:{account,trans_guid:transGuid,status:tx[0].status==='canceled'?'CANCELED':'OK'}});
  }
  const cancelGuid=String(d.cancel_trans_guid??'').trim(),amount=money(d.amount??0),providerType=command==='bet'?'Bet':command==='win'?'Win':'Cancel';
  const response=await withTransaction(async conn=>{
@@ -253,7 +263,7 @@ app.get('/api/backoffice-dashboard',adminAuth,async(req,res,next)=>{try{
  ok(res,{members:Number(m[0].count),depositTotal:Number(d[0].amount),walletTotal:Number(w[0].balance),withdrawalTotal:Number(wd[0].amount),activeGames:Number(p[0].count),provider:{configured:provider.configured}});
 }catch(e){next(e)}});
 app.get('/api/backoffice-members',adminAuth,async(req,res,next)=>{try{const [r]=await pool.query('SELECT u.id,u.username,u.email,u.display_name displayName,u.phone,u.status,u.role,u.referral_code referralCode,u.created_at createdAt,u.last_login_at lastLoginAt,w.balance,w.locked FROM users u LEFT JOIN wallets w ON w.user_id=u.id WHERE u.role="member" ORDER BY u.created_at DESC LIMIT 500');ok(res,{members:r,items:r})}catch(e){next(e)}});
-app.get('/api/backoffice-finance',adminAuth,async(req,res,next)=>{try{const [d]=await pool.query('SELECT id,user_id userId,amount,status,gateway,gateway_reference gatewayReference,created_at createdAt FROM deposits ORDER BY created_at DESC LIMIT 200');const [w]=await pool.query('SELECT id,user_id userId,amount,status,bank_account_id bankAccountId,gateway_reference gatewayReference,reject_reason rejectReason,created_at createdAt FROM withdrawals ORDER BY created_at DESC LIMIT 200');ok(res,{deposits:d,withdrawals:w,reconciliation:[]})}catch(e){next(e)}});
+app.get('/api/backoffice-finance',adminAuth,async(req,res,next)=>{try{const [d]=await pool.query('SELECT d.id,d.user_id userId,u.username member,d.amount,d.status,d.gateway channel,d.gateway_reference gatewayReference,d.gateway_reference reference,d.created_at createdAt FROM deposits d JOIN users u ON u.id=d.user_id ORDER BY d.created_at DESC LIMIT 200');const [w]=await pool.query('SELECT w.id,w.user_id userId,u.username member,w.amount,w.status,w.bank_account_id bankAccountId,w.gateway_reference gatewayReference,CONCAT("WD-",LEFT(w.id,12)) reference,CONCAT(ba.provider," • ",RIGHT(ba.account_number,4)) destinationMasked,w.reject_reason rejectReason,w.created_at createdAt FROM withdrawals w JOIN users u ON u.id=w.user_id LEFT JOIN bank_accounts ba ON ba.id=w.bank_account_id ORDER BY w.created_at DESC LIMIT 200');ok(res,{deposits:d,withdrawals:w,reconciliation:[]})}catch(e){next(e)}});
 app.get('/api/backoffice-ledger',adminAuth,async(req,res,next)=>{try{const [r]=await pool.query('SELECT l.*,u.username FROM wallet_ledger l JOIN users u ON u.id=l.user_id ORDER BY l.created_at DESC LIMIT 200');ok(res,{items:r,ledger:r})}catch(e){next(e)}});
 app.get('/api/backoffice-game-catalog',adminAuth,async(req,res,next)=>{try{
  const [r]=await pool.query('SELECT * FROM games ORDER BY provider_code,sort_order,id');
@@ -365,7 +375,23 @@ app.post('/api/backoffice-payment-connections',adminAuth,role('admin','superadmi
 app.get('/api/backoffice-payment-connections',adminAuth,async(req,res,next)=>{try{const [r]=await pool.query('SELECT id,name,provider,mode,is_active isActive,created_at createdAt FROM payment_connections ORDER BY created_at DESC');ok(res,{items:r,connections:r,configured:Boolean(config.paymentBaseUrl&&config.paymentApiKey),vaultConfigured:Boolean(config.paymentVaultKey)})}catch(e){next(e)}});
 app.get('/api/backoffice-promotions',adminAuth,async(req,res,next)=>{try{const [r]=await pool.query('SELECT * FROM promotions ORDER BY sort_order,id');ok(res,{items:r,promotions:r})}catch(e){next(e)}});
 app.post('/api/backoffice-promotions',adminAuth,role('admin','superadmin'),async(req,res,next)=>{try{const b=req.body||{},id=b.id||newId();await pool.query('INSERT INTO promotions(id,title,description,image_url,start_at,end_at,is_active,sort_order) VALUES(?,?,?,?,?,?,?,?) ON DUPLICATE KEY UPDATE title=VALUES(title),description=VALUES(description),image_url=VALUES(image_url),start_at=VALUES(start_at),end_at=VALUES(end_at),is_active=VALUES(is_active),sort_order=VALUES(sort_order)',[id,b.title,b.description||null,b.imageUrl||null,b.startAt||null,b.endAt||null,b.isActive!==false,Number(b.sortOrder||0)]);await audit(req,'promotion.upsert','promotion',id);ok(res,{id})}catch(e){next(e)}});
-app.get('/api/backoffice-rewards',adminAuth,async(req,res,next)=>{try{const [r]=await pool.query('SELECT c.user_id userId,u.username,c.balance FROM cashback_accounts c JOIN users u ON u.id=c.user_id ORDER BY c.balance DESC LIMIT 500');ok(res,{items:r})}catch(e){next(e)}});
+app.get('/api/backoffice-rewards',adminAuth,async(req,res,next)=>{try{const [r]=await pool.query('SELECT c.user_id userId,u.username,c.balance FROM cashback_accounts c JOIN users u ON u.id=c.user_id ORDER BY c.balance DESC LIMIT 500');ok(res,{items:r,settlement:{status:'GATED',reason:'reward_payout_disabled'}})}catch(e){next(e)}});
+app.post('/api/backoffice-rewards',adminAuth,role('admin','superadmin'),async(req,res,next)=>{try{
+ const action=String(req.body?.action||'').trim();
+ if(action==='issue-referral-code'){
+  const targetUid=String(req.body?.targetUid||'').trim();if(!targetUid)return fail(res,400,'target_uid_required');
+  const [u]=await pool.query('SELECT id,username,referral_code FROM users WHERE id=? AND role="member" LIMIT 1',[targetUid]);if(!u[0])return fail(res,404,'member_not_found');
+  let code=String(req.body?.code||u[0].referral_code||'').trim().toUpperCase();
+  if(!code) code='REF-'+crypto.randomBytes(4).toString('hex').toUpperCase();
+  if(!/^[A-Z0-9_-]{4,32}$/.test(code))return fail(res,400,'invalid_referral_code');
+  const [dupe]=await pool.query('SELECT id FROM users WHERE referral_code=? AND id<>? LIMIT 1',[code,targetUid]);if(dupe[0])return fail(res,409,'referral_code_exists');
+  await pool.query('UPDATE users SET referral_code=? WHERE id=?',[code,targetUid]);
+  await audit(req,'reward.referral_code.issue','user',targetUid,{code});
+  return ok(res,{referral:{code,promoterUid:targetUid}});
+ }
+ if(action==='finalize-week') return fail(res,503,'reward_payout_disabled');
+ return fail(res,400,'unknown_reward_action');
+}catch(e){next(e)}});
 app.get('/api/backoffice-reports',adminAuth,async(req,res,next)=>{try{const [[m],[d],[w],[g]] = await Promise.all([pool.query('SELECT COUNT(*) count FROM users WHERE role="member"'),pool.query('SELECT COALESCE(SUM(amount),0) amount FROM deposits WHERE status="completed"'),pool.query('SELECT COALESCE(SUM(amount),0) amount FROM withdrawals WHERE status="completed"'),pool.query('SELECT COUNT(*) count FROM games')]);ok(res,{members:m[0].count,deposits:d[0].amount,withdrawals:w[0].amount,games:g[0].count})}catch(e){next(e)}});
 app.get('/api/backoffice-audit',adminAuth,async(req,res,next)=>{try{const [r]=await pool.query('SELECT a.*,u.username actor FROM audit_logs a LEFT JOIN users u ON u.id=a.actor_user_id ORDER BY a.created_at DESC LIMIT 200');ok(res,{items:r,audit:r})}catch(e){next(e)}});
 app.get('/api/backoffice-website-settings',adminAuth,async(req,res,next)=>{try{const [r]=await pool.query('SELECT setting_key,value_json FROM system_settings');const settings={};for(const x of r)settings[x.setting_key]=JSON.parse(x.value_json);ok(res,{settings})}catch(e){next(e)}});
