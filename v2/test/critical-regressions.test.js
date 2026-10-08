@@ -96,3 +96,18 @@ test('provider and game catalog normalization handles numeric inactive flags wit
   assert.match(provider, /isActive:activeFlag\(g\?\.is_active\)&&activeFlag\(g\?\.launch_enabled\)/);
   assert.match(provider, /'0','false','no','off','inactive'/);
 });
+
+
+test('catalog synchronization has one canonical persistence endpoint', async () => {
+  const source = await readFile(serverPath, 'utf8');
+  const providerRouteStart = source.indexOf("app.post('/api/backoffice-provider'");
+  const providerRouteEnd = source.indexOf("app.post('/api/backoffice-payment-connections'", providerRouteStart);
+  const providerRoute = source.slice(providerRouteStart, providerRouteEnd);
+  assert.match(providerRoute, /action==='sync'\)return fail\(res,409,'use_backoffice_game_catalog_sync'\)/);
+  const catalogRouteStart = source.indexOf("app.post('/api/backoffice-game-catalog'");
+  const catalogRouteEnd = source.indexOf("app.get('/api/backoffice-rtp", catalogRouteStart);
+  const catalogRoute = source.slice(catalogRouteStart, catalogRouteEnd);
+  assert.match(catalogRoute, /b\.action==='sync'/);
+  assert.match(catalogRoute, /provider\.providers\(\)/);
+  assert.match(catalogRoute, /provider\.allGames\(\)/);
+});
