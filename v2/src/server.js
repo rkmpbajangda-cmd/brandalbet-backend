@@ -214,9 +214,9 @@ app.post('/api/game-launch',memberAuth,async(req,res,next)=>{try{
  await audit(req,'game.launch','game',games[0].id,{providerId,gameSymbol});ok(res,{game:{launchUrl,expiresAt:exp.toISOString(),gameId:games[0].id}});
 }catch(e){next(e)}});
 
-app.post('/api/payment-deposit',memberAuth,async(req,res,next)=>{try{const out=await createDeposit(req.user,req.body||{});await audit(req,'payment.deposit.create','payment_order',out.reference,{amount:req.body?.amountRupiah,provider:'xendit'});ok(res,out)}catch(e){next(e)}});
+app.post('/api/payment-deposit',memberAuth,async(req,res,next)=>{try{const out=await createDeposit(req.user,{...(req.body||{}),idempotencyKey:req.get('Idempotency-Key')||req.body?.idempotencyKey});await audit(req,'payment.deposit.create','payment_order',out.reference,{amount:req.body?.amountRupiah,provider:'xendit'});ok(res,out)}catch(e){next(e)}});
 
-app.post('/api/payment-withdraw',memberAuth,async(req,res,next)=>{try{const out=await createWithdrawal(req.user,req.body||{});await audit(req,'payment.withdraw.create','withdrawal',out.withdrawalId,{amount:req.body?.amountRupiah,provider:'xendit',payoutId:out.payoutId,status:out.status});ok(res,out)}catch(e){next(e)}});
+app.post('/api/payment-withdraw',memberAuth,async(req,res,next)=>{try{const out=await createWithdrawal(req.user,{...(req.body||{}),idempotencyKey:req.get('Idempotency-Key')||req.body?.idempotencyKey});await audit(req,'payment.withdraw.create','withdrawal',out.withdrawalId,{amount:req.body?.amountRupiah,provider:'xendit',payoutId:out.payoutId,status:out.status});ok(res,out)}catch(e){next(e)}});
 
 app.post('/webhooks/xendit/payment',async(req,res,next)=>{try{ok(res,await handleXenditPaymentWebhook(req))}catch(e){next(e)}});
 
