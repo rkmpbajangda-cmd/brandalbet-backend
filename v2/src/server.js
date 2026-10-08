@@ -95,14 +95,22 @@ app.post('/api/auth/register',async(req,res,next)=>{try{
  const b=req.body||{};if(!/^[a-zA-Z0-9_]{3,32}$/.test(String(b.username||'')))return fail(res,400,'invalid_username');
  if(!String(b.email||'').includes('@')||String(b.password||'').length<8)return fail(res,400,'invalid_registration');
  const [exists]=await pool.query('SELECT id FROM users WHERE username=? OR email=? LIMIT 1',[b.username,String(b.email).toLowerCase()]);if(exists[0])return fail(res,409,'account_exists');
+ const referralCode=String(b.referralCode||'').trim().toUpperCase();
+ if(referralCode&&!/^[A-Z0-9_-]{4,32}$/.test(referralCode))return fail(res,400,'invalid_referral_code');
+ let referralOwner=null;
+ if(referralCode){
+  const [owners]=await pool.query('SELECT id,referral_code,status,role FROM users WHERE referral_code=? LIMIT 1',[referralCode]);
+  referralOwner=owners[0]||null;
+  if(!referralOwner||referralOwner.status!=='active'||referralOwner.role!=='member')return fail(res,400,'referral_code_unavailable');
+ }
  const uid=newId(),pw=await argon2.hash(b.password),ref=crypto.randomBytes(5).toString('hex').toUpperCase();
  await withTransaction(async c=>{
-  await c.query('INSERT INTO users(id,username,email,password_hash,display_name,phone,referral_code,referred_by) VALUES(?,?,?,?,?,?,?,?)',[uid,b.username,String(b.email).toLowerCase(),pw,b.displayName||null,b.phone||null,ref,b.referralCode||null]);
+  await c.query('INSERT INTO users(id,username,email,password_hash,display_name,phone,referral_code,referred_by) VALUES(?,?,?,?,?,?,?,?)',[uid,b.username,String(b.email).toLowerCase(),pw,b.displayName||null,b.phone||null,ref,referralOwner?.referral_code||null]);
   await c.query('INSERT INTO wallets(user_id,balance) VALUES(?,0)',[uid]);await c.query('INSERT INTO cashback_accounts(user_id,balance) VALUES(?,0)',[uid]);
   await c.query('INSERT INTO member_profiles(user_id) VALUES(?)',[uid]);
   await c.query('INSERT INTO member_security_settings(user_id,one_device_only,login_enabled,require_password_for_withdrawal) VALUES(?,1,1,1)',[uid]);
   if(b.bankAccount)await c.query('INSERT INTO bank_accounts(id,user_id,type,provider,account_number,account_name,routing_type,routing_value) VALUES(?,?,?,?,?,?,?,?)',[newId(),uid,b.bankAccount.type||'bank',b.bankAccount.provider||'',String(b.bankAccount.accountNumber||'').replace(/\D/g,''),b.bankAccount.accountName||'',b.bankAccount.routingType||null,b.bankAccount.routingValue||null]);
-  if(b.referralCode){const [rr]=await c.query('SELECT id FROM users WHERE referral_code=? LIMIT 1',[b.referralCode]);if(rr[0])await c.query('INSERT IGNORE INTO referrals(id,referrer_id,referred_id,code) VALUES(?,?,?,?)',[newId(),rr[0].id,uid,b.referralCode])}
+  if(referralOwner)await c.query('INSERT INTO referrals(id,referrer_id,referred_id,code) VALUES(?,?,?,?)',[newId(),referralOwner.id,uid,referralOwner.referral_code]);
  });
  return login(req,res,b.username,b.password,b.deviceId);
 }catch(e){next(e)}});
