@@ -1,0 +1,5 @@
+import crypto from 'node:crypto';
+import {config} from './config.js';
+function key(){if(!config.paymentVaultKey)throw Object.assign(new Error('payment_vault_unconfigured'),{code:'payment_vault_unconfigured',status:503});const raw=Buffer.from(config.paymentVaultKey,'base64');if(raw.length!==32)throw Object.assign(new Error('payment_vault_key_invalid'),{code:'payment_vault_key_invalid',status:503});return raw}
+export function encryptJson(value){const iv=crypto.randomBytes(12),cipher=crypto.createCipheriv('aes-256-gcm',key(),iv);const body=Buffer.concat([cipher.update(JSON.stringify(value),'utf8'),cipher.final()]);const tag=cipher.getAuthTag();return [iv,tag,body].map(x=>x.toString('base64url')).join('.')}
+export function decryptJson(value){const [ivB,tagB,bodyB]=String(value||'').split('.');if(!ivB||!tagB||!bodyB)throw new Error('payment_vault_invalid');const d=crypto.createDecipheriv('aes-256-gcm',key(),Buffer.from(ivB,'base64url'));d.setAuthTag(Buffer.from(tagB,'base64url'));return JSON.parse(Buffer.concat([d.update(Buffer.from(bodyB,'base64url')),d.final()]).toString('utf8'))}
