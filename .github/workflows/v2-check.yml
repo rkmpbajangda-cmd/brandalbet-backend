@@ -3,7 +3,7 @@ on:
   push:
     branches: [backend-v2-node-mysql]
   pull_request:
-    branches: [backend-v2-node-mysql]
+    branches: [main, backend-v2-node-mysql]
 jobs:
   check:
     runs-on: ubuntu-latest
