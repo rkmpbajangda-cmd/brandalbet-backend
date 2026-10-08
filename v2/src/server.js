@@ -45,11 +45,12 @@ async function ensureProviderUser(userId,username){
  if(!provider.configured)return;
  try{
   const [existing]=await pool.query('SELECT provider_user_code FROM provider_users WHERE user_id=? AND provider_code="goldslotpalase" LIMIT 1',[userId]);
-  if(existing[0]?.provider_user_code)return; // Never create a second provider account for an existing member mapping.
+  if(existing[0]?.provider_user_code)return existing[0].provider_user_code; // Reuse the existing mapping; never create a second provider account.
   const created=await provider.createUser(username);
-  const providerUser=String(created?.data?.user_code??created?.user_code??'');
+  const providerUser=String(created?.data?.user_code??created?.user_code??'').trim();
   if(!providerUser)return;
   await pool.query('INSERT INTO provider_users(id,user_id,provider_code,provider_user_code) VALUES(?,?,?,?)',[newId(),userId,'goldslotpalase',providerUser]);
+  return providerUser;
  }catch(e){console.error('provider_user_sync_failed',e.code||e.message)}
 }
 async function completeOnboarding(userId,body){
