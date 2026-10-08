@@ -161,7 +161,14 @@ app.put('/api/member-bank-account',memberAuth,async(req,res,next)=>{try{const b=
 
 app.get('/api/wallet',memberAuth,async(req,res,next)=>{try{const [[w]]=await pool.query('SELECT balance,locked_balance,locked FROM wallets WHERE user_id=?',[req.user.id]);const balance=Number(w?.balance||0),lockedBalance=Number(w?.locked_balance||0);ok(res,{balance,lockedBalance,availableBalance:Math.max(0,balance-lockedBalance),availableMinor:Math.round(Math.max(0,balance-lockedBalance)*100),locked:Boolean(w?.locked)})}catch(e){next(e)}});
 app.get('/api/transactions',memberAuth,async(req,res,next)=>{try{const [r]=await pool.query('SELECT id,type,amount,status,reference,created_at createdAt FROM transactions WHERE user_id=? ORDER BY created_at DESC LIMIT 200',[req.user.id]);ok(res,{transactions:r})}catch(e){next(e)}});
-app.get('/api/member-rewards',memberAuth,async(req,res,next)=>{try{const [[a]]=await pool.query('SELECT balance FROM cashback_accounts WHERE user_id=?',[req.user.id]);const [h]=await pool.query('SELECT id,amount,type,status,reference,created_at createdAt FROM cashback_transactions WHERE user_id=? ORDER BY created_at DESC LIMIT 200',[req.user.id]);ok(res,{balance:Number(a?.balance||0),history:h})}catch(e){next(e)}});
+app.get('/api/member-rewards',memberAuth,async(req,res,next)=>{try{
+ const [[a]]=await pool.query('SELECT balance FROM cashback_accounts WHERE user_id=?',[req.user.id]);
+ const [h]=await pool.query('SELECT id,amount,type,status,reference,created_at createdAt FROM cashback_transactions WHERE user_id=? ORDER BY created_at DESC LIMIT 200',[req.user.id]);
+ const [[u]]=await pool.query('SELECT referral_code referralCode FROM users WHERE id=?',[req.user.id]);
+ const [[rc]]=await pool.query('SELECT COUNT(*) count FROM referrals WHERE referrer_id=?',[req.user.id]);
+ const [[settings]]=await pool.query('SELECT cashback_enabled cashbackEnabled,referral_enabled referralEnabled,rules FROM reward_settings WHERE id=1');
+ ok(res,{balance:Number(a?.balance||0),history:h,referral:{code:u?.referralCode||null,referralCount:Number(rc?.count||0),referralLink:u?.referralCode?((config.memberOrigins[0]||'https://brandalbet.blogspot.com')+'/?ref='+encodeURIComponent(u.referralCode)):null},policy:{cashbackEnabled:Boolean(settings?.cashbackEnabled),referralEnabled:Boolean(settings?.referralEnabled),rules:parseJson(settings?.rules,{cashbackPercent:10,referralPercent:15,minimumNetLoss:500000,turnoverMultiplier:10})},settlement:{status:'GATED',reason:'verified_settled_round_source_required'}})
+ }catch(e){next(e)}});
 app.get('/api/member-config',async(_,res,next)=>{try{
  const [[site]]=await pool.query('SELECT site_name siteName,logo_url logoUrl,favicon_url faviconUrl,primary_color primaryColor,secondary_color secondaryColor,maintenance_mode maintenanceMode,registration_enabled registrationEnabled,game_launch_enabled gameLaunchEnabled,wallet_enabled walletEnabled,seo_title seoTitle,seo_description seoDescription,hero_config heroConfig,navigation_config navigationConfig,footer_config footerConfig,extra_config extraConfig FROM website_settings WHERE id=1');
  const [[pay]]=await pool.query('SELECT deposit_enabled depositEnabled,withdrawal_enabled withdrawalEnabled,min_deposit minDeposit,max_deposit maxDeposit,min_withdrawal minWithdrawal,max_withdrawal maxWithdrawal,deposit_fee depositFee,withdrawal_fee withdrawalFee,channels FROM payment_settings WHERE id=1');
@@ -445,7 +452,11 @@ app.post('/api/backoffice-promotions',adminAuth,role('admin','superadmin'),async
  });
  await audit(req,'promotion.upsert','promotion',id,{revision});ok(res,{id,saved:true,revision,promotion:{id,revision,active,sortOrder,...extra}})
 }catch(e){next(e)}});
-app.get('/api/backoffice-rewards',adminAuth,async(req,res,next)=>{try{const [r]=await pool.query('SELECT c.user_id userId,u.username,c.balance FROM cashback_accounts c JOIN users u ON u.id=c.user_id ORDER BY c.balance DESC LIMIT 500');ok(res,{items:r,settlement:{status:'GATED',reason:'reward_payout_disabled'}})}catch(e){next(e)}});
+app.get('/api/backoffice-rewards',adminAuth,async(req,res,next)=>{try{
+ const [r]=await pool.query('SELECT c.user_id userId,u.username,u.referral_code referralCode,c.balance,(SELECT COUNT(*) FROM referrals rf WHERE rf.referrer_id=u.id) referralCount FROM cashback_accounts c JOIN users u ON u.id=c.user_id ORDER BY c.balance DESC LIMIT 500');
+ const [[settings]]=await pool.query('SELECT cashback_enabled cashbackEnabled,referral_enabled referralEnabled,rules,extra_config extraConfig FROM reward_settings WHERE id=1');
+ ok(res,{items:r,policy:{cashbackEnabled:Boolean(settings?.cashbackEnabled),referralEnabled:Boolean(settings?.referralEnabled),rules:parseJson(settings?.rules,{cashbackPercent:10,referralPercent:15,minimumNetLoss:500000,turnoverMultiplier:10}),extraConfig:parseJson(settings?.extraConfig,{})},settlement:{status:'GATED',reason:'verified_settled_round_source_required'}})
+ }catch(e){next(e)}});
 app.post('/api/backoffice-rewards',adminAuth,role('admin','superadmin'),async(req,res,next)=>{try{
  const action=String(req.body?.action||'').trim();
  if(action==='issue-referral-code'){
