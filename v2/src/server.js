@@ -205,7 +205,9 @@ app.post('/api/game-launch',memberAuth,async(req,res,next)=>{try{
  // Called only after the member explicitly presses "Main Game", never when a card/popup opens.
  const b=req.body||{},requestId=String(b.launchRequestId||req.get('Idempotency-Key')||'').trim(),providerId=String(b.providerId||''),symbol=String(b.gameSymbol||'').trim();
  if(!requestId||requestId.length>120||!providerId||providerId.length>64||!symbol||symbol.length>120)return fail(res,400,'invalid_launch_request');
- const [games]=await pool.query('SELECT * FROM games WHERE provider_code="goldslotpalase" AND provider_id=? AND game_code=? AND is_active=1 LIMIT 1',[providerId,symbol]);
+ const numericProviderId=Number(providerId);
+ if(!Number.isSafeInteger(numericProviderId)||numericProviderId<=0)return fail(res,400,'invalid_provider_id');
+ const [games]=await pool.query('SELECT g.* FROM games g JOIN providers p ON p.id=g.provider_id AND p.is_active=1 WHERE g.provider_code="goldslotpalase" AND g.provider_id=? AND g.game_code=? AND g.is_active=1 LIMIT 1',[String(numericProviderId),symbol]);
  if(!games[0])return fail(res,404,'game_not_found');
  const [previousLaunch]=await pool.query('SELECT gl.game_id,gl.launch_url,gl.expires_at,gl.status FROM game_launches gl WHERE gl.user_id=? AND gl.request_id=? LIMIT 1',[req.user.id,requestId]);
  if(previousLaunch[0]){
@@ -216,7 +218,9 @@ app.post('/api/game-launch',memberAuth,async(req,res,next)=>{try{
  const providerUser=await ensureProviderUser(req.user.id,req.user.username);
  if(!providerUser)throw Object.assign(new Error('provider_user_create_invalid'),{code:'provider_invalid_response',status:502});
  // Use provider defaults for odds and limits; do not accept member-controlled game parameters.
- const launchPayload={user_code:Number(providerUser),provider_id:Number(providerId),game_symbol:symbol,lang:Number(req.body.lang??9),return_url:config.memberOrigins[0]||'https://brandalbet.blogspot.com',min_bet:0,max_bet:0,round_max_win:0,rtp:0,is_finish_jackpot:true};
+ const numericUserCode=Number(providerUser);
+ if(!Number.isSafeInteger(numericUserCode)||numericUserCode<=0)throw Object.assign(new Error('provider_user_code_invalid'),{code:'provider_invalid_response',status:502});
+ const launchPayload={user_code:numericUserCode,provider_id:numericProviderId,game_symbol:symbol,lang:9,return_url:config.memberOrigins[0]||'https://brandalbet.blogspot.com',min_bet:0,max_bet:0,round_max_win:0,rtp:0,is_finish_jackpot:true};
  Object.keys(launchPayload).forEach(k=>launchPayload[k]===undefined||launchPayload[k]===null||launchPayload[k]===''?delete launchPayload[k]:0);
  const launched=await provider.launch(launchPayload);
  const rawLaunchUrl=launched?.data?.game_url??launched?.data?.url??launched?.game_url??launched?.url;
