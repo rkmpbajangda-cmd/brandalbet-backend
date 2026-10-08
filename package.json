@@ -1,24 +1,16 @@
 {
-  "name": "brandalbet-backend",
-  "version": "0.1.0",
-  "private": true,
-  "description": "Secure server-side backend API for Brandalbet",
-  "type": "module",
-  "engines": {
-    "node": "22.x"
-  },
-  "scripts": {
-    "dev": "npx --yes wrangler@4.129.1 dev",
-    "check": "node scripts/check.mjs",
-    "test": "node --test",
-    "build": "npm run build:cloudflare",
-    "build:cloudflare": "node scripts/build-cloudflare.mjs",
-    "bundle:cloudflare": "npx --yes wrangler@4.129.1 deploy --dry-run --outdir .wrangler/dry-run",
-    "deploy:cloudflare": "npx --yes wrangler@4.129.1 deploy --yes",
-    "validate": "npm run check && npm test && npm run build:cloudflare && npm run bundle:cloudflare"
-  },
-  "dependencies": {
-    "firebase-admin": "14.5.0"
-  },
-  "devDependencies": {}
+  "name":"brandalbet-backend-v2-dewacloud",
+  "version":"2.1.0",
+  "private":true,
+  "type":"module",
+  "engines":{"node":">=22"},
+  "workspaces":["v2"],
+  "scripts":{
+    "start":"npm --prefix v2 start",
+    "dev":"npm --prefix v2 run dev",
+    "check":"npm --prefix v2 run check:all",
+    "test":"npm --prefix v2 test",
+    "migrate":"npm --prefix v2 run migrate",
+    "validate":"npm run check && npm test"
+  }
 }

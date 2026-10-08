@@ -1,0 +1,3 @@
+-- Baseline marker for migration history.
+-- The executable baseline is v2/schema.sql and is applied by src/migrate.js.
+-- This file is intentionally non-executable by itself.

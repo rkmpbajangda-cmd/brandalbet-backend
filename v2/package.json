@@ -1,0 +1,26 @@
+{
+  "name": "brandalbet-backend-v2",
+  "version": "2.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "node --watch src/server.js",
+    "check": "node --check src/server.js && node --check src/config.js && node --check src/db.js && node --check src/http.js && node --check src/middleware.js && node --check src/provider.js && node --check src/referral.js && node --check src/vault.js && node --check src/wallet.js && node --check src/xendit.js && node --check src/xendit-payment.js && node --check src/migrate.js",
+    "check:all": "npm run check",
+    "test": "node --test",
+    "migrate": "node src/migrate.js"
+  },
+  "dependencies": {
+    "argon2": "^0.44.0",
+    "cors": "^2.8.5",
+    "dotenv": "^17.2.2",
+    "express": "^5.1.0",
+    "express-rate-limit": "^8.2.1",
+    "helmet": "^8.1.0",
+    "mysql2": "^3.15.1"
+  }
+}
