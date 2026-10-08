@@ -112,7 +112,10 @@ app.post('/api/game-launch',memberAuth,async(req,res,next)=>{try{
  const [pu]=await pool.query('SELECT provider_user_code FROM provider_users WHERE user_id=? AND provider_code="goldslotpalase"',[req.user.id]);
  let providerUser=pu[0]?.provider_user_code;
  if(!providerUser){const created=await provider.createUser(req.user.username);providerUser=String(created?.data?.user_code??created?.user_code??'');if(!providerUser)throw Object.assign(new Error('provider_user_create_invalid'),{code:'provider_invalid_response',status:502});await pool.query('INSERT INTO provider_users(id,user_id,provider_code,provider_user_code) VALUES(?,?,?,?)',[newId(),req.user.id,'goldslotpalase',providerUser])}
- const launched=await provider.launch({user_code:Number(providerUser),provider_id:Number(providerId),game_symbol:symbol,lang:9,return_url:req.body.returnUrl||undefined});
+ const [[rtpPolicy]]=await pool.query('SELECT enabled,rtp FROM member_rtp_settings WHERE user_id=?',[req.user.id]);
+ const launchPayload={user_code:Number(providerUser),provider_id:Number(providerId),game_symbol:symbol,lang:Number(req.body.lang??9),return_url:req.body.returnUrl||undefined,min_bet:req.body.minBet,max_bet:req.body.maxBet,round_max_win:req.body.roundMaxWin,rtp:rtpPolicy?.enabled&&rtpPolicy?.rtp!=null?Number(rtpPolicy.rtp):undefined,is_finish_jackpot:req.body.isFinishJackpot};
+ Object.keys(launchPayload).forEach(k=>launchPayload[k]===undefined||launchPayload[k]===null||launchPayload[k]===''?delete launchPayload[k]:0);
+ const launched=await provider.launch(launchPayload);
  const launchUrl=launched?.data?.game_url??launched?.data?.url??launched?.game_url??launched?.url;
  if(typeof launchUrl!=='string'||!/^https:\/\//i.test(launchUrl))return fail(res,502,'provider_invalid_launch_url');
  let exp=new Date(Date.now()+10*60*1000);await pool.query('INSERT INTO game_launches(id,user_id,game_id,provider,request_id,status,launch_url,expires_at) VALUES(?,?,?,?,?,?,?,?)',[newId(),req.user.id,games[0].id,'goldslotpalase',requestId,'issued',launchUrl,exp]);
@@ -122,10 +125,7 @@ app.post('/api/game-launch',memberAuth,async(req,res,next)=>{try{
 app.post('/api/payment-deposit',memberAuth,async(req,res,next)=>{try{
  if(!config.paymentBaseUrl||!config.paymentApiKey)return fail(res,503,'payment_adapter_unavailable');
  const amount=money(req.body?.amountRupiah);if(amount<config.minDeposit)return fail(res,400,'minimum_deposit');
- const reference='DEP-'+Date.now().toString(36).toUpperCase()+'-'+crypto.randomBytes(4).toString('hex').toUpperCase();
- const id=newId();await pool.query('INSERT INTO deposits(id,user_id,amount,status,gateway) VALUES(?,?,?,?,?)',[id,req.user.id,amount,'pending',config.paymentProvider||'configured']);
- await pool.query('INSERT INTO payment_orders(id,user_id,reference,amount,channel,status) VALUES(?,?,?,?,?,?)',[newId(),req.user.id,reference,amount,String(req.body?.channel||'QRIS'),'pending']);
- return fail(res,503,'payment_adapter_not_implemented',{reference});
+ return fail(res,503,'payment_adapter_not_implemented');
 }catch(e){next(e)}});
 
 app.post('/api/payment-withdraw',memberAuth,async(req,res,next)=>{try{
@@ -164,23 +164,54 @@ app.post('/webhooks/v1/payments/:provider',async(req,res,next)=>{try{
  ok(res,{received:true});
 }catch(e){next(e)}});
 
-app.post('/api/provider/callback',express.json({limit:'256kb'}),async(req,res,next)=>{try{
- verifyProviderCallback(req);const b=req.body||{},command=String(b.command||b.action||'').toLowerCase(),data=b.data||{},account=String(data.account||data.username||'');
- const eventKey=String(data.transaction_id||data.transactionId||data.id||[command,account,b.request_timestamp||''].join(':'));
- const [ev]=await pool.query('SELECT id,processed_at FROM provider_events WHERE provider_code="goldslotpalase" AND event_key=?',[eventKey]);if(ev[0]?.processed_at)return res.json({result:0,status:'OK',data:{balance:0}});
- if(!ev[0])await pool.query('INSERT INTO provider_events(id,provider_code,event_key,command,raw_json) VALUES(?,?,?,?,?)',[newId(),'goldslotpalase',eventKey,command,JSON.stringify(b)]);
- const [pu]=await pool.query('SELECT user_id FROM provider_users WHERE provider_code="goldslotpalase" AND provider_user_code=? LIMIT 1',[account]);if(!pu[0])return res.status(404).json({result:2002,status:'USER_NOT_FOUND'});
- const userId=pu[0].user_id;const [[w]]=await pool.query('SELECT balance FROM wallets WHERE user_id=?',[userId]);const balance=Number(w?.balance||0);
- if(command==='authenticate'||command==='balance'||command==='status')return res.json({result:0,status:'OK',data:{account,balance}});
- if(command==='bet'||command==='win'||command==='cancel'){
-  const amount=money(data.amount??data.win??data.bet??0),txRef='GSP-'+eventKey;
-  if(command==='bet')await debitWallet(userId,amount,'provider_bet',txRef,{providerPayload:b});
-  else if(command==='win')await creditWallet(userId,amount,'provider_win',txRef,{providerPayload:b});
-  else if(command==='cancel'&&amount>0)await creditWallet(userId,amount,'provider_cancel',txRef,{providerPayload:b});
-  if(ev[0]) await pool.query('UPDATE provider_events SET processed_at=NOW() WHERE id=?',[ev[0].id]); else await pool.query('UPDATE provider_events SET processed_at=NOW() WHERE provider_code="goldslotpalase" AND event_key=?',[eventKey]);
-  const [[nw]]=await pool.query('SELECT balance FROM wallets WHERE user_id=?',[userId]);return res.json({result:0,status:'OK',data:{account,balance:Number(nw?.balance||0)}});
+app.post('/api/provider/callback',async(req,res,next)=>{try{
+ verifyProviderCallback(req);const b=req.body||{},command=String(b.command||'').toLowerCase(),d=b.data||{},account=String(d.account??'').trim();
+ if(!['authenticate','balance','bet','win','cancel','status'].includes(command))return res.status(400).json({result:1012,status:'PARAMETERS_INVALID'});
+ if(!account)return res.status(400).json({result:21,status:'USER_NOT_FOUND'});
+ const [pu]=await pool.query('SELECT u.id,u.status,pu.provider_user_code FROM provider_users pu JOIN users u ON u.id=pu.user_id WHERE pu.provider_code="goldslotpalase" AND pu.provider_user_code=? LIMIT 1',[account]);
+ if(!pu[0])return res.status(404).json({result:21,status:'USER_NOT_FOUND'});
+ if(pu[0].status!=='active')return res.status(403).json({result:22,status:'USER_INACTIVE'});
+ const userId=pu[0].id;
+ const [[w]]=await pool.query('SELECT balance FROM wallets WHERE user_id=?',[userId]);const currentBalance=Number(w?.balance||0);
+ if(command==='authenticate'||command==='balance')return res.json({result:0,status:'OK',data:{account,balance:currentBalance}});
+ const transGuid=String(d.trans_guid??'').trim();if(!transGuid)return res.status(400).json({result:41,status:'TRANSACTION_INVALID'});
+ if(command==='status'){
+  const [tx]=await pool.query('SELECT status FROM provider_transactions WHERE provider_code="goldslotpalase" AND provider_transaction_id=? LIMIT 1',[transGuid]);
+  return res.json({result:0,status:'OK',data:{account,trans_guid:transGuid,status:tx[0]?.status==='canceled'?'CANCELED':tx[0]?'OK':'CANCELED'}});
  }
- return res.status(400).json({result:1012,status:'PARAMETERS_INVALID'});
+ const cancelGuid=String(d.cancel_trans_guid??'').trim(),amount=money(d.amount??0),providerType=command==='bet'?'Bet':command==='win'?'Win':'Cancel';
+ const response=await withTransaction(async conn=>{
+  const lookupId=command==='cancel'&&cancelGuid?cancelGuid:transGuid;
+  const [existing]=await conn.query('SELECT response_json FROM provider_transactions WHERE provider_code="goldslotpalase" AND provider_transaction_id=? FOR UPDATE',[lookupId]);
+  if(existing[0]?.response_json)return JSON.parse(existing[0].response_json);
+  const [[wallet]]=await conn.query('SELECT balance,locked FROM wallets WHERE user_id=? FOR UPDATE',[userId]);
+  if(!wallet)return {result:21,status:'USER_NOT_FOUND'};
+  if(wallet.locked)return {result:22,status:'USER_INACTIVE'};
+  let before=Number(wallet.balance),after=before,ledgerDirection=null,ledgerAmount=amount,reason='provider_'+command;
+  if(command==='bet'){
+   if(before<amount)return {result:31,status:'BALANCE_NOT_ENOUGH',data:{account,balance:before}};
+   after=before-amount;ledgerDirection='debit';
+  }else if(command==='win'){after=before+amount;ledgerDirection='credit';
+  }else{
+   if(!cancelGuid)return {result:43,status:'TRANSACTION_NOT_FOUND'};
+   const [original]=await conn.query('SELECT * FROM provider_transactions WHERE provider_code="goldslotpalase" AND provider_transaction_id=? AND user_id=? LIMIT 1 FOR UPDATE',[transGuid,userId]);
+   if(!original[0])return {result:43,status:'TRANSACTION_NOT_FOUND'};
+   if(original[0].canceled_at)return {result:0,status:'OK',data:{account,balance:before}};
+   const originalAmount=Number(original[0].amount||0);ledgerAmount=originalAmount;
+   if(original[0].type==='Bet'){after=before+originalAmount;ledgerDirection='credit';reason='provider_bet_reversal';}
+   else if(original[0].type==='Win'){if(before<originalAmount)return {result:31,status:'BALANCE_NOT_ENOUGH',data:{account,balance:before}};after=before-originalAmount;ledgerDirection='debit';reason='provider_win_reversal';}
+   else return {result:43,status:'TRANSACTION_NOT_FOUND'};
+   await conn.query('UPDATE provider_transactions SET canceled_at=NOW(),status="canceled" WHERE provider_code="goldslotpalase" AND provider_transaction_id=?',[transGuid]);
+  }
+  const txId=newId(),ref='GSP-'+(command==='cancel'&&cancelGuid?cancelGuid:transGuid);
+  await conn.query('UPDATE wallets SET balance=? WHERE user_id=?',[after,userId]);
+  await conn.query('INSERT INTO transactions(id,user_id,type,amount,status,reference,metadata) VALUES(?,?,?,?,?,?,?)',[txId,userId,command==='cancel'?'provider_reversal':'provider_'+command,ledgerAmount,'completed',ref,JSON.stringify({provider:'goldslotpalase',transGuid,cancelGuid,gplayId:d.gplay_id??null,roundId:d.round_id??null,providerId:d.provider_id??null,gameCode:d.game_code??null})]);
+  await conn.query('INSERT INTO wallet_ledger(id,user_id,transaction_id,reference,direction,amount,balance_before,balance_after,reason,metadata) VALUES(?,?,?,?,?,?,?,?,?,?)',[newId(),userId,txId,ref,ledgerDirection,ledgerAmount,before,after,reason,JSON.stringify({provider:'goldslotpalase',transGuid,cancelGuid})]);
+  const out={result:0,status:'OK',data:{account,balance:after}};
+  await conn.query('INSERT INTO provider_transactions(id,provider_code,provider_transaction_id,user_id,type,amount,status,raw_json,command,trans_guid,cancel_trans_guid,account,gplay_id,round_id,provider_id,game_code,balance_after,response_json) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',[newId(),'goldslotpalase',lookupId,userId,providerType,ledgerAmount,'completed',JSON.stringify(b),command,transGuid,cancelGuid||null,account,String(d.gplay_id??''),String(d.round_id??''),String(d.provider_id??''),String(d.game_code??''),after,JSON.stringify(out)]);
+  return out;
+ });
+ return res.json(response);
 }catch(e){if(e.code==='provider_callback_unauthorized')return res.status(401).json({result:1009,status:'TOKEN_INVALID'});next(e)}});
 
 app.get('/api/backoffice-health',adminAuth,(_,res)=>ok(res,{status:'ok'}));
