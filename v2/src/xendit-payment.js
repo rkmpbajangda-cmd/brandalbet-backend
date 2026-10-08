@@ -9,6 +9,9 @@ export const xendit=createXendit({apiKey:config.xenditApiKey,apiVersion:config.x
 function fail(code,status=400,message=code){throw Object.assign(new Error(message),{code,status})}
 
 export async function createDeposit(user,body){
+ const [[site]]=await pool.query('SELECT maintenance_mode,wallet_enabled FROM website_settings WHERE id=1');
+ if(site?.maintenance_mode)fail('maintenance_mode',503);
+ if(site?.wallet_enabled===false)fail('wallet_disabled',403);
  const [[ps]]=await pool.query('SELECT deposit_enabled,min_deposit,max_deposit FROM payment_settings WHERE id=1');
  if(ps?.deposit_enabled===false)fail('deposit_disabled',403);
  if(!xendit.configured)fail('payment_adapter_unavailable',503);
@@ -27,6 +30,9 @@ export async function createDeposit(user,body){
 }
 
 export async function createWithdrawal(user,body){
+ const [[site]]=await pool.query('SELECT maintenance_mode,wallet_enabled FROM website_settings WHERE id=1');
+ if(site?.maintenance_mode)fail('maintenance_mode',503);
+ if(site?.wallet_enabled===false)fail('wallet_disabled',403);
  const [[ps]]=await pool.query('SELECT withdrawal_enabled,min_withdrawal,max_withdrawal FROM payment_settings WHERE id=1');
  if(ps?.withdrawal_enabled===false)fail('withdrawal_disabled',403);
  if(!xendit.configured)fail('payment_adapter_unavailable',503);
