@@ -17,7 +17,7 @@ export class GoldslotPalaseClient{
  }
  info(){return this.call('/v4/agent/info',{})} setRtp(rtp){return this.call('/v4/agent/rtp',{rtp})}
  createUser(name){return this.call('/v4/user/create',{name})} userInfo(user_code){return this.call('/v4/user/info',{user_code})}
- providers(){return this.call('/v4/game/providers',{})} games(body={}){return this.call('/v4/game/games',body)} allGames(body={}){return this.call('/v4/game/all',body)}
+ providers(body={}){return this.call('/v4/game/providers',{lang:9,...body})} games(body={}){return this.call('/v4/game/games',{lang:9,...body})} allGames(body={}){return this.call('/v4/game/all',body)}
  onlineGames(body={}){return this.call('/v4/game/online-games',body)} launch(body){return this.call('/v4/game/game-url',body)}
  transferDeposit(body){return this.call('/v4/wallet/deposit',body)} transferWithdraw(body){return this.call('/v4/wallet/withdraw',body)}
  transferWithdrawAll(body){return this.call('/v4/wallet/withdraw-all',body)} transactions(body){return this.call('/v4/game/transaction',body)}
