@@ -64,7 +64,7 @@ async function completeOnboarding(userId,body){
    if(existing[0]){
     await c.query('UPDATE bank_accounts SET type=?,provider=?,account_number=?,account_name=?,routing_type=?,routing_value=? WHERE id=?',[b.bankAccount.type||'bank',b.bankAccount.provider,accountNumber,b.bankAccount.accountName,b.bankAccount.routingType||null,b.bankAccount.routingValue||null,existing[0].id]);
    }else{
-    await c.query('INSERT INTO bank_accounts(id,user_id,type,provider,account_number,account_name) VALUES(?,?,?,?,?,?)',[newId(),userId,b.bankAccount.type||'bank',b.bankAccount.provider,accountNumber,b.bankAccount.accountName]);
+    await c.query('INSERT INTO bank_accounts(id,user_id,type,provider,account_number,account_name,routing_type,routing_value) VALUES(?,?,?,?,?,?,?,?)',[newId(),userId,b.bankAccount.type||'bank',b.bankAccount.provider,accountNumber,b.bankAccount.accountName,b.bankAccount.routingType||null,b.bankAccount.routingValue||null]);
    }
   }
  });
