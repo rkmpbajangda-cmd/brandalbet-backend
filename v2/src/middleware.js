@@ -34,5 +34,7 @@ export function errorHandler(err, req, res, next) {
     stack: process.env.NODE_ENV === 'production' ? undefined : err?.stack,
   }));
   res.setHeader('x-request-id', requestId);
-  sendError(res, 500, 'internal_error');
+  const status = Number.isInteger(err?.status) && err.status >= 400 && err.status <= 599 ? err.status : 500;
+  const code = status !== 500 && /^[a-z0-9_]{1,80}$/i.test(String(err?.code || '')) ? String(err.code) : (status >= 500 ? 'internal_error' : 'request_failed');
+  sendError(res, status, code);
 }
