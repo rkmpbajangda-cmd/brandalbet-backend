@@ -39,6 +39,9 @@ This document is a delivery checklist, not a claim that features are production-
 
 - The game-launch success path referenced an undeclared `gameSymbol` identifier while writing its audit log. The audit metadata now uses the already validated `symbol` value, with a regression test.
 - `ensureProviderUser()` did not return the provider account code even though the game-launch handler requires that return value. As a result, game launch could fail after account mapping was successfully created or found. The helper now returns the existing or newly created mapping and has a regression test.
+- A post-hardening review found provider-account creation was still called during login; that call is now removed and provider-user creation occurs only in the explicit game-launch handler.
+- MySQL numeric boolean values (`0`/`1`) are now handled explicitly for registration, wallet/payment gates, withdrawal-password policy, and provider/game active flags. Regression coverage was added.
+- The duplicate `/api/backoffice-provider` `sync` action is now rejected with a clear instruction to use the canonical `/api/backoffice-game-catalog` sync endpoint, preventing the old route from updating games without updating provider records.
 
 ## Contract evidence limitation
 
