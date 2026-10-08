@@ -146,6 +146,12 @@ export async function handleXenditPaymentWebhook(req){
    }
   }else if(event==='payment.failure'||event==='payment_request.expiry'){
    const reference=String(d.reference_id||'');await c.query('UPDATE payment_orders SET status="failed" WHERE reference=? AND status<>"paid"',[reference]);await c.query('UPDATE deposits SET status="failed" WHERE payment_request_id=? AND status<>"completed"',[requestId]);
+  }else if(event==='payment.reversal'||event==='payment.reversed'){
+   const reference=String(d.reference_id||'');
+   const [orders]=await c.query('SELECT * FROM payment_orders WHERE reference=? OR provider_reference=? OR provider_reference=? FOR UPDATE',[reference,requestId,paymentId]);
+   if(!orders[0])fail('payment_order_not_found',404);
+   await c.query('UPDATE payment_orders SET status="reversal_pending" WHERE id=?',[orders[0].id]);
+   await c.query('UPDATE deposits SET status="reversal_pending" WHERE payment_request_id=? OR gateway_reference=? OR gateway_reference=?',[requestId,orders[0].provider_reference,paymentId]);
   }
   await c.query('UPDATE webhook_events SET processed_at=NOW() WHERE source="xendit_payment" AND event_key=?',[eventKey]);return {received:true,processed:true};
  });
