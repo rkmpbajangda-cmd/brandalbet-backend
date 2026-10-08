@@ -9,7 +9,7 @@ export class GoldslotPalaseClient{
   if(!this.configured)throw pe('provider_unconfigured',503);
   const ac=new AbortController(),timer=setTimeout(()=>ac.abort(),this.timeout);
   try{
-   const r=await fetch(this.base+path,{method:'POST',headers:{Authorization:'Bearer '+this.token,Accept:'application/json','Content-Type':'application/json'},body:JSON.stringify(body),signal:ac.signal});
+   const r=await fetch(this.base+path,{method:'POST',redirect:'error',headers:{Authorization:'Bearer '+this.token,Accept:'application/json','Content-Type':'application/json'},body:JSON.stringify(body),signal:ac.signal});
    let p={};try{p=await r.json()}catch{}
    if(!r.ok)throw pe('provider_http_error',502,{providerStatus:r.status,payload:p});
    if(p&&Number(p.result||0)!==0){const m={1001:'provider_internal_error',1002:'provider_validation_error',1007:'provider_token_not_found',1009:'provider_token_invalid',1010:'provider_permission_error',1011:'provider_error',1012:'provider_parameters_invalid',1018:'provider_busy',2001:'provider_agent_not_found',2002:'provider_user_not_found',2003:'provider_game_not_found',2005:'provider_point_not_enough',2006:'provider_balance_not_enough',2007:'provider_not_found'};throw pe(m[Number(p.result)]||'provider_rejected',502,{providerCode:p.result,payload:p})}
@@ -38,10 +38,16 @@ export function normalizeProviderRecord(x){
  const v=x?.provider||x,providerId=v?.provider_id??v?.providerId??v?.id;
  const name=v?.provider_name??v?.providerName??v?.name??v?.title;
  if(providerId==null||!String(name||'').trim())return null;
- return {id:String(providerId),code:'goldslotpalase:'+String(providerId),name:String(name).trim(),isActive:activeFlag(v?.is_active,activeFlag(v?.active)),sortOrder:Number.isFinite(Number(v?.sort_order??v?.sortOrder))?Number(v?.sort_order??v?.sortOrder):0,metadata:v};
+ // Goldslot catalog responses may expose status=2 for maintenance; fail closed for launching it.
+ const rawStatus=v?.status;
+ const maintenance=rawStatus===2||String(rawStatus)==='2'||String(rawStatus).trim().toLowerCase()==='maintenance';
+ const active=activeFlag(v?.is_active,activeFlag(v?.active,rawStatus===undefined?true:activeFlag(rawStatus,true)));
+ return {id:String(providerId),code:'goldslotpalase:'+String(providerId),name:String(name).trim(),isActive:active&&!maintenance,sortOrder:Number.isFinite(Number(v?.sort_order??v?.sortOrder))?Number(v?.sort_order??v?.sortOrder):0,metadata:v};
 }
 export function normalizeProviderGame(x,providerCode='goldslotpalase'){
- const g=x?.game||x,providerId=g?.provider_id??g?.providerId??g?.provider,symbol=g?.game_symbol??g?.gameSymbol??g?.symbol??g?.code,name=g?.name??g?.game_name??g?.gameName??symbol;
+ const g=x?.game||x,providerId=g?.provider_id??g?.providerId??(typeof g?.provider==='object'?(g.provider.provider_id??g.provider.id):g?.provider),symbol=g?.game_symbol??g?.gameSymbol??g?.game_code??g?.gameCode??g?.symbol??g?.code,name=g?.locale_name??g?.name??g?.game_name??g?.gameName??symbol;
  if(providerId==null||!symbol||!name)return null;
- return {providerCode,providerId:String(providerId),gameCode:String(symbol),name:String(name),category:String(g?.category||'Slots'),imageUrl:String(g?.image||g?.image_url||g?.imageUrl||''),isActive:activeFlag(g?.is_active)&&activeFlag(g?.launch_enabled),metadata:g};
+ const rawLaunch=g?.launch_enable??g?.launch_enabled??g?.launchEnable;
+ const launchEnabled=activeFlag(rawLaunch,activeFlag(g?.is_active,true));
+ return {providerCode,providerId:String(providerId),gameCode:String(symbol),name:String(name),category:String(g?.category||'Slots'),imageUrl:String(g?.game_image_narrow||g?.game_image||g?.image||g?.image_url||g?.imageUrl||''),isActive:activeFlag(g?.is_active,true)&&launchEnabled,metadata:g};
 }
