@@ -22,6 +22,10 @@ async function request(path,{apiKey,method='GET',body,headers={}}={}){
     let data=null;try{data=text?JSON.parse(text):null}catch{data={raw:text}}
     if(!r.ok)throw Object.assign(new Error(data?.message||data?.error_code||'xendit_request_failed'),{code:data?.error_code||'xendit_request_failed',status:r.status,data});
     return data;
+  }catch(error){
+    if(Number.isInteger(error?.status))throw error;
+    if(error?.name==='AbortError')throw Object.assign(new Error('xendit_timeout'),{code:'xendit_timeout',status:504});
+    throw Object.assign(new Error('xendit_unavailable'),{code:'xendit_unavailable',status:503,cause:error});
   }finally{clearTimeout(timer)}
 }
 
