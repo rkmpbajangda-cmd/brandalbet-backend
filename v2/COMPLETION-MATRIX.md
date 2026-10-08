@@ -34,9 +34,14 @@ This document is a delivery checklist, not a claim that features are production-
 | Audit and reporting | Audit/report endpoints exist | Verify all mutations are audited; CSV correctness/escaping; sensitive fields excluded |
 | Operations | Health/readiness and migration script exist | CI proof, staging deployment, backup/restore drill, logs/alerts, rollback and incident procedure |
 
-## Known critical implementation issue fixed on the hardening branch
+## Critical implementation issues fixed on the hardening branch
 
-The game-launch success path referenced an undeclared `gameSymbol` identifier while writing its audit log. That could throw after the provider launch and database insert, making a successful launch look like a server error. The audit metadata now uses the already validated `symbol` value. A regression test must remain in place.
+- The game-launch success path referenced an undeclared `gameSymbol` identifier while writing its audit log. The audit metadata now uses the already validated `symbol` value, with a regression test.
+- `ensureProviderUser()` did not return the provider account code even though the game-launch handler requires that return value. As a result, game launch could fail after account mapping was successfully created or found. The helper now returns the existing or newly created mapping and has a regression test.
+
+## Contract evidence limitation
+
+The XML files currently checked into this repository are named `BRANDALBET_MEMBER_V76_1_STABLE_CLOUDFLARE.xml` and `BRANDALBET_BACKOFFICE_V4_CLOUDFLARE_FIREBASE_PRODUCTION.xml`. They are not named V77/V7, and they use the legacy Firebase/Cloudflare authentication contract. Do not treat route-name overlap as compatibility. The exact production XML versions must be supplied/audited and migrated to the V2 Bearer-session contract before cutover.
 
 ## Rules for marking a feature complete
 
