@@ -184,6 +184,7 @@ app.get('/api/member-config',async(_,res,next)=>{try{
  ok(res,{minimumDeposit:Number(pay?.minDeposit??config.minDeposit),minimumWithdrawal:Number(pay?.minWithdrawal??config.minWithdrawal),maxDeposit:pay?.maxDeposit==null?null:Number(pay.maxDeposit),maxWithdrawal:pay?.maxWithdrawal==null?null:Number(pay.maxWithdrawal),depositEnabled:Boolean(pay?.depositEnabled??true),withdrawalEnabled:Boolean(pay?.withdrawalEnabled??true),depositFee:Number(pay?.depositFee||0),withdrawalFee:Number(pay?.withdrawalFee||0),maintenanceMode:Boolean(site?.maintenanceMode),gameLaunchEnabled:Boolean(site?.gameLaunchEnabled),registrationEnabled:Boolean(site?.registrationEnabled),promotionsEnabled:true,memberWalletEnabled:Boolean(site?.walletEnabled),site:{...site,heroConfig:j(site?.heroConfig),navigationConfig:j(site?.navigationConfig),footerConfig:j(site?.footerConfig),extraConfig:j(site?.extraConfig)},rewards:{...reward,rules:j(reward?.rules),extraConfig:j(reward?.extraConfig)}})
  }catch(e){next(e)}});
 
+// Public catalog reads only the local MySQL snapshot. Never call GoldslotPalase from this GET.
 app.get('/api/games',async(_,res,next)=>{try{
  const [r]=await pool.query(`SELECT g.id,g.provider_code providerCode,g.provider_id providerId,g.game_code gameCode,g.name,g.category,g.image_url imageUrl,g.is_active isActive,
    CASE WHEN EXISTS(SELECT 1 FROM game_display_settings d WHERE d.game_id=g.id AND d.section='popular') THEN (SELECT d.is_visible FROM game_display_settings d WHERE d.game_id=g.id AND d.section='popular' LIMIT 1) ELSE g.is_popular END isPopular,
@@ -195,19 +196,24 @@ app.get('/api/games',async(_,res,next)=>{try{
    AND NOT EXISTS(SELECT 1 FROM providers p LEFT JOIN provider_display_settings pd ON pd.provider_id=p.id WHERE p.id=g.provider_id AND (p.is_active=0 OR pd.is_visible=0))
    ORDER BY sortOrder,g.id`);
  const [providers]=await pool.query(`SELECT p.id,p.code,p.name,COALESCE(d.display_order,p.sort_order) sortOrder FROM providers p LEFT JOIN provider_display_settings d ON d.provider_id=p.id WHERE p.is_active=1 AND COALESCE(d.is_visible,1)=1 ORDER BY sortOrder,p.name`);
- ok(res,{games:r,providers})}catch(e){next(e)}});
+ ok(res,{games:r,providers},200,{'Cache-Control':'public, max-age=120, stale-while-revalidate=300'})}catch(e){next(e)}});
 app.get('/api/promotions',async(_,res,next)=>{try{const [r]=await pool.query('SELECT id,title,description,image_url imageUrl,start_at startAt,end_at endAt FROM promotions WHERE is_active=1 AND (start_at IS NULL OR start_at<=NOW()) AND (end_at IS NULL OR end_at>=NOW()) ORDER BY sort_order,id');ok(res,{promotions:r})}catch(e){next(e)}});
 
 app.post('/api/game-launch',memberAuth,async(req,res,next)=>{try{
  const [[site]] = await pool.query('SELECT maintenance_mode,game_launch_enabled FROM website_settings WHERE id=1');
  if(site?.maintenance_mode) return fail(res,503,'maintenance_mode');
- if(site?.game_launch_enabled===false) return fail(res,403,'game_launch_disabled');
+ if(site&&Number(site.game_launch_enabled)===0) return fail(res,403,'game_launch_disabled');
+ // Called only after the member explicitly presses "Main Game", never when a card/popup opens.
  const b=req.body||{},requestId=String(b.launchRequestId||req.get('Idempotency-Key')||'').trim(),providerId=String(b.providerId||''),symbol=String(b.gameSymbol||'').trim();
- if(!requestId||!providerId||!symbol)return fail(res,400,'invalid_launch_request');
- const [previousLaunch]=await pool.query('SELECT game_id,launch_url,expires_at,status FROM game_launches WHERE user_id=? AND request_id=? LIMIT 1',[req.user.id,requestId]);
- if(previousLaunch[0]) return ok(res,{game:{launchUrl:previousLaunch[0].launch_url,expiresAt:previousLaunch[0].expires_at,status:previousLaunch[0].status,gameId:previousLaunch[0].game_id},idempotent:true});
+ if(!requestId||requestId.length>120||!providerId||providerId.length>64||!symbol||symbol.length>120)return fail(res,400,'invalid_launch_request');
  const [games]=await pool.query('SELECT * FROM games WHERE provider_code="goldslotpalase" AND provider_id=? AND game_code=? AND is_active=1 LIMIT 1',[providerId,symbol]);
  if(!games[0])return fail(res,404,'game_not_found');
+ const [previousLaunch]=await pool.query('SELECT gl.game_id,gl.launch_url,gl.expires_at,gl.status FROM game_launches gl WHERE gl.user_id=? AND gl.request_id=? LIMIT 1',[req.user.id,requestId]);
+ if(previousLaunch[0]){
+  if(String(previousLaunch[0].game_id)!==String(games[0].id))return fail(res,409,'idempotency_key_reused');
+  if(new Date(previousLaunch[0].expires_at).getTime()<=Date.now())return fail(res,409,'launch_request_expired');
+  return ok(res,{game:{launchUrl:previousLaunch[0].launch_url,expiresAt:previousLaunch[0].expires_at,status:previousLaunch[0].status,gameId:previousLaunch[0].game_id},idempotent:true});
+ }
  const [pu]=await pool.query('SELECT provider_user_code FROM provider_users WHERE user_id=? AND provider_code="goldslotpalase"',[req.user.id]);
  let providerUser=pu[0]?.provider_user_code;
  if(!providerUser){const created=await provider.createUser(req.user.username);providerUser=String(created?.data?.user_code??created?.user_code??'');if(!providerUser)throw Object.assign(new Error('provider_user_create_invalid'),{code:'provider_invalid_response',status:502});await pool.query('INSERT INTO provider_users(id,user_id,provider_code,provider_user_code) VALUES(?,?,?,?)',[newId(),req.user.id,'goldslotpalase',providerUser])}
@@ -215,9 +221,12 @@ app.post('/api/game-launch',memberAuth,async(req,res,next)=>{try{
  const launchPayload={user_code:Number(providerUser),provider_id:Number(providerId),game_symbol:symbol,lang:Number(req.body.lang??9),return_url:config.memberOrigins[0]||'https://brandalbet.blogspot.com',min_bet:0,max_bet:0,round_max_win:0,rtp:0,is_finish_jackpot:true};
  Object.keys(launchPayload).forEach(k=>launchPayload[k]===undefined||launchPayload[k]===null||launchPayload[k]===''?delete launchPayload[k]:0);
  const launched=await provider.launch(launchPayload);
- const launchUrl=launched?.data?.game_url??launched?.data?.url??launched?.game_url??launched?.url;
- if(typeof launchUrl!=='string'||!/^https:\/\//i.test(launchUrl))return fail(res,502,'provider_invalid_launch_url');
- let exp=new Date(Date.now()+10*60*1000);await pool.query('INSERT INTO game_launches(id,user_id,game_id,provider,request_id,status,launch_url,expires_at) VALUES(?,?,?,?,?,?,?,?)',[newId(),req.user.id,games[0].id,'goldslotpalase',requestId,'issued',launchUrl,exp]);
+ const rawLaunchUrl=launched?.data?.game_url??launched?.data?.url??launched?.game_url??launched?.url;
+ let parsedLaunchUrl;
+ try{parsedLaunchUrl=new URL(String(rawLaunchUrl||''))}catch{}
+ if(!parsedLaunchUrl||parsedLaunchUrl.protocol!=='https:'||!parsedLaunchUrl.hostname||parsedLaunchUrl.username||parsedLaunchUrl.password)return fail(res,502,'provider_invalid_launch_url');
+ const launchUrl=parsedLaunchUrl.toString();
+ const exp=new Date(Date.now()+10*60*1000);await pool.query('INSERT INTO game_launches(id,user_id,game_id,provider,request_id,status,launch_url,expires_at) VALUES(?,?,?,?,?,?,?,?)',[newId(),req.user.id,games[0].id,'goldslotpalase',requestId,'issued',launchUrl,exp]);
  await audit(req,'game.launch','game',games[0].id,{providerId,gameSymbol:symbol});ok(res,{game:{launchUrl,expiresAt:exp.toISOString(),gameId:games[0].id}});
 }catch(e){next(e)}});
 
