@@ -49,7 +49,7 @@ async function ensureProviderUser(userId,username){
   if(existing[0]?.provider_user_code)return String(existing[0].provider_user_code);
   const created=await provider.createUser(username);
   const providerUser=String(created?.data?.user_code??created?.user_code??'');
-  if(!providerUser)throw Object.assign(new Error('provider_user_create_invalid'),{code:'provider_invalid_response',status:502});
+  if(!/^[1-9][0-9]*$/.test(providerUser))throw Object.assign(new Error('provider_user_create_invalid'),{code:'provider_invalid_response',status:502});
   await c.query('INSERT INTO provider_users(id,user_id,provider_code,provider_user_code) VALUES(?,?,?,?)',[newId(),userId,'goldslotpalase',providerUser]);
   return providerUser;
  });
