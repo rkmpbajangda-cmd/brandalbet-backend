@@ -181,7 +181,7 @@ app.post('/api/provider/callback',async(req,res,next)=>{try{
  }
  const cancelGuid=String(d.cancel_trans_guid??'').trim(),amount=money(d.amount??0),providerType=command==='bet'?'Bet':command==='win'?'Win':'Cancel';
  const response=await withTransaction(async conn=>{
-  const lookupId=command==='cancel'&&cancelGuid?cancelGuid:transGuid;
+  const lookupId=transGuid;
   const [existing]=await conn.query('SELECT response_json FROM provider_transactions WHERE provider_code="goldslotpalase" AND provider_transaction_id=? FOR UPDATE',[lookupId]);
   if(existing[0]?.response_json)return JSON.parse(existing[0].response_json);
   const [[wallet]]=await conn.query('SELECT balance,locked FROM wallets WHERE user_id=? FOR UPDATE',[userId]);
@@ -194,14 +194,14 @@ app.post('/api/provider/callback',async(req,res,next)=>{try{
   }else if(command==='win'){after=before+amount;ledgerDirection='credit';
   }else{
    if(!cancelGuid)return {result:43,status:'TRANSACTION_NOT_FOUND'};
-   const [original]=await conn.query('SELECT * FROM provider_transactions WHERE provider_code="goldslotpalase" AND provider_transaction_id=? AND user_id=? LIMIT 1 FOR UPDATE',[transGuid,userId]);
+   const [original]=await conn.query('SELECT * FROM provider_transactions WHERE provider_code="goldslotpalase" AND provider_transaction_id=? AND user_id=? LIMIT 1 FOR UPDATE',[cancelGuid,userId]);
    if(!original[0])return {result:43,status:'TRANSACTION_NOT_FOUND'};
    if(original[0].canceled_at)return {result:0,status:'OK',data:{account,balance:before}};
    const originalAmount=Number(original[0].amount||0);ledgerAmount=originalAmount;
    if(original[0].type==='Bet'){after=before+originalAmount;ledgerDirection='credit';reason='provider_bet_reversal';}
    else if(original[0].type==='Win'){if(before<originalAmount)return {result:31,status:'BALANCE_NOT_ENOUGH',data:{account,balance:before}};after=before-originalAmount;ledgerDirection='debit';reason='provider_win_reversal';}
    else return {result:43,status:'TRANSACTION_NOT_FOUND'};
-   await conn.query('UPDATE provider_transactions SET canceled_at=NOW(),status="canceled" WHERE provider_code="goldslotpalase" AND provider_transaction_id=?',[transGuid]);
+   await conn.query('UPDATE provider_transactions SET canceled_at=NOW(),status="canceled" WHERE provider_code="goldslotpalase" AND provider_transaction_id=?',[cancelGuid]);
   }
   const txId=newId(),ref='GSP-'+(command==='cancel'&&cancelGuid?cancelGuid:transGuid);
   await conn.query('UPDATE wallets SET balance=? WHERE user_id=?',[after,userId]);
