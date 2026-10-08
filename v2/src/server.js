@@ -12,6 +12,7 @@ import {sendOk,sendError} from './http.js';
 import {provider,verifyProviderCallback} from './provider.js';
 import {creditWallet,debitWallet,id as newId,money} from './wallet.js';
 import {encryptJson} from './vault.js';
+import {xendit,createDeposit,createWithdrawal,handleXenditPaymentWebhook,handleXenditPayoutWebhook} from './xendit-payment.js';
 
 const app=express();
 app.set('trust proxy',config.trustProxy);app.disable('x-powered-by');
@@ -84,7 +85,7 @@ async function login(req,res,username,password,deviceId){
 }
 
 app.get('/api/health',async(_,res)=>{try{await pingDatabase();ok(res,{service:'brandalbet-backend-v2',database:'ok',version:'2.1.0'})}catch{fail(res,503,'database_unavailable')}});
-app.get('/api/readiness',async(_,res)=>{try{await pingDatabase();ok(res,{ready:true,database:true,providerConfigured:provider.configured,paymentConfigured:Boolean(config.paymentBaseUrl&&config.paymentApiKey)})}catch{fail(res,503,'not_ready')}});
+app.get('/api/readiness',async(_,res)=>{try{await pingDatabase();ok(res,{ready:true,database:true,providerConfigured:provider.configured,paymentConfigured:xendit.configured})}catch{fail(res,503,'not_ready')}});
 app.get('/api/me',auth,(req,res)=>ok(res,{user:{id:req.user.id,username:req.user.username,email:req.user.email,role:req.user.role,displayName:req.user.display_name,phone:req.user.phone}}));
 
 app.post('/api/auth/register',async(req,res,next)=>{try{
@@ -190,55 +191,16 @@ app.post('/api/game-launch',memberAuth,async(req,res,next)=>{try{
  await audit(req,'game.launch','game',games[0].id,{providerId,gameSymbol});ok(res,{game:{launchUrl,expiresAt:exp.toISOString(),gameId:games[0].id}});
 }catch(e){next(e)}});
 
-app.post('/api/payment-deposit',memberAuth,async(req,res,next)=>{try{
- const [[ps]]=await pool.query('SELECT deposit_enabled,min_deposit,max_deposit FROM payment_settings WHERE id=1');
- if(ps?.deposit_enabled===false)return fail(res,403,'deposit_disabled');
- if(!config.paymentBaseUrl||!config.paymentApiKey)return fail(res,503,'payment_adapter_unavailable');
- const amount=money(req.body?.amountRupiah);const min=Number(ps?.min_deposit??config.minDeposit),max=ps?.max_deposit==null?null:Number(ps.max_deposit);
- if(amount<min)return fail(res,400,'minimum_deposit');
- if(max!=null&&amount>max)return fail(res,400,'maximum_deposit');
- return fail(res,503,'payment_adapter_not_implemented');
-}catch(e){next(e)}});
+app.post('/api/payment-deposit',memberAuth,async(req,res,next)=>{try{const out=await createDeposit(req.user,req.body||{});await audit(req,'payment.deposit.create','payment_order',out.reference,{amount:req.body?.amountRupiah,provider:'xendit'});ok(res,out)}catch(e){next(e)}});
 
-app.post('/api/payment-withdraw',memberAuth,async(req,res,next)=>{try{
- const [[ps]]=await pool.query('SELECT withdrawal_enabled,min_withdrawal,max_withdrawal FROM payment_settings WHERE id=1');
- if(ps?.withdrawal_enabled===false)return fail(res,403,'withdrawal_disabled');
- const amount=money(req.body?.amountRupiah);const min=Number(ps?.min_withdrawal??config.minWithdrawal),max=ps?.max_withdrawal==null?null:Number(ps.max_withdrawal);
- if(amount<min)return fail(res,400,'minimum_withdrawal');
- if(max!=null&&amount>max)return fail(res,400,'maximum_withdrawal');
- if(!config.paymentBaseUrl||!config.paymentApiKey)return fail(res,503,'payment_adapter_unavailable');
- // Never hold/debit member funds until the real payment-gateway payout adapter has accepted the withdrawal.
- return fail(res,503,'payment_payout_adapter_not_implemented');
-}catch(e){next(e)}});
- 
-app.post('/webhooks/v1/payments/:provider',async(req,res,next)=>{try{
- if(!config.paymentWebhookSecret)return fail(res,503,'payment_webhook_unconfigured');
- const supplied=String(req.get('X-Webhook-Secret')||req.get('X-Signature')||'');const a=Buffer.from(supplied),b=Buffer.from(config.paymentWebhookSecret);
- if(a.length!==b.length||!crypto.timingSafeEqual(a,b))return fail(res,401,'webhook_unauthorized');
- const body=req.body||{},eventKey=String(body.eventId||body.id||body.reference||body.orderId||'').trim();if(!eventKey)return fail(res,400,'webhook_event_required');
- const amount=money(body.amount??body.amountRupiah??0),reference=String(body.reference||body.orderId||body.merchantReference||'').trim();
- const result=await withTransaction(async conn=>{
-  const [existing]=await conn.query('SELECT processed_at,payload FROM webhook_events WHERE source=? AND event_key=? LIMIT 1 FOR UPDATE',[req.params.provider,eventKey]);
-  if(existing[0]?.processed_at)return {received:true,idempotent:true};
-  await conn.query('INSERT INTO webhook_events(id,source,event_key,signature_valid,amount,payload) VALUES(?,?,?,?,?,?) ON DUPLICATE KEY UPDATE amount=VALUES(amount),payload=VALUES(payload)',[newId(),req.params.provider,eventKey,true,amount,JSON.stringify(body)]);
-  const status=String(body.status||'').toLowerCase();
-  if(!['paid','success','completed'].includes(status)){await conn.query('UPDATE webhook_events SET processed_at=NOW() WHERE source=? AND event_key=?',[req.params.provider,eventKey]);return {received:true,ignored:true};}
-  const [orders]=await conn.query('SELECT * FROM payment_orders WHERE reference=? FOR UPDATE',[reference]);if(!orders[0])throw Object.assign(new Error('payment_order_not_found'),{code:'payment_order_not_found',status:404});
-  const order=orders[0];if(Number(order.amount)!==amount)throw Object.assign(new Error('payment_amount_mismatch'),{code:'payment_amount_mismatch',status:409});
-  if(order.status==='paid'){await conn.query('UPDATE webhook_events SET processed_at=NOW() WHERE source=? AND event_key=?',[req.params.provider,eventKey]);return {received:true,idempotent:true};}
-  const [[w]]=await conn.query('SELECT balance,locked FROM wallets WHERE user_id=? FOR UPDATE',[order.user_id]);if(!w||w.locked)throw Object.assign(new Error('wallet_locked'),{code:'wallet_locked',status:409});
-  const before=Number(w.balance),after=before+amount,txId=newId(),ref='PAY-'+reference;
-  await conn.query('UPDATE wallets SET balance=? WHERE user_id=?',[after,order.user_id]);
-  await conn.query('INSERT INTO transactions(id,user_id,type,amount,status,reference,metadata) VALUES(?,?,?,?,?,?,?)',[txId,order.user_id,'payment_deposit',amount,'completed',ref,JSON.stringify({provider:req.params.provider,eventKey,reference})]);
-  await conn.query('INSERT INTO wallet_ledger(id,user_id,transaction_id,reference,direction,amount,balance_before,balance_after,reason,metadata) VALUES(?,?,?,?,?,?,?,?,?,?)',[newId(),order.user_id,txId,ref,'credit',amount,before,after,'payment_deposit',JSON.stringify({provider:req.params.provider,eventKey,reference})]);
-  await conn.query('UPDATE payment_orders SET status="paid",provider_reference=? WHERE id=?',[String(body.transactionId||body.providerReference||eventKey),order.id]);
-  await conn.query('INSERT INTO deposits(id,user_id,amount,status,gateway,gateway_reference,metadata) VALUES(?,?,?,?,?,?,?) ON DUPLICATE KEY UPDATE status=VALUES(status),gateway_reference=VALUES(gateway_reference),metadata=VALUES(metadata)',[newId(),order.user_id,amount,'completed',req.params.provider,String(body.transactionId||body.providerReference||eventKey),JSON.stringify({paymentOrderId:order.id,reference})]);
-  await conn.query('UPDATE webhook_events SET processed_at=NOW() WHERE source=? AND event_key=?',[req.params.provider,eventKey]);
-  return {received:true,credited:true,balance:after};
- });
- ok(res,result);
-}catch(e){next(e)}});
+app.post('/api/payment-withdraw',memberAuth,async(req,res,next)=>{try{const out=await createWithdrawal(req.user,req.body||{});await audit(req,'payment.withdraw.create','withdrawal',out.withdrawalId,{amount:req.body?.amountRupiah,provider:'xendit',payoutId:out.payoutId,status:out.status});ok(res,out)}catch(e){next(e)}});
 
+app.post('/webhooks/xendit/payment',async(req,res,next)=>{try{ok(res,await handleXenditPaymentWebhook(req))}catch(e){next(e)}});
+
+app.post('/webhooks/xendit/payout',async(req,res,next)=>{try{ok(res,await handleXenditPayoutWebhook(req))}catch(e){next(e)}});
+
+app.post('/webhooks/v1/payments/:provider',async(req,res,next)=>{try{if(String(req.params.provider).toLowerCase()==='xendit')return ok(res,await handleXenditPaymentWebhook(req));
+ if(!config.paymentWebhookSecret)return fail(res,503,'payment_webhook_unconfigured');return fail(res,503,'legacy_payment_webhook_disabled')}catch(e){next(e)}});
 app.post('/api/provider/callback',async(req,res,next)=>{try{
  verifyProviderCallback(req);const b=req.body||{},command=String(b.command||'').toLowerCase(),d=b.data||{},account=String(d.account??'').trim();
  if(!['authenticate','balance','bet','win','cancel','status'].includes(command))return res.status(400).json({result:1012,status:'PARAMETERS_INVALID'});
@@ -318,7 +280,7 @@ app.get('/api/backoffice-finance',adminAuth,async(req,res,next)=>{try{
  const [d]=await pool.query('SELECT d.id,d.user_id userId,u.username member,d.amount,d.status,d.gateway channel,d.gateway_reference gatewayReference,d.gateway_reference reference,d.created_at createdAt FROM deposits d JOIN users u ON u.id=d.user_id ORDER BY d.created_at DESC LIMIT 200');
  const [w]=await pool.query('SELECT w.id,w.user_id userId,u.username member,w.amount,w.status,w.bank_account_id bankAccountId,w.gateway_reference gatewayReference,CONCAT("WD-",LEFT(w.id,12)) reference,CONCAT(ba.provider," • ",RIGHT(ba.account_number,4)) destinationMasked,w.reject_reason rejectReason,w.created_at createdAt FROM withdrawals w JOIN users u ON u.id=w.user_id LEFT JOIN bank_accounts ba ON ba.id=w.bank_account_id ORDER BY w.created_at DESC LIMIT 200');
  const [[pd],[pw],[pr]] = await Promise.all([pool.query('SELECT COUNT(*) count FROM deposits WHERE status="pending"'),pool.query('SELECT COUNT(*) count FROM withdrawals WHERE status="pending"'),pool.query('SELECT COUNT(*) count FROM provider_transactions WHERE status IN ("pending","reconciled")')]);
- ok(res,{deposits:d,withdrawals:w,reconciliation:[],pendingDeposits:Number(pd[0].count),pendingWithdrawals:Number(pw[0].count),providerReconciliationPending:Number(pr[0].count),paymentOperational:false,callbackIssues:null,note:'Payment adapter belum operational; endpoint tetap fail-closed.'});
+ ok(res,{deposits:d,withdrawals:w,reconciliation:[],pendingDeposits:Number(pd[0].count),pendingWithdrawals:Number(pw[0].count),providerReconciliationPending:Number(pr[0].count),paymentOperational:xendit.configured,callbackIssues:null,note:xendit.configured?'Xendit adapter aktif; settlement tetap berbasis webhook.':'Xendit API key belum dikonfigurasi.'});
 }catch(e){next(e)}});
 app.get('/api/backoffice-ledger',adminAuth,async(req,res,next)=>{try{const [r]=await pool.query('SELECT l.*,u.username FROM wallet_ledger l JOIN users u ON u.id=l.user_id ORDER BY l.created_at DESC LIMIT 200');ok(res,{items:r,ledger:r})}catch(e){next(e)}});
 app.get('/api/backoffice-game-catalog',adminAuth,async(req,res,next)=>{try{
