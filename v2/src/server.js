@@ -280,8 +280,8 @@ app.get('/api/backoffice-dashboard',adminAuth,async(req,res,next)=>{try{
   pool.query('SELECT COALESCE(SUM(balance),0) balance FROM wallets'),
   pool.query('SELECT COALESCE(SUM(amount),0) amount FROM withdrawals WHERE status="completed" AND created_at>=CURRENT_DATE'),
   pool.query('SELECT COUNT(*) count FROM deposits WHERE status="pending"'),
-  pool.query('SELECT COUNT(*) count FROM withdrawals WHERE status="pending"'),
-  pool.query('SELECT COUNT(*) count FROM provider_transactions WHERE status IN ("pending","reconciled")'),
+  pool.query('SELECT COUNT(*) count FROM withdrawals WHERE status IN ("pending","processing","pending_compliance")'),
+  pool.query('SELECT COUNT(*) count FROM provider_transactions WHERE status="pending"'),
   pool.query('SELECT COUNT(*) count FROM games WHERE is_active=1')
  ]);
  const [trend]=await pool.query('SELECT DATE(created_at) day,COALESCE(SUM(CASE WHEN type IN ("payment_deposit","deposit") THEN amount ELSE 0 END),0) deposits,COALESCE(SUM(CASE WHEN type IN ("payment_withdrawal","withdrawal") THEN amount ELSE 0 END),0) withdrawals FROM transactions WHERE created_at>=CURRENT_DATE-INTERVAL ? DAY GROUP BY DATE(created_at) ORDER BY day',[days-1]);
