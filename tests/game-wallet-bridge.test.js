@@ -120,6 +120,11 @@ test('game launch uses Seamless mode and does not query or transfer provider wal
     loadProfile: async () => ({ uid: 'u1', username: 'member', onboardingCompleted: true }),
     loadWallet: async () => wallet,
     ensurePlayer: async () => player,
+    loadCatalog: async () => ({
+      games: [{ providerId: 9, gameSymbol: 'slot_x', launchEnabled: true }],
+      providers: [],
+      snapshotStale: false,
+    }),
     prepareBalance: async () => { throw new Error('Seamless launch must not transfer funds'); },
   });
   assert.deepEqual(order, ['launch']);
