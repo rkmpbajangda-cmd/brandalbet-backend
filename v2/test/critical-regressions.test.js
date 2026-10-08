@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
 import {fileURLToPath} from 'node:url';
 import {normalizeReferralCode} from '../src/referral.js';
+import {normalizeProviderGame, normalizeProviderRecord} from '../src/provider.js';
 
 const serverPath = fileURLToPath(new URL('../src/server.js', import.meta.url));
 
@@ -110,4 +111,40 @@ test('catalog synchronization has one canonical persistence endpoint', async () 
   assert.match(catalogRoute, /b\.action==='sync'/);
   assert.match(catalogRoute, /provider\.providers\(\)/);
   assert.match(catalogRoute, /provider\.allGames\(\)/);
+});
+
+
+test('Goldslot documented catalog field names are normalized without dropping game images or launch flags', () => {
+  const provider = normalizeProviderRecord({provider_id: 7, provider_name: 'Example Provider', status: 1});
+  const maintenanceProvider = normalizeProviderRecord({provider_id: 8, provider_name: 'Maintenance Provider', status: 2});
+  const game = normalizeProviderGame({
+    provider_id: 7,
+    game_code: 'slot-1',
+    game_name: 'Slot One',
+    locale_name: 'Slot Satu',
+    game_image_narrow: 'https://cdn.example.test/slot-narrow.png',
+    game_image: 'https://cdn.example.test/slot.png',
+    launch_enable: 1,
+    category: 'Slots'
+  });
+  assert.equal(provider.isActive, true);
+  assert.equal(maintenanceProvider.isActive, false);
+  assert.equal(game.providerId, '7');
+  assert.equal(game.gameCode, 'slot-1');
+  assert.equal(game.name, 'Slot Satu');
+  assert.equal(game.imageUrl, 'https://cdn.example.test/slot-narrow.png');
+  assert.equal(game.isActive, true);
+  assert.equal(normalizeProviderGame({provider_id: 7, game_code: 'disabled', game_name: 'Disabled', launch_enable: 0}).isActive, false);
+});
+
+test('game launch validates numeric provider/user codes and excludes inactive providers', async () => {
+  const source = await readFile(serverPath, 'utf8');
+  const launchStart = source.indexOf("app.post('/api/game-launch'");
+  const launchEnd = source.indexOf("app.post('/api/payment-deposit'", launchStart);
+  const route = source.slice(launchStart, launchEnd);
+  assert.match(route, /Number\.isSafeInteger\(numericProviderId\)/);
+  assert.match(route, /JOIN providers p ON p\.id=g\.provider_id AND p\.is_active=1/);
+  assert.match(route, /Number\.isSafeInteger\(numericUserCode\)/);
+  assert.match(route, /lang:9/);
+  assert.doesNotMatch(route, /lang:Number\(req\.body\.lang/);
 });
