@@ -211,7 +211,7 @@ app.post('/api/game-launch',memberAuth,async(req,res,next)=>{try{
  const launchUrl=launched?.data?.game_url??launched?.data?.url??launched?.game_url??launched?.url;
  if(typeof launchUrl!=='string'||!/^https:\/\//i.test(launchUrl))return fail(res,502,'provider_invalid_launch_url');
  let exp=new Date(Date.now()+10*60*1000);await pool.query('INSERT INTO game_launches(id,user_id,game_id,provider,request_id,status,launch_url,expires_at) VALUES(?,?,?,?,?,?,?,?)',[newId(),req.user.id,games[0].id,'goldslotpalase',requestId,'issued',launchUrl,exp]);
- await audit(req,'game.launch','game',games[0].id,{providerId,gameSymbol});ok(res,{game:{launchUrl,expiresAt:exp.toISOString(),gameId:games[0].id}});
+ await audit(req,'game.launch','game',games[0].id,{providerId,gameSymbol:symbol});ok(res,{game:{launchUrl,expiresAt:exp.toISOString(),gameId:games[0].id}});
 }catch(e){next(e)}});
 
 app.post('/api/payment-deposit',memberAuth,async(req,res,next)=>{try{const out=await createDeposit(req.user,{...(req.body||{}),idempotencyKey:req.get('Idempotency-Key')||req.body?.idempotencyKey});await audit(req,'payment.deposit.create','payment_order',out.reference,{amount:req.body?.amountRupiah,provider:'xendit'});ok(res,out)}catch(e){next(e)}});
