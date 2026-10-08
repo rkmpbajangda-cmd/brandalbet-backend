@@ -44,5 +44,5 @@ Do not point the live Blogger XML at this backend until these checks pass.
 - Wallet changes use database transactions and row locks.
 - Provider/payment events are idempotent.
 - Payment credentials stored through the backoffice are encrypted at rest with AES-256-GCM.
-- Withdrawal holds are written to wallet ledger atomically.
+- Withdrawal is intentionally fail-closed until the official payment payout adapter is implemented; the member wallet is not debited merely by creating a withdrawal request.
 - Superadmin bootstrap requires `X-Bootstrap-Token` and is single-use.
