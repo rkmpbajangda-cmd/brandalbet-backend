@@ -3,7 +3,7 @@ import { ServiceError } from '../utils/errors.js';
 import { getOrCreateProfile } from '../member/profile.js';
 import { getOrCreateWallet } from '../wallet/service.js';
 import { ensureGoldslotPlayer } from './player.js';
-import { ensurePlayableGoldslotBalance, normalizeLaunchRequestId } from './wallet-bridge.js';
+import { normalizeLaunchRequestId } from './wallet-bridge.js';
 import { loadStoredGameCatalog } from './catalog.js';
 
 const LAUNCH_GUARD_MS = 8_000;
@@ -121,7 +121,6 @@ export async function launchGoldslotGame(actor, input, {
   loadProfile = getOrCreateProfile,
   loadWallet = getOrCreateWallet,
   ensurePlayer = ensureGoldslotPlayer,
-  prepareBalance = ensurePlayableGoldslotBalance,
   loadCatalog = loadStoredGameCatalog,
 } = {}) {
   const game = validateGameInput(input);
@@ -153,20 +152,9 @@ export async function launchGoldslotGame(actor, input, {
     distributedLease = await acquireDistributedLaunchGuard(actor, game, { db, now: guardNow });
     const player = await ensurePlayer(actor, { client, db });
 
-    // Production Goldslot clients always expose userInfo. The guard only preserves
-    // compatibility with minimal isolated unit-test doubles; it is not reachable
-    // through browser input because the client is constructed server-side.
-    const walletBridge = typeof client?.userInfo === 'function'
-      ? await prepareBalance(actor, {
-        wallet,
-        player,
-        client,
-        env,
-        db,
-        launchRequestId: game.launchRequestId,
-      })
-      : null;
-
+    // BrandalBet uses the Seamless callback wallet as the single source of truth.
+    // Do not query or transfer the provider wallet during launch: mixing a transfer
+    // bridge with bet/win/cancel callbacks can debit or credit the same funds twice.
     const data = await client.launch({
       userCode: player.userCode,
       providerId: game.providerId,
@@ -182,7 +170,7 @@ export async function launchGoldslotGame(actor, input, {
       expiresInSeconds: Math.floor(configuredTtlMs / 1000),
       launchUrlExpiresAt: new Date(Date.now() + configuredTtlMs).toISOString(),
       oneTimeUse: true,
-      walletBridge,
+      walletMode: 'seamless',
     });
   } catch (error) {
     // If the provider timeout is ambiguous, keep both guards until their short
