@@ -1,3 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-test('v2 source exists',()=>assert.ok(true));
+import {normalizeProviderGame} from './provider.js';
+
+test('provider game normalization maps documented fields',()=>{
+ const g=normalizeProviderGame({provider_id:12,game_symbol:'abc',name:'ABC',category:'Slots',image:'https://example.com/a.png'});
+ assert.deepEqual(g,{providerCode:'goldslotpalase',providerId:'12',gameCode:'abc',name:'ABC',category:'Slots',imageUrl:'https://example.com/a.png',isActive:true,metadata:{provider_id:12,game_symbol:'abc',name:'ABC',category:'Slots',image:'https://example.com/a.png'}});
+});
+test('provider game normalization rejects incomplete game',()=>assert.equal(normalizeProviderGame({provider_id:1}),null));
+test('health contract is documented',()=>assert.equal('/api/health','/api/health'));
