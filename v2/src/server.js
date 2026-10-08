@@ -98,8 +98,31 @@ app.post('/api/auth/register',async(req,res,next)=>{try{
 app.post('/api/auth/login',async(req,res,next)=>{try{return login(req,res,req.body?.username,req.body?.password,req.body?.deviceId)}catch(e){next(e)}});
 app.post('/api/auth/logout',auth,async(req,res,next)=>{try{await pool.query('UPDATE user_sessions SET revoked_at=NOW() WHERE id=?',[req.user.session_id]);await audit(req,'auth.logout','user',req.user.id);ok(res,{loggedOut:true})}catch(e){next(e)}});
 app.post('/api/auth/refresh',auth,(req,res)=>ok(res,{sessionValid:true,expiresAt:req.user.expires_at}));
-app.post('/api/member-session',memberAuth,(req,res)=>ok(res,{session:{userId:req.user.id,deviceId:req.user.device_id,expiresAt:req.user.expires_at}}));
-app.post('/api/member-device-session',memberAuth,async(req,res,next)=>{try{if(req.body?.replace===true)await pool.query('UPDATE user_sessions SET revoked_at=NOW() WHERE user_id=? AND session_type="member" AND id<>? AND revoked_at IS NULL',[req.user.id,req.user.session_id]);ok(res,{claimed:true,deviceId:req.user.device_id})}catch(e){next(e)}});
+async function memberSessionResponse(req,res,next){
+ try{
+  const [[u],[p],[b],[w]] = await Promise.all([
+   pool.query('SELECT id,username,email,display_name displayName,phone,referral_code referralCode FROM users WHERE id=?',[req.user.id]),
+   pool.query('SELECT language,timezone,avatar_url avatarUrl FROM member_profiles WHERE user_id=?',[req.user.id]),
+   pool.query('SELECT id,type,provider,account_number accountNumber,account_name accountName FROM bank_accounts WHERE user_id=? ORDER BY created_at DESC LIMIT 1',[req.user.id]),
+   pool.query('SELECT balance,locked FROM wallets WHERE user_id=?',[req.user.id])
+  ]);
+  const profile=u[0]||null;
+  ok(res,{
+   session:{userId:req.user.id,deviceId:req.user.device_id,expiresAt:req.user.expires_at,sessionType:req.user.session_type},
+   profile:profile?{...profile,onboardingCompleted:Boolean(b[0])&&Boolean(profile.username&&profile.displayName&&profile.phone&&b[0].accountNumber&&b[0].accountName)}:null,
+   bankAccount:b[0]||null,
+   wallet:{balance:Number(w[0]?.balance||0),locked:Boolean(w[0]?.locked)},
+   preferences:p[0]||{language:'id',timezone:'Asia/Jakarta'}
+  });
+ }catch(e){next(e)}
+}
+app.get('/api/member-session',memberAuth,memberSessionResponse);
+app.post('/api/member-session',memberAuth,memberSessionResponse);
+app.post('/api/member-device-session',memberAuth,async(req,res,next)=>{try{
+ if(req.body?.action==='end'){await pool.query('UPDATE user_sessions SET revoked_at=NOW() WHERE id=?',[req.user.session_id]);return ok(res,{ended:true})}
+ if(req.body?.replace===true)await pool.query('UPDATE user_sessions SET revoked_at=NOW() WHERE user_id=? AND session_type="member" AND id<>? AND revoked_at IS NULL',[req.user.id,req.user.session_id]);
+ ok(res,{claimed:true,deviceId:req.user.device_id})
+}catch(e){next(e)}});
 
 app.get('/api/member/profile',memberAuth,async(req,res,next)=>{try{
  const [[u],[p],[b]] = await Promise.all([pool.query('SELECT id,username,email,display_name displayName,phone,referral_code referralCode FROM users WHERE id=?',[req.user.id]),pool.query('SELECT language,timezone,avatar_url avatarUrl FROM member_profiles WHERE user_id=?',[req.user.id]),pool.query('SELECT id,type,provider,account_number accountNumber,account_name accountName FROM bank_accounts WHERE user_id=? ORDER BY created_at DESC LIMIT 1',[req.user.id])]);
