@@ -76,9 +76,9 @@ async function login(req,res,username,password,deviceId){
  if(!rows[0]||!(await argon2.verify(rows[0].password_hash,password)))return fail(res,401,'invalid_credentials');
  const u=rows[0],sid=newId(),raw=token(),expires=new Date(Date.now()+config.sessionTtlDays*86400000),type=u.role==='member'?'member':'backoffice';
  const [[security]]=u.role==='member'?await pool.query('SELECT login_enabled,one_device_only FROM member_security_settings WHERE user_id=?',[u.id]):[[null]];
- if(security&&security.login_enabled===false)return fail(res,403,'login_disabled');
+ if(security&&Number(security.login_enabled)===0)return fail(res,403,'login_disabled');
  await withTransaction(async c=>{
-  if(type==='backoffice'||security?.one_device_only!==false)await c.query('UPDATE user_sessions SET revoked_at=NOW() WHERE user_id=? AND session_type=? AND revoked_at IS NULL',[u.id,type]);
+  if(type==='backoffice'||Number(security?.one_device_only??1)!==0)await c.query('UPDATE user_sessions SET revoked_at=NOW() WHERE user_id=? AND session_type=? AND revoked_at IS NULL',[u.id,type]);
   await c.query('INSERT INTO user_sessions(id,user_id,token_hash,device_id,session_type,ip,user_agent,expires_at) VALUES(?,?,?,?,?,?,?,?)',[sid,u.id,hash(raw),deviceId||null,type,req.ip,req.get('user-agent')||null,expires]);
   await c.query('UPDATE users SET last_login_at=NOW() WHERE id=?',[u.id]);
  });
