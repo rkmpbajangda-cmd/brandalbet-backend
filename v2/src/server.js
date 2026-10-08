@@ -120,7 +120,7 @@ app.post('/api/auth/register',async(req,res,next)=>{try{
 
 app.post('/api/auth/login',async(req,res,next)=>{try{return login(req,res,req.body?.username,req.body?.password,req.body?.deviceId)}catch(e){next(e)}});
 app.post('/api/auth/logout',auth,async(req,res,next)=>{try{await pool.query('UPDATE user_sessions SET revoked_at=NOW() WHERE id=?',[req.user.session_id]);await audit(req,'auth.logout','user',req.user.id);ok(res,{loggedOut:true})}catch(e){next(e)}});
-app.post('/api/auth/refresh',auth,(req,res)=>ok(res,{sessionValid:true,expiresAt:req.user.expires_at}));
+app.post('/api/auth/refresh',auth,async(req,res,next)=>{try{const raw=token(),expires=new Date(Date.now()+config.sessionTtlDays*86400000);const [updated]=await pool.query('UPDATE user_sessions SET token_hash=?,expires_at=? WHERE id=? AND revoked_at IS NULL AND expires_at>NOW()',[hash(raw),expires,req.user.session_id]);if(!updated.affectedRows)return fail(res,401,'session_invalid');await audit(req,'auth.refresh','user',req.user.id);ok(res,{token:raw,sessionValid:true,expiresAt:expires.toISOString()})}catch(e){next(e)}});
 async function memberSessionResponse(req,res,next){
  try{
   const [[u],[p],[b],[w]] = await Promise.all([
