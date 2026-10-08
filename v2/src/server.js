@@ -306,12 +306,25 @@ app.get('/api/backoffice-game-catalog',adminAuth,async(req,res,next)=>{try{
 app.post('/api/backoffice-game-catalog',adminAuth,role('admin','superadmin'),async(req,res,next)=>{try{
  const b=req.body||{};
  if(b.action==='sync'){
+  const providerResponse=await provider.providers({});
+  const providerRaw=providerResponse?.data?.providers||providerResponse?.providers||providerResponse?.data||[];
+  const providerList=Array.isArray(providerRaw)?providerRaw:[];
+  const {normalizeProviderGame,normalizeProviderRecord}=await import('./provider.js');
+  let providersSaved=0;
+  for(const x of providerList){
+   const item=normalizeProviderRecord(x);if(!item)continue;
+   await pool.query('INSERT INTO providers(id,code,name,is_active,sort_order,config_json) VALUES(?,?,?,?,?,?) ON DUPLICATE KEY UPDATE code=VALUES(code),name=VALUES(name),is_active=VALUES(is_active),sort_order=VALUES(sort_order),config_json=VALUES(config_json)',[item.id,item.code,item.name,item.isActive,item.sortOrder,JSON.stringify(item.metadata)]);
+   providersSaved++;
+  }
   const raw=await provider.allGames({}),list=Array.isArray(raw?.data?.games)?raw.data.games:Array.isArray(raw?.games)?raw.games:Array.isArray(raw?.data)?raw.data:[];
   let count=0;
-  const {normalizeProviderGame}=await import('./provider.js');
   for(const x of list){const g=normalizeProviderGame(x);if(!g)continue;await pool.query('INSERT INTO games(id,provider_code,provider_id,game_code,name,category,image_url,is_active,metadata) VALUES(?,?,?,?,?,?,?,?,?) ON DUPLICATE KEY UPDATE provider_id=VALUES(provider_id),name=VALUES(name),category=VALUES(category),image_url=VALUES(image_url),is_active=VALUES(is_active),metadata=VALUES(metadata)',[newId(),g.providerCode,g.providerId,g.gameCode,g.name,g.category,g.imageUrl,g.isActive,JSON.stringify(g.metadata)]);count++}
-  await audit(req,'catalog.sync','provider','goldslotpalase',{count});
-  const [items]=await pool.query('SELECT * FROM games ORDER BY provider_code,sort_order,id');return ok(res,{items,games:items,display:{revision:0,hiddenGames:[],popularOrder:[],newestOrder:[],pinnedOrder:[],providerOrder:[]},count});
+  await audit(req,'catalog.sync','provider','goldslotpalase',{count,providersSaved});
+  const [items]=await pool.query('SELECT * FROM games ORDER BY provider_code,sort_order,id');
+  const [providerItems]=await pool.query('SELECT p.*,d.display_order displayOrder,d.is_visible displayVisible FROM providers p LEFT JOIN provider_display_settings d ON d.provider_id=p.id ORDER BY COALESCE(d.display_order,p.sort_order),p.name');
+  const [displayRows]=await pool.query('SELECT value_json FROM system_settings WHERE setting_key="game_display"');
+  const display=displayRows[0]?parseJson(displayRows[0].value_json,{}):{revision:0,hiddenGames:[],popularOrder:[],newestOrder:[],pinnedOrder:[],providerOrder:[]};
+  return ok(res,{items,games:items,providers:providerItems,display,count,providersSaved,status:count||providersSaved?'READY':'EMPTY'});
  }
  if(b.action==='update'){
   const x=b.settings||{};
