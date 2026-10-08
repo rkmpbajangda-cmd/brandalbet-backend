@@ -4,20 +4,24 @@ import cors from 'cors';
 import helmet from 'helmet';
 import crypto from 'node:crypto';
 import argon2 from 'argon2';
-import mysql from 'mysql2/promise';
+import { config } from './config.js';
+import { pool, pingDatabase, closeDatabase } from './db.js';
+import { requestContext, timeout, notFound, errorHandler } from './middleware.js';
+import { sendOk, sendError } from './http.js';
 
 const app=express();
-app.set('trust proxy',1);
+app.set('trust proxy', config.trustProxy);
+app.disable('x-powered-by');
+app.use(requestContext);
 app.use(helmet({contentSecurityPolicy:false}));
-const origins=(process.env.CORS_ORIGINS||'').split(',').map(x=>x.trim()).filter(Boolean);
+const origins=config.corsOrigins;
 app.use(cors({origin:(o,cb)=>!o||origins.includes(o)?cb(null,true):cb(new Error('origin_not_allowed')),credentials:true}));
-app.use(express.json({limit:'128kb'}));
-
-const pool=mysql.createPool({uri:process.env.DATABASE_URL,connectionLimit:10,waitForConnections:true});
+app.use(timeout(config.requestTimeoutMs));
+app.use(express.json({limit: config.bodyLimit, strict: true}));
 const hash=t=>crypto.createHash('sha256').update(String(t)).digest('hex');
 const token=()=>crypto.randomBytes(48).toString('base64url');
-const ok=(res,data={})=>res.json({ok:true,...data});
-const fail=(res,status,error)=>res.status(status).json({ok:false,error});
+const ok=sendOk;
+const fail=sendError;
 
 async function auth(req,res,next){
  try{
@@ -30,7 +34,7 @@ async function auth(req,res,next){
 }
 const roles=(...allowed)=>(req,res,next)=>allowed.includes(req.user?.role)?next():fail(res,403,'forbidden');
 
-app.get('/api/health',async(_,res)=>{try{await pool.query('SELECT 1');ok(res,{service:'brandalbet-backend-v2',database:'ok'})}catch{fail(res,503,'database_unavailable')}});
+app.get('/api/health',async(_,res)=>{try{await pingDatabase();ok(res,{service:'brandalbet-backend-v2',database:'ok',version:'2.0.0'})}catch{fail(res,503,'database_unavailable')}});
 app.get('/api/me',auth,(req,res)=>ok(res,{user:{id:req.user.id,username:req.user.username,email:req.user.email,role:req.user.role,displayName:req.user.display_name}}));
 
 app.post('/api/auth/register',async(req,res,next)=>{
@@ -55,7 +59,7 @@ async function login(req,res,username,password,deviceId){
  if(!username||!password)return fail(res,400,'credentials_required');
  const [r]=await pool.query('SELECT * FROM users WHERE (username=? OR email=?) AND status="active" LIMIT 1',[username,username]);
  if(!r[0]||!(await argon2.verify(r[0].password_hash,password)))return fail(res,401,'invalid_credentials');
- const c=await pool.getConnection(); const t=token(); const sid=crypto.randomUUID(); const exp=new Date(Date.now()+Number(process.env.SESSION_TTL_DAYS||30)*86400000);
+ const c=await pool.getConnection(); const t=token(); const sid=crypto.randomUUID(); const exp=new Date(Date.now()+Number(config.sessionTtlDays||30)*86400000);
  try{await c.beginTransaction();
   await c.query('UPDATE user_sessions SET revoked_at=NOW() WHERE user_id=? AND session_type=? AND revoked_at IS NULL',[r[0].id,r[0].role==='member'?'member':'backoffice']);
   await c.query('INSERT INTO user_sessions(id,user_id,token_hash,device_id,session_type,ip,user_agent,expires_at) VALUES(?,?,?,?,?,?,?,?,?)',[sid,r[0].id,hash(t),deviceId||null,r[0].role==='member'?'member':'backoffice',req.ip,req.get('user-agent')||null,exp]);
@@ -85,5 +89,19 @@ app.get('/api/backoffice-game-catalog',auth,roles('admin','superadmin'),async(_,
 app.post('/api/backoffice-game-catalog',auth,roles('admin','superadmin'),async(req,res,next)=>{try{const b=req.body||{},id=b.id||crypto.randomUUID();await pool.query('INSERT INTO games(id,provider_code,game_code,name,category,image_url,is_active,is_popular,is_new,sort_order) VALUES(?,?,?,?,?,?,?,?,?,?) ON DUPLICATE KEY UPDATE name=VALUES(name),category=VALUES(category),image_url=VALUES(image_url),is_active=VALUES(is_active),is_popular=VALUES(is_popular),is_new=VALUES(is_new),sort_order=VALUES(sort_order)',[id,b.providerCode||'goldslotpalase',b.gameCode,b.name,b.category||null,b.imageUrl||null,b.isActive!==false,b.isPopular===true,b.isNew===true,Number(b.sortOrder||0)]);ok(res,{id})}catch(e){next(e)}});
 app.get('/api/backoffice-audit',auth,roles('admin','superadmin'),async(_,res,next)=>{try{const [r]=await pool.query('SELECT * FROM audit_logs ORDER BY created_at DESC LIMIT 500');ok(res,{audit:r})}catch(e){next(e)}});
 
-app.use((err,req,res,next)=>{if(res.headersSent)return next(err);console.error(err);fail(res,500,'internal_error')});
-const port=Number(process.env.PORT||3000);app.listen(port,()=>console.log('BrandalBet V2 listening on '+port));
+app.use(notFound);
+app.use(errorHandler);
+
+const port=config.port;
+const server=app.listen(port,()=>console.log('BrandalBet V2 listening on '+port));
+
+async function shutdown(signal) {
+  console.log('Received '+signal+'; shutting down');
+  server.close(async () => {
+    try { await closeDatabase(); process.exit(0); }
+    catch (error) { console.error(error); process.exit(1); }
+  });
+  setTimeout(() => process.exit(1), 10000).unref();
+}
+process.on('SIGTERM', () => shutdown('SIGTERM'));
+process.on('SIGINT', () => shutdown('SIGINT'));
