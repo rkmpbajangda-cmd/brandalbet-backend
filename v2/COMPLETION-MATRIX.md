@@ -13,6 +13,7 @@ This document is a delivery checklist, not a claim that features are production-
 - [ ] Migrate the Member and Backoffice XML from legacy Firebase/Cloudflare auth to the V2 Bearer-session API contract.
 - [ ] Verify data migration and reconcile all opening wallet balances and ledger entries.
 - [ ] Complete GoldslotPalase sandbox callback, launch, idempotency, cancellation/reversal and settlement tests.
+- [x] Separate catalog refresh from launch: member GET reads MySQL only; provider catalog requests happen on explicit Backoffice sync; launch URL is requested only on the member's Main Game action.
 - [ ] Complete Xendit test-mode deposit, payout, webhook replay, timeout, failure and reconciliation tests.
 - [ ] Verify backup restoration, monitoring, TLS, CORS allowlists and operational rollback.
 - [ ] Obtain required provider, legal and operational approvals before real-money use.
@@ -26,7 +27,7 @@ This document is a delivery checklist, not a claim that features are production-
 | Wallet and ledger | Wallet, ledger, row locks and unique references exist | Concurrent debit/credit tests; ledger-to-wallet reconciliation; adjustment approval and audit tests |
 | Deposits | Xendit adapter and payment/webhook storage exist | Callback auth, duplicate/out-of-order webhook tests, provider status reconciliation and end-to-end test mode |
 | Withdrawals | Reserved balance, password check and payout adapter exist | Success/failure/unknown timeout/replay tests; verify no double debit/release; destination routing validation |
-| Games and provider | Catalog sync, launch and callback routes exist | Real sandbox tests for user mapping, game launch, bets, wins, cancel, duplicate IDs, status query and settlement |
+| Games and provider | Explicit Backoffice catalog sync; Member GET reads MySQL only; launch endpoint requests URL on Main Game click; provider-user creation deferred to launch | Real sandbox tests for user mapping, game launch, bets, wins, cancel, duplicate IDs, status query and settlement; ensure deployed XML uses these exact routes and generates a new launchRequestId per intentional launch |
 | Catalog display controls | Display tables and Backoffice endpoints exist | Validate referenced IDs; verify hidden/visible/order persistence and Member output after reload |
 | Promotions and website settings | Routes and tables exist | Validate fields and date windows; test XML rendering and malformed settings behavior |
 | Cashback/referrals | Referral tracking and reward policy storage exist | Trusted settled-round source; deterministic weekly calculation; idempotent payout; disputes/reversals; statements and reports |
@@ -53,3 +54,14 @@ The XML files currently checked into this repository are named `BRANDALBET_MEMBE
 6. External payment/provider features pass staging tests and reconciliation.
 7. No dummy/fallback data may disguise an unavailable integration.
 8. Real-money readiness remains false until all operational and approval gates are explicitly verified.
+
+## Catalog and game launch contract
+
+1. `GET /api/games` is read-only against MySQL and has short HTTP caching. It must never call GoldslotPalase catalog methods.
+2. `POST /api/backoffice-game-catalog` with `{ "action": "sync" }` is the manual catalog synchronization action. Only an authorized admin/superadmin may invoke it. A normal GET of the Backoffice catalog must remain read-only.
+3. Opening a game card or detail popup is a local UI action using the already loaded catalog row. It must not call `/api/game-launch`.
+4. When, and only when, the member clicks **Main Game**, the Member XML calls `POST /api/game-launch` with the authenticated bearer token and `{ "providerId": "<provider_id>", "gameSymbol": "<game_code>", "launchRequestId": "<fresh unique ID>" }`. A retry of the same request must reuse that ID; a new intentional launch must generate a new ID.
+5. The backend verifies the member, checks game visibility/activity and launch settings, ensures/reuses the provider user mapping, requests the provider URL, validates that it is HTTPS, stores the launch audit record, and returns `game.launchUrl`. The XML then navigates/opens that returned URL. It must never build a provider URL itself or call the provider directly.
+6. A repeated request ID cannot be reused for a different game; an expired launch request returns a conflict so the client can start a new launch with a new ID.
+7. Do not call provider account creation during member login. That call is deferred until the member explicitly starts a game.
+8. This backend contract does not prove the currently deployed Blogger XML uses it. The checked-in legacy XML still needs to be migrated and tested against the V2 bearer-session contract before cutover.
