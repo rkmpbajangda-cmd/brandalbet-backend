@@ -62,7 +62,7 @@ async function completeOnboarding(userId,body){
    const accountNumber=String(b.bankAccount.accountNumber).replace(/\D/g,'');
    const [existing]=await c.query('SELECT id FROM bank_accounts WHERE user_id=? ORDER BY created_at DESC LIMIT 1 FOR UPDATE',[userId]);
    if(existing[0]){
-    await c.query('UPDATE bank_accounts SET type=?,provider=?,account_number=?,account_name=? WHERE id=?',[b.bankAccount.type||'bank',b.bankAccount.provider,accountNumber,b.bankAccount.accountName,existing[0].id]);
+    await c.query('UPDATE bank_accounts SET type=?,provider=?,account_number=?,account_name=?,routing_type=?,routing_value=? WHERE id=?',[b.bankAccount.type||'bank',b.bankAccount.provider,accountNumber,b.bankAccount.accountName,b.bankAccount.routingType||null,b.bankAccount.routingValue||null,existing[0].id]);
    }else{
     await c.query('INSERT INTO bank_accounts(id,user_id,type,provider,account_number,account_name) VALUES(?,?,?,?,?,?)',[newId(),userId,b.bankAccount.type||'bank',b.bankAccount.provider,accountNumber,b.bankAccount.accountName]);
    }
@@ -101,7 +101,7 @@ app.post('/api/auth/register',async(req,res,next)=>{try{
   await c.query('INSERT INTO wallets(user_id,balance) VALUES(?,0)',[uid]);await c.query('INSERT INTO cashback_accounts(user_id,balance) VALUES(?,0)',[uid]);
   await c.query('INSERT INTO member_profiles(user_id) VALUES(?)',[uid]);
   await c.query('INSERT INTO member_security_settings(user_id,one_device_only,login_enabled,require_password_for_withdrawal) VALUES(?,1,1,1)',[uid]);
-  if(b.bankAccount)await c.query('INSERT INTO bank_accounts(id,user_id,type,provider,account_number,account_name) VALUES(?,?,?,?,?,?)',[newId(),uid,b.bankAccount.type||'bank',b.bankAccount.provider||'',String(b.bankAccount.accountNumber||'').replace(/\D/g,''),b.bankAccount.accountName||'']);
+  if(b.bankAccount)await c.query('INSERT INTO bank_accounts(id,user_id,type,provider,account_number,account_name,routing_type,routing_value) VALUES(?,?,?,?,?,?,?,?)',[newId(),uid,b.bankAccount.type||'bank',b.bankAccount.provider||'',String(b.bankAccount.accountNumber||'').replace(/\D/g,''),b.bankAccount.accountName||'',b.bankAccount.routingType||null,b.bankAccount.routingValue||null]);
   if(b.referralCode){const [rr]=await c.query('SELECT id FROM users WHERE referral_code=? LIMIT 1',[b.referralCode]);if(rr[0])await c.query('INSERT IGNORE INTO referrals(id,referrer_id,referred_id,code) VALUES(?,?,?,?)',[newId(),rr[0].id,uid,b.referralCode])}
  });
  return login(req,res,b.username,b.password,b.deviceId);
@@ -115,7 +115,7 @@ async function memberSessionResponse(req,res,next){
   const [[u],[p],[b],[w]] = await Promise.all([
    pool.query('SELECT id,username,email,display_name displayName,phone,referral_code referralCode FROM users WHERE id=?',[req.user.id]),
    pool.query('SELECT language,timezone,avatar_url avatarUrl FROM member_profiles WHERE user_id=?',[req.user.id]),
-   pool.query('SELECT id,type,provider,account_number accountNumber,account_name accountName FROM bank_accounts WHERE user_id=? ORDER BY created_at DESC LIMIT 1',[req.user.id]),
+   pool.query('SELECT id,type,provider,account_number accountNumber,account_name accountName,routing_type routingType,routing_value routingValue,is_primary isPrimary,verified_at verifiedAt FROM bank_accounts WHERE user_id=? ORDER BY created_at DESC LIMIT 1',[req.user.id]),
    pool.query('SELECT balance,locked FROM wallets WHERE user_id=?',[req.user.id])
   ]);
   const profile=u[0]||null;
