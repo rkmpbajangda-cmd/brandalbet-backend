@@ -11,6 +11,7 @@ import {requestContext,timeout,notFound,errorHandler} from './middleware.js';
 import {sendOk,sendError} from './http.js';
 import {provider,verifyProviderCallback} from './provider.js';
 import {creditWallet,debitWallet,id as newId,money} from './wallet.js';
+import {encryptJson} from './vault.js';
 
 const app=express();
 app.set('trust proxy',config.trustProxy);app.disable('x-powered-by');
@@ -238,7 +239,7 @@ app.post('/api/backoffice-payment-connections',adminAuth,role('admin','superadmi
  const b=req.body||{},id=b.id||newId(),providerName=String(b.provider||'').trim().toLowerCase(),label=String(b.label||b.name||providerName||'Payment Gateway').trim(),mode=String(b.mode||'production');
  if(!providerName)return fail(res,400,'payment_provider_required');
  const credentials=b.credentials&&typeof b.credentials==='object'?b.credentials:{};
- const serialized=JSON.stringify(credentials);
+ const serialized=encryptJson(credentials);
  await pool.query('INSERT INTO payment_connections(id,name,provider,mode,encrypted_config,is_active) VALUES(?,?,?,?,?,?) ON DUPLICATE KEY UPDATE name=VALUES(name),provider=VALUES(provider),mode=VALUES(mode),encrypted_config=VALUES(encrypted_config)',[id,label,providerName,mode,serialized,false]);
  await audit(req,'payment.connection.save','payment_connection',id,{provider:providerName,mode});
  ok(res,{id,saved:true,operational:false,status:'GATED',message:'Credential tersimpan, tetapi adapter payment belum diaktifkan sebelum kontrak provider resmi diverifikasi.'});
