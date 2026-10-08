@@ -197,8 +197,8 @@ app.post('/api/game-launch',memberAuth,async(req,res,next)=>{try{
  const [pu]=await pool.query('SELECT provider_user_code FROM provider_users WHERE user_id=? AND provider_code="goldslotpalase"',[req.user.id]);
  let providerUser=pu[0]?.provider_user_code;
  if(!providerUser){const created=await provider.createUser(req.user.username);providerUser=String(created?.data?.user_code??created?.user_code??'');if(!providerUser)throw Object.assign(new Error('provider_user_create_invalid'),{code:'provider_invalid_response',status:502});await pool.query('INSERT INTO provider_users(id,user_id,provider_code,provider_user_code) VALUES(?,?,?,?)',[newId(),req.user.id,'goldslotpalase',providerUser])}
- // Per-member RTP overrides are intentionally not forwarded: game odds must not be changed for individual members.
- const launchPayload={user_code:Number(providerUser),provider_id:Number(providerId),game_symbol:symbol,lang:Number(req.body.lang??9),return_url:req.body.returnUrl||undefined,min_bet:req.body.minBet,max_bet:req.body.maxBet,round_max_win:req.body.roundMaxWin,is_finish_jackpot:req.body.isFinishJackpot};
+ // Use provider defaults for odds and limits; do not accept member-controlled game parameters.
+ const launchPayload={user_code:Number(providerUser),provider_id:Number(providerId),game_symbol:symbol,lang:Number(req.body.lang??9),return_url:config.memberOrigins[0]||'https://brandalbet.blogspot.com',min_bet:0,max_bet:0,round_max_win:0,rtp:0,is_finish_jackpot:true};
  Object.keys(launchPayload).forEach(k=>launchPayload[k]===undefined||launchPayload[k]===null||launchPayload[k]===''?delete launchPayload[k]:0);
  const launched=await provider.launch(launchPayload);
  const launchUrl=launched?.data?.game_url??launched?.data?.url??launched?.game_url??launched?.url;
