@@ -265,11 +265,27 @@ app.post('/api/provider/callback',async(req,res,next)=>{try{
 app.get('/api/backoffice-health',adminAuth,(_,res)=>ok(res,{status:'ok'}));
 app.get('/api/backoffice-readiness',adminAuth,async(_,res,next)=>{try{await pingDatabase();ok(res,{ready:true,database:true,providerConfigured:provider.configured,paymentConfigured:Boolean(config.paymentBaseUrl&&config.paymentApiKey),bootstrapEnabled:Boolean(config.masterBootstrapToken),configuration:[{name:'DATABASE_URL',present:true},{name:'GOLDSLOTPALASE_API_TOKEN',present:provider.configured},{name:'GOLDSLOTPALASE_CALLBACK_TOKEN',present:Boolean(config.providerCallbackToken)},{name:'PAYMENT_API_BASE',present:Boolean(config.paymentBaseUrl)},{name:'PAYMENT_API_KEY',present:Boolean(config.paymentApiKey)}]})}catch(e){next(e)}});
 app.get('/api/backoffice-dashboard',adminAuth,async(req,res,next)=>{try{
- const [[m],[d],[w],[wd],[p]] = await Promise.all([pool.query('SELECT COUNT(*) count FROM users WHERE role="member"'),pool.query('SELECT COALESCE(SUM(amount),0) amount FROM deposits WHERE status="completed" AND created_at>=CURRENT_DATE'),pool.query('SELECT COALESCE(SUM(balance),0) balance FROM wallets'),pool.query('SELECT COALESCE(SUM(amount),0) amount FROM withdrawals WHERE status="completed" AND created_at>=CURRENT_DATE'),pool.query('SELECT COUNT(*) count FROM games WHERE is_active=1')]);
- ok(res,{members:Number(m[0].count),depositTotal:Number(d[0].amount),walletTotal:Number(w[0].balance),withdrawalTotal:Number(wd[0].amount),activeGames:Number(p[0].count),provider:{configured:provider.configured}});
+ const range=String(req.query?.range||'7d'),days=range==='1d'?1:range==='30d'?30:7;
+ const [[m],[d],[w],[wd],[pd],[pw],[pr],[ph]] = await Promise.all([
+  pool.query('SELECT COUNT(*) count FROM users WHERE role="member"'),
+  pool.query('SELECT COALESCE(SUM(amount),0) amount FROM deposits WHERE status="completed" AND created_at>=CURRENT_DATE'),
+  pool.query('SELECT COALESCE(SUM(balance),0) balance FROM wallets'),
+  pool.query('SELECT COALESCE(SUM(amount),0) amount FROM withdrawals WHERE status="completed" AND created_at>=CURRENT_DATE'),
+  pool.query('SELECT COUNT(*) count FROM deposits WHERE status="pending"'),
+  pool.query('SELECT COUNT(*) count FROM withdrawals WHERE status="pending"'),
+  pool.query('SELECT COUNT(*) count FROM provider_transactions WHERE status IN ("pending","reconciled")'),
+  pool.query('SELECT COUNT(*) count FROM games WHERE is_active=1')
+ ]);
+ const [trend]=await pool.query('SELECT DATE(created_at) day,COALESCE(SUM(CASE WHEN type IN ("payment_deposit","deposit") THEN amount ELSE 0 END),0) deposits,COALESCE(SUM(CASE WHEN type IN ("payment_withdrawal","withdrawal") THEN amount ELSE 0 END),0) withdrawals FROM transactions WHERE created_at>=CURRENT_DATE-INTERVAL ? DAY GROUP BY DATE(created_at) ORDER BY day',[days-1]);
+ ok(res,{members:Number(m[0].count),depositToday:Number(d[0].amount),withdrawToday:Number(wd[0].amount),walletTotal:Number(w[0].balance),depositTotal:Number(d[0].amount),withdrawalTotal:Number(wd[0].amount),activeGames:Number(ph[0].count),providerHealth:provider.configured?'ready':'unconfigured',pendingDeposits:Number(pd[0].count),pendingWithdrawals:Number(pw[0].count),pendingReconciliation:Number(pr[0].count),transactionTrend:trend.map(x=>({date:x.day,deposits:Number(x.deposits),withdrawals:Number(x.withdrawals)})),memberTrend:'LIVE',depositTrend:'LIVE',withdrawTrend:'LIVE',activity:[],provider:{configured:provider.configured}});
 }catch(e){next(e)}});
 app.get('/api/backoffice-members',adminAuth,async(req,res,next)=>{try{const [r]=await pool.query('SELECT u.id,u.username,u.email,u.display_name displayName,u.phone,u.status,u.role,u.referral_code referralCode,u.created_at createdAt,u.last_login_at lastLoginAt,w.balance,w.locked FROM users u LEFT JOIN wallets w ON w.user_id=u.id WHERE u.role="member" ORDER BY u.created_at DESC LIMIT 500');ok(res,{members:r,items:r})}catch(e){next(e)}});
-app.get('/api/backoffice-finance',adminAuth,async(req,res,next)=>{try{const [d]=await pool.query('SELECT d.id,d.user_id userId,u.username member,d.amount,d.status,d.gateway channel,d.gateway_reference gatewayReference,d.gateway_reference reference,d.created_at createdAt FROM deposits d JOIN users u ON u.id=d.user_id ORDER BY d.created_at DESC LIMIT 200');const [w]=await pool.query('SELECT w.id,w.user_id userId,u.username member,w.amount,w.status,w.bank_account_id bankAccountId,w.gateway_reference gatewayReference,CONCAT("WD-",LEFT(w.id,12)) reference,CONCAT(ba.provider," • ",RIGHT(ba.account_number,4)) destinationMasked,w.reject_reason rejectReason,w.created_at createdAt FROM withdrawals w JOIN users u ON u.id=w.user_id LEFT JOIN bank_accounts ba ON ba.id=w.bank_account_id ORDER BY w.created_at DESC LIMIT 200');ok(res,{deposits:d,withdrawals:w,reconciliation:[]})}catch(e){next(e)}});
+app.get('/api/backoffice-finance',adminAuth,async(req,res,next)=>{try{
+ const [d]=await pool.query('SELECT d.id,d.user_id userId,u.username member,d.amount,d.status,d.gateway channel,d.gateway_reference gatewayReference,d.gateway_reference reference,d.created_at createdAt FROM deposits d JOIN users u ON u.id=d.user_id ORDER BY d.created_at DESC LIMIT 200');
+ const [w]=await pool.query('SELECT w.id,w.user_id userId,u.username member,w.amount,w.status,w.bank_account_id bankAccountId,w.gateway_reference gatewayReference,CONCAT("WD-",LEFT(w.id,12)) reference,CONCAT(ba.provider," • ",RIGHT(ba.account_number,4)) destinationMasked,w.reject_reason rejectReason,w.created_at createdAt FROM withdrawals w JOIN users u ON u.id=w.user_id LEFT JOIN bank_accounts ba ON ba.id=w.bank_account_id ORDER BY w.created_at DESC LIMIT 200');
+ const [[pd],[pw],[pr]] = await Promise.all([pool.query('SELECT COUNT(*) count FROM deposits WHERE status="pending"'),pool.query('SELECT COUNT(*) count FROM withdrawals WHERE status="pending"'),pool.query('SELECT COUNT(*) count FROM provider_transactions WHERE status IN ("pending","reconciled")')]);
+ ok(res,{deposits:d,withdrawals:w,reconciliation:[],pendingDeposits:Number(pd[0].count),pendingWithdrawals:Number(pw[0].count),providerReconciliationPending:Number(pr[0].count),paymentOperational:false,callbackIssues:null,note:'Payment adapter belum operational; endpoint tetap fail-closed.'});
+}catch(e){next(e)}});
 app.get('/api/backoffice-ledger',adminAuth,async(req,res,next)=>{try{const [r]=await pool.query('SELECT l.*,u.username FROM wallet_ledger l JOIN users u ON u.id=l.user_id ORDER BY l.created_at DESC LIMIT 200');ok(res,{items:r,ledger:r})}catch(e){next(e)}});
 app.get('/api/backoffice-game-catalog',adminAuth,async(req,res,next)=>{try{
  const [r]=await pool.query('SELECT * FROM games ORDER BY provider_code,sort_order,id');
@@ -286,6 +302,11 @@ app.post('/api/backoffice-game-catalog',adminAuth,role('admin','superadmin'),asy
   for(const x of list){const g=normalizeProviderGame(x);if(!g)continue;await pool.query('INSERT INTO games(id,provider_code,provider_id,game_code,name,category,image_url,is_active,metadata) VALUES(?,?,?,?,?,?,?,?,?) ON DUPLICATE KEY UPDATE provider_id=VALUES(provider_id),name=VALUES(name),category=VALUES(category),image_url=VALUES(image_url),is_active=VALUES(is_active),metadata=VALUES(metadata)',[newId(),g.providerCode,g.providerId,g.gameCode,g.name,g.category,g.imageUrl,g.isActive,JSON.stringify(g.metadata)]);count++}
   await audit(req,'catalog.sync','provider','goldslotpalase',{count});
   const [items]=await pool.query('SELECT * FROM games ORDER BY provider_code,sort_order,id');return ok(res,{items,games:items,display:{revision:0,hiddenGames:[],popularOrder:[],newestOrder:[],pinnedOrder:[],providerOrder:[]},count});
+ }
+ if(b.action==='update'){
+  const x=b.settings||{};
+  const display={revision:Number(b.expectedRevision||0),popularOrder:Array.isArray(x.popular)?x.popular:[],newestOrder:Array.isArray(x.newest)?x.newest:[],pinnedOrder:Array.isArray(x.pinned)?x.pinned:[],hiddenGames:Array.isArray(x.hiddenGames)?x.hiddenGames:[],providerOrder:Array.isArray(x.providerOrder)?x.providerOrder:[],hiddenProviders:Array.isArray(x.hiddenProviders)?x.hiddenProviders:[]};
+  b.action='save-display'; b.display=display;
  }
  if(b.action==='save-display'){
   const display=b.display||{},revision=Number(display.revision||0)+1;display.revision=revision;
@@ -400,7 +421,13 @@ app.post('/api/backoffice-rewards',adminAuth,role('admin','superadmin'),async(re
 }catch(e){next(e)}});
 app.get('/api/backoffice-reports',adminAuth,async(req,res,next)=>{try{const [[m],[d],[w],[g]] = await Promise.all([pool.query('SELECT COUNT(*) count FROM users WHERE role="member"'),pool.query('SELECT COALESCE(SUM(amount),0) amount FROM deposits WHERE status="completed"'),pool.query('SELECT COALESCE(SUM(amount),0) amount FROM withdrawals WHERE status="completed"'),pool.query('SELECT COUNT(*) count FROM games')]);ok(res,{members:m[0].count,deposits:d[0].amount,withdrawals:w[0].amount,games:g[0].count})}catch(e){next(e)}});
 app.get('/api/backoffice-audit',adminAuth,async(req,res,next)=>{try{const [r]=await pool.query('SELECT a.*,u.username actor FROM audit_logs a LEFT JOIN users u ON u.id=a.actor_user_id ORDER BY a.created_at DESC LIMIT 200');ok(res,{items:r,audit:r})}catch(e){next(e)}});
-app.get('/api/backoffice-website-settings',adminAuth,async(req,res,next)=>{try{const [r]=await pool.query('SELECT setting_key,value_json FROM system_settings');const settings={};for(const x of r)settings[x.setting_key]=JSON.parse(x.value_json);ok(res,{settings})}catch(e){next(e)}});
+app.get('/api/backoffice-website-settings',adminAuth,async(req,res,next)=>{try{
+ const [r]=await pool.query('SELECT setting_key,value_json FROM system_settings');const settings={};
+ for(const x of r)settings[x.setting_key]=parseJson(x.value_json,{});
+ const flat={...settings.general,...settings.website,...settings.banner,...settings.loading,...settings.seo};
+ const [[site]]=await pool.query('SELECT site_name siteName,seo_title seoTitle,seo_description seoDescription,logo_url logoUrl,favicon_url faviconUrl,primary_color primaryColor,secondary_color secondaryColor,maintenance_mode maintenanceMode,registration_enabled registrationEnabled,game_launch_enabled gameLaunchEnabled,wallet_enabled walletEnabled FROM website_settings WHERE id=1');
+ ok(res,{settings:{...flat,...site}});
+}catch(e){next(e)}});
 app.post('/api/backoffice-website-settings',adminAuth,role('admin','superadmin'),async(req,res,next)=>{try{
  const section=req.body?.section||'general',settings=req.body?.settings||{};
  await pool.query('INSERT INTO system_settings(setting_key,value_json,updated_by) VALUES(?,?,?) ON DUPLICATE KEY UPDATE value_json=VALUES(value_json),updated_by=VALUES(updated_by)',[section,JSON.stringify(settings),req.user.id]);
