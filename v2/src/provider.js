@@ -1,6 +1,7 @@
 import crypto from 'node:crypto';
 import {config} from './config.js';
 function pe(code,status=502,extra={}){const e=new Error(code);e.code=code;e.status=status;Object.assign(e,extra);return e}
+function activeFlag(value,fallback=true){if(value===undefined||value===null)return fallback;if(typeof value==='boolean')return value;return !['0','false','no','off','inactive'].includes(String(value).trim().toLowerCase())}
 export class GoldslotPalaseClient{
  constructor(){this.base=config.providerBaseUrl;this.token=config.providerToken;this.timeout=config.providerTimeoutMs}
  get configured(){return Boolean(this.token)}
@@ -37,10 +38,10 @@ export function normalizeProviderRecord(x){
  const v=x?.provider||x,providerId=v?.provider_id??v?.providerId??v?.id;
  const name=v?.provider_name??v?.providerName??v?.name??v?.title;
  if(providerId==null||!String(name||'').trim())return null;
- return {id:String(providerId),code:'goldslotpalase:'+String(providerId),name:String(name).trim(),isActive:v?.is_active!==false&&v?.active!==false,sortOrder:Number.isFinite(Number(v?.sort_order??v?.sortOrder))?Number(v?.sort_order??v?.sortOrder):0,metadata:v};
+ return {id:String(providerId),code:'goldslotpalase:'+String(providerId),name:String(name).trim(),isActive:activeFlag(v?.is_active,activeFlag(v?.active)),sortOrder:Number.isFinite(Number(v?.sort_order??v?.sortOrder))?Number(v?.sort_order??v?.sortOrder):0,metadata:v};
 }
 export function normalizeProviderGame(x,providerCode='goldslotpalase'){
  const g=x?.game||x,providerId=g?.provider_id??g?.providerId??g?.provider,symbol=g?.game_symbol??g?.gameSymbol??g?.symbol??g?.code,name=g?.name??g?.game_name??g?.gameName??symbol;
  if(providerId==null||!symbol||!name)return null;
- return {providerCode,providerId:String(providerId),gameCode:String(symbol),name:String(name),category:String(g?.category||'Slots'),imageUrl:String(g?.image||g?.image_url||g?.imageUrl||''),isActive:g?.is_active!==false&&g?.launch_enabled!==false,metadata:g};
+ return {providerCode,providerId:String(providerId),gameCode:String(symbol),name:String(name),category:String(g?.category||'Slots'),imageUrl:String(g?.image||g?.image_url||g?.imageUrl||''),isActive:activeFlag(g?.is_active)&&activeFlag(g?.launch_enabled),metadata:g};
 }
