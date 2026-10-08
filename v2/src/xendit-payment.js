@@ -1,4 +1,5 @@
 import argon2 from 'argon2';
+import crypto from 'node:crypto';
 import {pool,withTransaction} from './db.js';
 import {config} from './config.js';
 import {createXendit,verifyCallbackToken} from './xendit.js';
@@ -19,14 +20,29 @@ export async function createDeposit(user,body){
  if(amount<min)fail('minimum_deposit'); if(max!=null&&amount>max)fail('maximum_deposit');
  const channelCode=String(body?.channelCode||config.xenditDefaultChannel).trim().toUpperCase();
  const channelProperties=body?.channelProperties&&typeof body.channelProperties==='object'?body.channelProperties:{};
- const reference='DEP-'+newId();
- const created=await xendit.paymentRequest({referenceId:reference,amount,channelCode,channelProperties,idempotencyKey:String(body?.idempotencyKey||reference),metadata:{userId:user.id}});
+ const clientKey=String(body?.idempotencyKey||'').trim();
+ const stableKey=clientKey?crypto.createHash('sha256').update(user.id+':deposit:'+clientKey).digest('hex').toUpperCase():newId().replace(/-/g,'').toUpperCase();
+ const reference='DEP-'+stableKey.slice(0,40);
+ const [existing]=await pool.query('SELECT amount,channel,status,provider_reference,payment_url,qr_image_url FROM payment_orders WHERE user_id=? AND reference=? LIMIT 1',[user.id,reference]);
+ if(existing[0]){
+  if(Number(existing[0].amount)!==amount||String(existing[0].channel)!==channelCode)fail('idempotency_conflict',409);
+  return {reference,paymentRequestId:existing[0].provider_reference,status:existing[0].status==='paid'?'SUCCEEDED':'PENDING',paymentUrl:existing[0].payment_url,qrString:existing[0].qr_image_url,vaNumber:null,channelCode,idempotent:true};
+ }
+ const created=await xendit.paymentRequest({referenceId:reference,amount,channelCode,channelProperties,idempotencyKey:stableKey,metadata:{userId:user.id}});
  const orderId=newId();
- await withTransaction(async c=>{
-  await c.query('INSERT INTO payment_orders(id,user_id,reference,amount,channel,status,provider_reference,payment_url,qr_image_url,raw_json) VALUES(?,?,?,?,?,?,?,?,?,?)',[orderId,user.id,reference,amount,channelCode,'pending',created.id,created.paymentUrl||null,created.qrString||null,JSON.stringify(created.raw)]);
-  await c.query('INSERT INTO deposits(id,user_id,amount,status,gateway,gateway_reference,payment_request_id,payment_url,qr_image_url,metadata) VALUES(?,?,?,?,?,?,?,?,?,?)',[newId(),user.id,amount,'pending','xendit',created.id,created.id,created.paymentUrl||null,created.qrString||null,JSON.stringify({channelCode,reference})]);
- });
- return {reference,paymentRequestId:created.id,status:created.status,paymentUrl:created.paymentUrl,qrString:created.qrString,vaNumber:created.vaNumber,channelCode};
+ try{
+  await withTransaction(async c=>{
+   await c.query('INSERT INTO payment_orders(id,user_id,reference,amount,channel,status,provider_reference,payment_url,qr_image_url,raw_json) VALUES(?,?,?,?,?,?,?,?,?,?)',[orderId,user.id,reference,amount,channelCode,'pending',created.id,created.paymentUrl||null,created.qrString||null,JSON.stringify(created.raw)]);
+   await c.query('INSERT INTO deposits(id,user_id,amount,status,gateway,gateway_reference,payment_request_id,payment_url,qr_image_url,metadata) VALUES(?,?,?,?,?,?,?,?,?,?)',[newId(),user.id,amount,'pending','xendit',created.id,created.id,created.paymentUrl||null,created.qrString||null,JSON.stringify({channelCode,reference})]);
+  });
+ }catch(e){
+  if(e.code==='ER_DUP_ENTRY'){
+   const [r]=await pool.query('SELECT amount,channel,status,provider_reference,payment_url,qr_image_url FROM payment_orders WHERE user_id=? AND reference=? LIMIT 1',[user.id,reference]);
+   if(r[0]&&Number(r[0].amount)===amount&&String(r[0].channel)===channelCode)return {reference,paymentRequestId:r[0].provider_reference,status:r[0].status==='paid'?'SUCCEEDED':'PENDING',paymentUrl:r[0].payment_url,qrString:r[0].qr_image_url,vaNumber:null,channelCode,idempotent:true};
+  }
+  throw e;
+ }
+ return {reference,paymentRequestId:created.id,status:'PENDING',providerStatus:created.status,paymentUrl:created.paymentUrl,qrString:created.qrString,vaNumber:created.vaNumber,channelCode,idempotent:false};
 }
 
 export async function createWithdrawal(user,body){
