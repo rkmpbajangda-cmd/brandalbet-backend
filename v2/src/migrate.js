@@ -11,7 +11,11 @@ const c = await db.getConnection();
 
 const compatibilityColumns = {
   provider_transactions: { command:'VARCHAR(40) NULL', trans_guid:'VARCHAR(190) NULL', cancel_trans_guid:'VARCHAR(190) NULL', account:'VARCHAR(120) NULL', gplay_id:'VARCHAR(120) NULL', round_id:'VARCHAR(190) NULL', provider_id:'VARCHAR(64) NULL', game_code:'VARCHAR(120) NULL', balance_after:'DECIMAL(20,2) NULL', response_json:'JSON NULL', canceled_at:'TIMESTAMP NULL' },
-  provider_events: { response_json:'JSON NULL', payload_hash:'CHAR(64) NULL', processing_status:"VARCHAR(30) NOT NULL DEFAULT 'received'" }
+  provider_events: { response_json:'JSON NULL', payload_hash:'CHAR(64) NULL', processing_status:"VARCHAR(30) NOT NULL DEFAULT 'received'" },
+  wallets: { locked_balance:'DECIMAL(20,2) NOT NULL DEFAULT 0' },
+  bank_accounts: { routing_type:'VARCHAR(40) NULL', routing_value:'VARCHAR(120) NULL', is_primary:'BOOLEAN NOT NULL DEFAULT 1', verified_at:'TIMESTAMP NULL' },
+  deposits: { payment_request_id:'VARCHAR(190) NULL' },
+  withdrawals: { payout_id:'VARCHAR(190) NULL' }
 };
 
 async function ensureCompatibilityColumns(connection) {
