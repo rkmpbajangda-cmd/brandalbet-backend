@@ -273,7 +273,17 @@ app.post('/api/backoffice-game-catalog',adminAuth,role('admin','superadmin'),asy
  }
  if(b.action==='save-display'){
   const display=b.display||{},revision=Number(display.revision||0)+1;display.revision=revision;
-  await pool.query('INSERT INTO system_settings(setting_key,value_json,updated_by) VALUES("game_display",?,?) ON DUPLICATE KEY UPDATE value_json=VALUES(value_json),updated_by=VALUES(updated_by)',[JSON.stringify(display),req.user.id]);
+  await withTransaction(async conn=>{
+   await conn.query('INSERT INTO system_settings(setting_key,value_json,updated_by) VALUES("game_display",?,?) ON DUPLICATE KEY UPDATE value_json=VALUES(value_json),updated_by=VALUES(updated_by)',[JSON.stringify(display),req.user.id]);
+   const upsert=async(gameId,section,order,visible)=>conn.query('INSERT INTO game_display_settings(id,game_id,section,display_order,is_visible,updated_by) VALUES(?,?,?,?,?,?) ON DUPLICATE KEY UPDATE display_order=VALUES(display_order),is_visible=VALUES(is_visible),updated_by=VALUES(updated_by)',[newId(),String(gameId),section,Number(order||0),visible!==false,req.user.id]);
+   const popular=Array.isArray(display.popularOrder)?display.popularOrder:[], newest=Array.isArray(display.newestOrder)?display.newestOrder:[], hidden=new Set(Array.isArray(display.hiddenGames)?display.hiddenGames.map(String):[]), pinned=Array.isArray(display.pinnedOrder)?display.pinnedOrder:[];
+   for(let i=0;i<popular.length;i++)await upsert(popular[i],'popular',i,true);
+   for(let i=0;i<newest.length;i++)await upsert(newest[i],'terbaru',i,true);
+   for(let i=0;i<pinned.length;i++)await upsert(pinned[i],'all',i,true);
+   for(const gameId of hidden)await upsert(gameId,'all',0,false);
+   const providerOrder=Array.isArray(display.providerOrder)?display.providerOrder:[];
+   for(let i=0;i<providerOrder.length;i++)await conn.query('INSERT INTO provider_display_settings(id,provider_id,display_order,is_visible,updated_by) VALUES(?,?,?,?,?) ON DUPLICATE KEY UPDATE display_order=VALUES(display_order),is_visible=VALUES(is_visible),updated_by=VALUES(updated_by)',[newId(),String(providerOrder[i]),i,true,req.user.id]);
+  });
   await audit(req,'catalog.display.update','system','game_display',{revision});return ok(res,{display});
  }
  const gid=b.id||newId();
