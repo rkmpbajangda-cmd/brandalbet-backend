@@ -84,7 +84,6 @@ async function login(req,res,username,password,deviceId){
   await c.query('UPDATE users SET last_login_at=NOW() WHERE id=?',[u.id]);
  });
  await audit({...req,user:{id:u.id}},'auth.login','user',u.id,{sessionType:type});
- void ensureProviderUser(u.id,u.username);
  return ok(res,{token:raw,expiresAt:expires.toISOString(),user:{id:u.id,username:u.username,email:u.email,role:u.role,displayName:u.display_name}});
 }
 
