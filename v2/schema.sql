@@ -38,9 +38,9 @@ CREATE TABLE IF NOT EXISTS deposits(
 ) ENGINE=InnoDB;
 CREATE TABLE IF NOT EXISTS withdrawals(
  id CHAR(36) PRIMARY KEY,user_id CHAR(36) NOT NULL,amount DECIMAL(20,2) NOT NULL,status VARCHAR(30) NOT NULL DEFAULT 'pending',
- bank_account_id CHAR(36),gateway_reference VARCHAR(190) UNIQUE,payout_id VARCHAR(190) UNIQUE,idempotency_key VARCHAR(190) UNIQUE,reject_reason VARCHAR(500),metadata JSON,
+ bank_account_id CHAR(36),gateway_reference VARCHAR(190) UNIQUE,payout_id VARCHAR(190) UNIQUE,idempotency_key VARCHAR(190),reject_reason VARCHAR(500),metadata JSON,
  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
- INDEX(user_id,status),FOREIGN KEY(user_id) REFERENCES users(id),FOREIGN KEY(bank_account_id) REFERENCES bank_accounts(id)
+ INDEX(user_id,status),UNIQUE KEY uq_withdrawal_idempotency(idempotency_key),FOREIGN KEY(user_id) REFERENCES users(id),FOREIGN KEY(bank_account_id) REFERENCES bank_accounts(id)
 ) ENGINE=InnoDB;
 CREATE TABLE IF NOT EXISTS cashback_accounts(
  user_id CHAR(36) PRIMARY KEY,balance DECIMAL(20,2) NOT NULL DEFAULT 0,updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
