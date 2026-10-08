@@ -248,9 +248,30 @@ app.post('/api/backoffice-game-catalog',adminAuth,role('admin','superadmin'),asy
  await pool.query('INSERT INTO games(id,provider_code,provider_id,game_code,name,category,image_url,is_active,is_popular,is_new,sort_order,metadata) VALUES(?,?,?,?,?,?,?,?,?,?,?,?) ON DUPLICATE KEY UPDATE provider_id=VALUES(provider_id),name=VALUES(name),category=VALUES(category),image_url=VALUES(image_url),is_active=VALUES(is_active),is_popular=VALUES(is_popular),is_new=VALUES(is_new),sort_order=VALUES(sort_order),metadata=VALUES(metadata)',[gid,b.providerCode||'goldslotpalase',b.providerId||null,b.gameCode,b.name,b.category||null,b.imageUrl||null,b.isActive!==false,b.isPopular===true,b.isNew===true,Number(b.sortOrder||0),JSON.stringify(b.metadata||{})]);
  await audit(req,'catalog.game.upsert','game',gid,{gameCode:b.gameCode});ok(res,{id:gid});
 }catch(e){next(e)}});
+app.get('/api/backoffice-rtp/:userId',adminAuth,role('admin','superadmin'),async(req,res,next)=>{try{
+ const [r]=await pool.query('SELECT user_id userId,enabled,rtp,min_rtp minRtp,max_rtp maxRtp,reason,updated_by updatedBy,updated_at updatedAt FROM member_rtp_settings WHERE user_id=?',[req.params.userId]);
+ ok(res,{settings:r[0]||{userId:req.params.userId,enabled:false,rtp:null}}); 
+}catch(e){next(e)}});
+app.post('/api/backoffice-rtp/:userId',adminAuth,role('admin','superadmin'),async(req,res,next)=>{try{
+ const enabled=req.body?.enabled===true,rtp=req.body?.rtp==null||req.body?.rtp===''?null:Number(req.body.rtp),reason=String(req.body?.reason||'').slice(0,500);
+ if(enabled&&(!Number.isFinite(rtp)||rtp<0||rtp>100))return fail(res,400,'invalid_rtp');
+ const [[old]]=await pool.query('SELECT rtp FROM member_rtp_settings WHERE user_id=?',[req.params.userId]);
+ await withTransaction(async conn=>{
+  await conn.query('INSERT INTO member_rtp_settings(user_id,enabled,rtp,reason,updated_by) VALUES(?,?,?,?,?) ON DUPLICATE KEY UPDATE enabled=VALUES(enabled),rtp=VALUES(rtp),reason=VALUES(reason),updated_by=VALUES(updated_by)',[req.params.userId,enabled,enabled?rtp:null,reason||null,req.user.id]);
+  await conn.query('INSERT INTO rtp_audit_logs(id,user_id,old_rtp,new_rtp,enabled,actor_user_id,reason) VALUES(?,?,?,?,?,?,?)',[newId(),req.params.userId,old?.rtp??null,enabled?rtp:null,enabled,req.user.id,reason||null]);
+ });
+ await audit(req,'member.rtp.update','user',req.params.userId,{enabled,rtp,reason});
+ ok(res,{userId:req.params.userId,enabled,rtp:enabled?rtp:null});
+}catch(e){next(e)}});
 app.post('/api/backoffice-provider',adminAuth,role('admin','superadmin'),async(req,res,next)=>{try{
- const b=req.body||{},action=b.action||'check';
- if(action==='check'||action==='health'){const info=await provider.info();return ok(res,{status:'READY',message:'GoldslotPalase API dapat dihubungi.',provider:info,capabilities:{catalogSync:true,gameLaunch:true,transactionIncrementalSync:false,transferWallet:true,callbackAuth:Boolean(config.providerCallbackToken)}})}
+ const b=req.body||{},action=String(b.action||'check');
+ if(action==='check'||action==='health'){const info=await provider.info();return ok(res,{status:'READY',message:'GoldslotPalase API dapat dihubungi.',provider:info,capabilities:{agentInfo:true,agentRtp:true,userCreate:true,userInfo:true,providerCatalog:true,gameCatalog:true,gameLaunch:true,userRtpAtLaunch:true,onlineGames:true,bonusCall:true,freeRound:true,transactions:true,roundDetails:true,statistics:true,transferWallet:true,callbackAuth:Boolean(config.providerCallbackToken)}})}
+ if(action==='providers')return ok(res,{provider:await provider.providers()});
+ if(action==='games')return ok(res,{provider:await provider.games(b.payload||{})});
+ if(action==='all-games')return ok(res,{provider:await provider.allGames(b.payload||{})});
+ if(action==='user-info')return ok(res,{provider:await provider.userInfo(Number(b.userCode))});
+ if(action==='create-user'){const name=String(b.name||'').trim();if(!/^[_a-zA-Z0-9]{2,50}$/.test(name))return fail(res,400,'invalid_provider_username');return ok(res,{provider:await provider.createUser(name)})}
+ if(action==='online-games')return ok(res,{provider:await provider.onlineGames(b.payload||{})});
  if(action==='sync'){
   const p=await provider.providers(),g=await provider.allGames({});const raw=g?.data?.games||g?.games||g?.data||[];const list=Array.isArray(raw)?raw:[];let count=0;const {normalizeProviderGame}=await import('./provider.js');
   for(const x of list){const game=normalizeProviderGame(x);if(!game)continue;await pool.query('INSERT INTO games(id,provider_code,provider_id,game_code,name,category,image_url,is_active,metadata) VALUES(?,?,?,?,?,?,?,?,?) ON DUPLICATE KEY UPDATE provider_id=VALUES(provider_id),name=VALUES(name),category=VALUES(category),image_url=VALUES(image_url),is_active=VALUES(is_active),metadata=VALUES(metadata)',[newId(),game.providerCode,game.providerId,game.gameCode,game.name,game.category,game.imageUrl,game.isActive,JSON.stringify(game.metadata)]);count++}
@@ -263,11 +284,24 @@ app.post('/api/backoffice-provider',adminAuth,role('admin','superadmin'),async(r
  if(action==='bonuscall-cancel')return ok(res,{provider:await provider.callCancel(b.payload||{})});
  if(action==='freeround-create')return ok(res,{provider:await provider.freeRoundCreate(b.payload||{})});
  if(action==='freeround-cancel')return ok(res,{provider:await provider.freeRoundCancel(b.payload||{})});
- if(action==='transactions')return ok(res,{provider:await provider.transactions(b.payload||{})});
- if(action==='transaction-id')return ok(res,{provider:await provider.transactionId(b.payload||{})});
+ if(action==='transactions'){const out=await provider.transactions(b.payload||{});return ok(res,{provider:out})}
+ if(action==='transaction-id'){const out=await provider.transactionId(b.payload||{});return ok(res,{provider:out})}
  if(action==='round-details')return ok(res,{provider:await provider.roundDetails(b.payload||{})});
  if(action==='statistics-user')return ok(res,{provider:await provider.statisticsUser(b.payload||{})});
- if(action==='sync-transactions')return fail(res,503,'provider_transaction_sync_gated');
+ if(action==='transfer-deposit')return ok(res,{provider:await provider.transferDeposit(b.payload||{})});
+ if(action==='transfer-withdraw')return ok(res,{provider:await provider.transferWithdraw(b.payload||{})});
+ if(action==='transfer-withdraw-all')return ok(res,{provider:await provider.transferWithdrawAll(b.payload||{})});
+ if(action==='sync-transactions'){
+  const [[state]]=await pool.query('SELECT value_json FROM system_settings WHERE setting_key="provider_transaction_sync"');
+  const st=state?JSON.parse(state.value_json):{lastId:null,lastRunAt:null};const now=Date.now();
+  if(st.lastRunAt&&now-new Date(st.lastRunAt).getTime()<31000)return fail(res,429,'provider_transaction_sync_rate_limited',{retryAfterMs:31000-(now-new Date(st.lastRunAt).getTime())});
+  const payload=b.payload||{};let out;
+  if(payload.mode==='time')out=await provider.transactions(payload);else out=await provider.transactionId({...payload,last_id:payload.last_id??st.lastId});
+  const raw=out?.data?.transactions||out?.data?.items||out?.transactions||out?.items||out?.data||[];const list=Array.isArray(raw)?raw:[];
+  let saved=0,lastId=st.lastId;
+  for(const x of list){const tid=String(x.trans_guid??x.transaction_id??x.id??'').trim();if(!tid)continue;lastId=String(x.id??x.transaction_id??x.trans_guid??lastId);await pool.query('INSERT INTO provider_transactions(id,provider_code,provider_transaction_id,user_id,type,amount,status,raw_json,command,trans_guid,account,gplay_id,round_id,provider_id,game_code,balance_after) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON DUPLICATE KEY UPDATE raw_json=VALUES(raw_json),status=VALUES(status),amount=VALUES(amount)',[newId(),'goldslotpalase',tid,null,String(x.type??'unknown'),money(x.amount??0),'reconciled',JSON.stringify(x), 'reconciliation',tid,String(x.account??''),String(x.gplay_id??''),String(x.round_id??''),String(x.provider_id??''),String(x.game_code??''),null]);saved++}
+  const newState={lastId,lastRunAt:new Date().toISOString(),saved};await pool.query('INSERT INTO system_settings(setting_key,value_json,updated_by) VALUES("provider_transaction_sync",?,?) ON DUPLICATE KEY UPDATE value_json=VALUES(value_json),updated_by=VALUES(updated_by)',[JSON.stringify(newState),req.user.id]);await audit(req,'provider.transaction.reconcile','provider','goldslotpalase',{saved,lastId});return ok(res,{saved,lastId,provider:out});
+ }
  return fail(res,400,'unknown_provider_action');
 }catch(e){next(e)}});
 app.get('/api/backoffice-provider',adminAuth,async(req,res,next)=>{try{
