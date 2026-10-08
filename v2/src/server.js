@@ -214,9 +214,8 @@ app.post('/api/game-launch',memberAuth,async(req,res,next)=>{try{
   if(new Date(previousLaunch[0].expires_at).getTime()<=Date.now())return fail(res,409,'launch_request_expired');
   return ok(res,{game:{launchUrl:previousLaunch[0].launch_url,expiresAt:previousLaunch[0].expires_at,status:previousLaunch[0].status,gameId:previousLaunch[0].game_id},idempotent:true});
  }
- const [pu]=await pool.query('SELECT provider_user_code FROM provider_users WHERE user_id=? AND provider_code="goldslotpalase"',[req.user.id]);
- let providerUser=pu[0]?.provider_user_code;
- if(!providerUser){const created=await provider.createUser(req.user.username);providerUser=String(created?.data?.user_code??created?.user_code??'');if(!providerUser)throw Object.assign(new Error('provider_user_create_invalid'),{code:'provider_invalid_response',status:502});await pool.query('INSERT INTO provider_users(id,user_id,provider_code,provider_user_code) VALUES(?,?,?,?)',[newId(),req.user.id,'goldslotpalase',providerUser])}
+ const providerUser=await ensureProviderUser(req.user.id,req.user.username);
+ if(!providerUser)throw Object.assign(new Error('provider_user_create_invalid'),{code:'provider_invalid_response',status:502});
  // Use provider defaults for odds and limits; do not accept member-controlled game parameters.
  const launchPayload={user_code:Number(providerUser),provider_id:Number(providerId),game_symbol:symbol,lang:Number(req.body.lang??9),return_url:config.memberOrigins[0]||'https://brandalbet.blogspot.com',min_bet:0,max_bet:0,round_max_win:0,rtp:0,is_finish_jackpot:true};
  Object.keys(launchPayload).forEach(k=>launchPayload[k]===undefined||launchPayload[k]===null||launchPayload[k]===''?delete launchPayload[k]:0);
