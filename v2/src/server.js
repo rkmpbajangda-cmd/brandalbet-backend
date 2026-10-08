@@ -43,11 +43,11 @@ async function ensureProviderUser(userId,username){
  if(!provider.configured)return;
  try{
   const [existing]=await pool.query('SELECT provider_user_code FROM provider_users WHERE user_id=? AND provider_code="goldslotpalase" LIMIT 1',[userId]);
+  if(existing[0]?.provider_user_code)return; // Never create a second provider account for an existing member mapping.
   const created=await provider.createUser(username);
   const providerUser=String(created?.data?.user_code??created?.user_code??'');
   if(!providerUser)return;
-  if(existing[0])await pool.query('UPDATE provider_users SET provider_user_code=? WHERE user_id=? AND provider_code="goldslotpalase"',[providerUser,userId]);
-  else await pool.query('INSERT INTO provider_users(id,user_id,provider_code,provider_user_code) VALUES(?,?,?,?)',[newId(),userId,'goldslotpalase',providerUser]);
+  await pool.query('INSERT INTO provider_users(id,user_id,provider_code,provider_user_code) VALUES(?,?,?,?)',[newId(),userId,'goldslotpalase',providerUser]);
  }catch(e){console.error('provider_user_sync_failed',e.code||e.message)}
 }
 async function completeOnboarding(userId,body){
@@ -141,13 +141,21 @@ app.post('/api/game-launch',memberAuth,async(req,res,next)=>{try{
 }catch(e){next(e)}});
 
 app.post('/api/payment-deposit',memberAuth,async(req,res,next)=>{try{
+ const [[ps]]=await pool.query('SELECT deposit_enabled,min_deposit,max_deposit FROM payment_settings WHERE id=1');
+ if(ps?.deposit_enabled===false)return fail(res,403,'deposit_disabled');
  if(!config.paymentBaseUrl||!config.paymentApiKey)return fail(res,503,'payment_adapter_unavailable');
- const amount=money(req.body?.amountRupiah);if(amount<config.minDeposit)return fail(res,400,'minimum_deposit');
+ const amount=money(req.body?.amountRupiah);const min=Number(ps?.min_deposit??config.minDeposit),max=ps?.max_deposit==null?null:Number(ps.max_deposit);
+ if(amount<min)return fail(res,400,'minimum_deposit');
+ if(max!=null&&amount>max)return fail(res,400,'maximum_deposit');
  return fail(res,503,'payment_adapter_not_implemented');
 }catch(e){next(e)}});
 
 app.post('/api/payment-withdraw',memberAuth,async(req,res,next)=>{try{
- const amount=money(req.body?.amountRupiah);if(amount<config.minWithdrawal)return fail(res,400,'minimum_withdrawal');
+ const [[ps]]=await pool.query('SELECT withdrawal_enabled,min_withdrawal,max_withdrawal FROM payment_settings WHERE id=1');
+ if(ps?.withdrawal_enabled===false)return fail(res,403,'withdrawal_disabled');
+ const amount=money(req.body?.amountRupiah);const min=Number(ps?.min_withdrawal??config.minWithdrawal),max=ps?.max_withdrawal==null?null:Number(ps.max_withdrawal);
+ if(amount<min)return fail(res,400,'minimum_withdrawal');
+ if(max!=null&&amount>max)return fail(res,400,'maximum_withdrawal');
  if(!config.paymentBaseUrl||!config.paymentApiKey)return fail(res,503,'payment_adapter_unavailable');
  // Never hold/debit member funds until the real payment-gateway payout adapter has accepted the withdrawal.
  return fail(res,503,'payment_payout_adapter_not_implemented');
