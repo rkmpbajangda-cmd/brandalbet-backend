@@ -21,7 +21,7 @@ export async function createDeposit(user,body){
  if(amount<min)fail('minimum_deposit'); if(max!=null&&amount>max)fail('maximum_deposit');
  const channelCode=String(body?.channelCode||config.xenditDefaultChannel).trim().toUpperCase();
  const channelProperties=body?.channelProperties&&typeof body.channelProperties==='object'?body.channelProperties:{};
- const clientKey=String(body?.idempotencyKey||'').trim();
+ const clientKey=String(body?.idempotencyKey||'').trim();if(clientKey.length>190)fail('invalid_idempotency_key',400);
  const stableKey=clientKey?crypto.createHash('sha256').update(user.id+':deposit:'+clientKey).digest('hex').toUpperCase():newId().replace(/-/g,'').toUpperCase();
  const reference='DEP-'+stableKey.slice(0,40);
  const [existing]=await pool.query('SELECT amount,channel,status,provider_reference,payment_url,qr_image_url,raw_json FROM payment_orders WHERE user_id=? AND reference=? LIMIT 1',[user.id,reference]);
@@ -60,7 +60,7 @@ export async function createWithdrawal(user,body){
  if(sec?.require_password_for_withdrawal!==false){const password=String(body?.password||'');if(!password||!(await argon2.verify(user.password_hash,password)))fail('withdrawal_password_invalid',401)}
  const requestedBankId=String(body?.bankAccountId||'').trim();const bankSql=requestedBankId?'SELECT * FROM bank_accounts WHERE user_id=? AND id=? LIMIT 1':'SELECT * FROM bank_accounts WHERE user_id=? ORDER BY is_primary DESC,created_at DESC LIMIT 1';const bankArgs=requestedBankId?[user.id,requestedBankId]:[user.id];const [banks]=await pool.query(bankSql,bankArgs);if(!banks[0])fail('bank_account_required');
  const ba=banks[0];const routingType=String(ba.routing_type||config.xenditBankRoutingType||'').trim();const routingValue=String(ba.routing_value||'').trim();if(!routingType||!routingValue)fail('bank_routing_unconfigured');
- const clientKey=String(body?.idempotencyKey||'').trim(),idempotencyKey=clientKey?crypto.createHash('sha256').update(user.id+':withdraw:'+clientKey).digest('hex'):null;
+ const clientKey=String(body?.idempotencyKey||'').trim();if(clientKey.length>190)fail('invalid_idempotency_key',400);const idempotencyKey=clientKey?crypto.createHash('sha256').update(user.id+':withdraw:'+clientKey).digest('hex'):null;
  const reference='WD-'+(idempotencyKey?idempotencyKey.slice(0,32).toUpperCase():newId().replace(/-/g,'').toUpperCase());
  if(idempotencyKey){
   const [existing]=await pool.query('SELECT id,amount,status,bank_account_id,payout_id,metadata FROM withdrawals WHERE user_id=? AND idempotency_key=? LIMIT 1',[user.id,idempotencyKey]);
