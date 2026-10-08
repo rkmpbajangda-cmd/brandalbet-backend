@@ -43,3 +43,8 @@ test('API error normalization preserves safe expected status and hides server in
  assert.deepEqual(normalizeError(Object.assign(new Error('SQL details'),{code:'ER_DUP_ENTRY'})),{status:500,code:'internal_error'});
  assert.deepEqual(normalizeError(Object.assign(new Error('bad'),{code:'bad_input',status:200})),{status:500,code:'internal_error'});
 });
+const {normalizeProviderRecord}=await import('./provider.js');
+test('provider catalog normalization accepts documented identifier/name variants and rejects incomplete records',()=>{
+ assert.deepEqual(normalizeProviderRecord({provider_id:12,provider_name:'Slots',is_active:true}),{id:'12',code:'goldslotpalase:12',name:'Slots',isActive:true,sortOrder:0,metadata:{provider_id:12,provider_name:'Slots',is_active:true}});
+ assert.equal(normalizeProviderRecord({provider_id:12}),null);
+});
