@@ -33,6 +33,12 @@ export function verifyProviderCallback(req){
  if(a.length!==b.length||!crypto.timingSafeEqual(a,b))throw pe('provider_callback_unauthorized',401);return true;
 }
 export function providerLedgerReference(command,transGuid,cancelGuid=''){return command==='cancel'?'GSP-REV-'+String(cancelGuid)+'-'+String(transGuid):'GSP-'+String(transGuid)}
+export function normalizeProviderRecord(x){
+ const v=x?.provider||x,providerId=v?.provider_id??v?.providerId??v?.id;
+ const name=v?.provider_name??v?.providerName??v?.name??v?.title;
+ if(providerId==null||!String(name||'').trim())return null;
+ return {id:String(providerId),code:'goldslotpalase:'+String(providerId),name:String(name).trim(),isActive:v?.is_active!==false&&v?.active!==false,sortOrder:Number.isFinite(Number(v?.sort_order??v?.sortOrder))?Number(v?.sort_order??v?.sortOrder):0,metadata:v};
+}
 export function normalizeProviderGame(x,providerCode='goldslotpalase'){
  const g=x?.game||x,providerId=g?.provider_id??g?.providerId??g?.provider,symbol=g?.game_symbol??g?.gameSymbol??g?.symbol??g?.code,name=g?.name??g?.game_name??g?.gameName??symbol;
  if(providerId==null||!symbol||!name)return null;
