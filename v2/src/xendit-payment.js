@@ -35,7 +35,7 @@ export async function createWithdrawal(user,body){
  const [[sec]]=await pool.query('SELECT require_password_for_withdrawal FROM member_security_settings WHERE user_id=?',[user.id]);
  if(sec?.require_password_for_withdrawal!==false){const password=String(body?.password||'');if(!password||!(await argon2.verify(user.password_hash,password)))fail('withdrawal_password_invalid',401)}
  const bankId=String(body?.bankAccountId||'').trim();const [banks]=await pool.query('SELECT * FROM bank_accounts WHERE user_id=? AND id=? LIMIT 1',[user.id,bankId]);if(!banks[0])fail('bank_account_required');
- const ba=banks[0];if(!ba.routing_value)fail('bank_routing_unconfigured');
+ const ba=banks[0];const routingType=String(ba.routing_type||config.xenditBankRoutingType||'').trim();const routingValue=String(ba.routing_value||'').trim();if(!routingType||!routingValue)fail('bank_routing_unconfigured');
  const reference='WD-'+newId();
  const withdrawalId=await withTransaction(async c=>{
   const [[w]]=await c.query('SELECT balance,locked_balance,locked FROM wallets WHERE user_id=? FOR UPDATE',[user.id]);if(!w)fail('wallet_not_found',404);if(w.locked)fail('wallet_locked',403);
@@ -45,7 +45,7 @@ export async function createWithdrawal(user,body){
   const id=newId();await c.query('INSERT INTO withdrawals(id,user_id,amount,status,bank_account_id,metadata) VALUES(?,?,?,?,?,?)',[id,user.id,amount,'pending',ba.id,JSON.stringify({provider:'xendit',reference,bankProvider:ba.provider,accountMasked:String(ba.account_number).slice(-4)})]);return id;
  });
  try{
-  const payout=await xendit.payout({referenceId:reference,amount,accountName:ba.account_name,accountNumber:ba.account_number,routingType:ba.routing_type||config.xenditBankRoutingType,routingValue:ba.routing_value,description:reference,idempotencyKey:reference});
+  const payout=await xendit.payout({referenceId:reference,amount,accountName:ba.account_name,accountNumber:ba.account_number,routingType,routingValue,description:reference,idempotencyKey:reference});
   await settleWithdrawal(withdrawalId,user.id,amount,payout);
   return {withdrawalId,reference,payoutId:payout.id,status:payout.status};
  }catch(error){
