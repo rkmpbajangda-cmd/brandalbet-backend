@@ -111,7 +111,13 @@ app.put('/api/member-bank-account',memberAuth,async(req,res,next)=>{try{const b=
 app.get('/api/wallet',memberAuth,async(req,res,next)=>{try{const [[w]]=await pool.query('SELECT balance,locked FROM wallets WHERE user_id=?',[req.user.id]);ok(res,{balance:Number(w?.balance||0),availableMinor:Math.round(Number(w?.balance||0)*100),locked:Boolean(w?.locked)})}catch(e){next(e)}});
 app.get('/api/transactions',memberAuth,async(req,res,next)=>{try{const [r]=await pool.query('SELECT id,type,amount,status,reference,created_at createdAt FROM transactions WHERE user_id=? ORDER BY created_at DESC LIMIT 200',[req.user.id]);ok(res,{transactions:r})}catch(e){next(e)}});
 app.get('/api/member-rewards',memberAuth,async(req,res,next)=>{try{const [[a]]=await pool.query('SELECT balance FROM cashback_accounts WHERE user_id=?',[req.user.id]);const [h]=await pool.query('SELECT id,amount,type,status,reference,created_at createdAt FROM cashback_transactions WHERE user_id=? ORDER BY created_at DESC LIMIT 200',[req.user.id]);ok(res,{balance:Number(a?.balance||0),history:h})}catch(e){next(e)}});
-app.get('/api/member-config',async(_,res)=>ok(res,{minimumDeposit:config.minDeposit,minimumWithdrawal:config.minWithdrawal,maintenanceMode:false,gameLaunchEnabled:true,registrationEnabled:true,promotionsEnabled:true,memberWalletEnabled:true}));
+app.get('/api/member-config',async(_,res,next)=>{try{
+ const [[site]]=await pool.query('SELECT site_name siteName,logo_url logoUrl,favicon_url faviconUrl,primary_color primaryColor,secondary_color secondaryColor,maintenance_mode maintenanceMode,registration_enabled registrationEnabled,game_launch_enabled gameLaunchEnabled,wallet_enabled walletEnabled,seo_title seoTitle,seo_description seoDescription,hero_config heroConfig,navigation_config navigationConfig,footer_config footerConfig,extra_config extraConfig FROM website_settings WHERE id=1');
+ const [[pay]]=await pool.query('SELECT deposit_enabled depositEnabled,withdrawal_enabled withdrawalEnabled,min_deposit minDeposit,max_deposit maxDeposit,min_withdrawal minWithdrawal,max_withdrawal maxWithdrawal,deposit_fee depositFee,withdrawal_fee withdrawalFee,channels FROM payment_settings WHERE id=1');
+ const [[reward]]=await pool.query('SELECT cashback_enabled cashbackEnabled,referral_enabled referralEnabled,rules,extra_config extraConfig FROM reward_settings WHERE id=1');
+ const j=v=>v==null?null:(typeof v==='string'?JSON.parse(v):v);
+ ok(res,{minimumDeposit:Number(pay?.minDeposit??config.minDeposit),minimumWithdrawal:Number(pay?.minWithdrawal??config.minWithdrawal),maxDeposit:pay?.maxDeposit==null?null:Number(pay.maxDeposit),maxWithdrawal:pay?.maxWithdrawal==null?null:Number(pay.maxWithdrawal),depositEnabled:Boolean(pay?.depositEnabled??true),withdrawalEnabled:Boolean(pay?.withdrawalEnabled??true),depositFee:Number(pay?.depositFee||0),withdrawalFee:Number(pay?.withdrawalFee||0),maintenanceMode:Boolean(site?.maintenanceMode),gameLaunchEnabled:Boolean(site?.gameLaunchEnabled),registrationEnabled:Boolean(site?.registrationEnabled),promotionsEnabled:true,memberWalletEnabled:Boolean(site?.walletEnabled),site:{...site,heroConfig:j(site?.heroConfig),navigationConfig:j(site?.navigationConfig),footerConfig:j(site?.footerConfig),extraConfig:j(site?.extraConfig)},rewards:{...reward,rules:j(reward?.rules),extraConfig:j(reward?.extraConfig)}})
+ }catch(e){next(e)}});
 
 app.get('/api/games',async(_,res,next)=>{try{const [r]=await pool.query('SELECT id,provider_code providerCode,provider_id providerId,game_code gameCode,name,category,image_url imageUrl,is_active isActive,is_popular isPopular,is_new isNew,sort_order sortOrder,metadata FROM games WHERE is_active=1 ORDER BY sort_order,id');ok(res,{games:r})}catch(e){next(e)}});
 app.get('/api/promotions',async(_,res,next)=>{try{const [r]=await pool.query('SELECT id,title,description,image_url imageUrl,start_at startAt,end_at endAt FROM promotions WHERE is_active=1 AND (start_at IS NULL OR start_at<=NOW()) AND (end_at IS NULL OR end_at>=NOW()) ORDER BY sort_order,id');ok(res,{promotions:r})}catch(e){next(e)}});
@@ -354,6 +360,53 @@ app.post('/api/backoffice-ledger/adjust',adminAuth,role('finance','admin','super
  const userId=String(req.body?.userId||''),amount=money(req.body?.amount),direction=req.body?.direction,reason=String(req.body?.reason||'').trim();if(!userId||!reason||!['credit','debit'].includes(direction))return fail(res,400,'invalid_adjustment');
  const ref='ADJ-'+newId();const result=direction==='credit'?await creditWallet(userId,amount,'admin_adjustment',ref,{reason,actor:req.user.id}):await debitWallet(userId,amount,'admin_adjustment',ref,{reason,actor:req.user.id});await audit(req,'wallet.adjustment','user',userId,{amount,direction,reason,reference:ref});ok(res,{result});
 }catch(e){next(e)}});
+
+
+// Persistent configuration APIs. These are additive and keep legacy system_settings responses compatible.
+const parseJson=(v,fallback={})=>{try{return v==null?fallback:(typeof v==='string'?JSON.parse(v):v)}catch{return fallback}};
+const upsertSingleton=async(table,fields,userId)=>{
+ const cols=Object.keys(fields),vals=Object.values(fields),sets=cols.map(k=>`${k}=VALUES(${k})`).join(',');
+ await pool.query(`INSERT INTO ${table}(id,${cols.join(',')},updated_by) VALUES(1,${cols.map(()=>'?').join(',')},?) ON DUPLICATE KEY UPDATE ${sets},updated_by=VALUES(updated_by)`,[...vals,userId]);
+};
+
+app.get('/api/backoffice-settings',adminAuth,async(req,res,next)=>{try{
+ const [[site]]=await pool.query('SELECT * FROM website_settings WHERE id=1');
+ const [[pay]]=await pool.query('SELECT * FROM payment_settings WHERE id=1');
+ const [[reward]]=await pool.query('SELECT * FROM reward_settings WHERE id=1');
+ const [providers]=await pool.query('SELECT p.*,d.display_order displayOrder,d.is_visible displayVisible,d.extra_config displayConfig FROM providers p LEFT JOIN provider_display_settings d ON d.provider_id=p.id ORDER BY COALESCE(d.display_order,999999),p.code,p.id');
+ ok(res,{website:{...site,heroConfig:parseJson(site?.hero_config),navigationConfig:parseJson(site?.navigation_config),footerConfig:parseJson(site?.footer_config),extraConfig:parseJson(site?.extra_config)},payment:{...pay,channels:parseJson(pay?.channels,[])},rewards:{...reward,rules:parseJson(reward?.rules),extraConfig:parseJson(reward?.extra_config)},providers});
+}catch(e){next(e)}});
+
+app.post('/api/backoffice-settings',adminAuth,role('admin','superadmin'),async(req,res,next)=>{try{
+ const b=req.body||{};
+ await withTransaction(async conn=>{
+   const q=async(sql,args)=>conn.query(sql,args);
+   if(b.website){const x=b.website;await q('UPDATE website_settings SET site_name=?,logo_url=?,favicon_url=?,primary_color=?,secondary_color=?,maintenance_mode=?,registration_enabled=?,game_launch_enabled=?,wallet_enabled=?,seo_title=?,seo_description=?,hero_config=?,navigation_config=?,footer_config=?,extra_config=?,updated_by=? WHERE id=1',[x.siteName??'BrandalBet',x.logoUrl??null,x.faviconUrl??null,x.primaryColor??null,x.secondaryColor??null,Boolean(x.maintenanceMode),x.registrationEnabled!==false,x.gameLaunchEnabled!==false,x.walletEnabled!==false,x.seoTitle??null,x.seoDescription??null,JSON.stringify(x.heroConfig??{}),JSON.stringify(x.navigationConfig??{}),JSON.stringify(x.footerConfig??{}),JSON.stringify(x.extraConfig??{}),req.user.id])}
+   if(b.payment){const x=b.payment;await q('UPDATE payment_settings SET deposit_enabled=?,withdrawal_enabled=?,min_deposit=?,max_deposit=?,min_withdrawal=?,max_withdrawal=?,deposit_fee=?,withdrawal_fee=?,channels=?,extra_config=?,updated_by=? WHERE id=1',[x.depositEnabled!==false,x.withdrawalEnabled!==false,Number(x.minDeposit??config.minDeposit),x.maxDeposit==null?null:Number(x.maxDeposit),Number(x.minWithdrawal??config.minWithdrawal),x.maxWithdrawal==null?null:Number(x.maxWithdrawal),Number(x.depositFee||0),Number(x.withdrawalFee||0),JSON.stringify(x.channels??[]),JSON.stringify(x.extraConfig??{}),req.user.id])}
+   if(b.rewards){const x=b.rewards;await q('UPDATE reward_settings SET cashback_enabled=?,referral_enabled=?,rules=?,extra_config=?,updated_by=? WHERE id=1', [Boolean(x.cashbackEnabled),Boolean(x.referralEnabled),JSON.stringify(x.rules??{}),JSON.stringify(x.extraConfig??{}),req.user.id])}
+ });
+ await audit(req,'settings.update','system','configuration',{sections:Object.keys(b)});
+ ok(res,{saved:true});
+}catch(e){next(e)}});
+
+app.get('/api/backoffice-game-display',adminAuth,async(req,res,next)=>{try{
+ const [games]=await pool.query('SELECT g.*,d.section,d.display_order displayOrder,d.is_visible displayVisible,d.custom_title customTitle,d.custom_image_url customImageUrl,d.extra_config displayConfig FROM games g LEFT JOIN game_display_settings d ON d.game_id=g.id ORDER BY COALESCE(d.display_order,999999),g.provider_code,g.sort_order,g.id');
+ const [providers]=await pool.query('SELECT p.*,d.display_order displayOrder,d.is_visible displayVisible,d.extra_config displayConfig FROM providers p LEFT JOIN provider_display_settings d ON d.provider_id=p.id ORDER BY COALESCE(d.display_order,999999),p.code,p.id');
+ ok(res,{games,providers});
+}catch(e){next(e)}});
+
+app.post('/api/backoffice-game-display',adminAuth,role('admin','superadmin'),async(req,res,next)=>{try{
+ const b=req.body||{};await withTransaction(async conn=>{
+   if(Array.isArray(b.games)) for(const x of b.games){if(!x.gameId)continue;await conn.query('INSERT INTO game_display_settings(id,game_id,section,display_order,is_visible,custom_title,custom_image_url,extra_config,updated_by) VALUES(?,?,?,?,?,?,?,?,?) ON DUPLICATE KEY UPDATE display_order=VALUES(display_order),is_visible=VALUES(is_visible),custom_title=VALUES(custom_title),custom_image_url=VALUES(custom_image_url),extra_config=VALUES(extra_config),updated_by=VALUES(updated_by)',[newId(),x.gameId,x.section||'all',Number(x.displayOrder||0),x.isVisible!==false,x.customTitle||null,x.customImageUrl||null,JSON.stringify(x.extraConfig||{}),req.user.id])}
+   if(Array.isArray(b.providers)) for(const x of b.providers){if(!x.providerId)continue;await conn.query('INSERT INTO provider_display_settings(id,provider_id,display_order,is_visible,extra_config,updated_by) VALUES(?,?,?,?,?,?) ON DUPLICATE KEY UPDATE display_order=VALUES(display_order),is_visible=VALUES(is_visible),extra_config=VALUES(extra_config),updated_by=VALUES(updated_by)',[newId(),x.providerId,Number(x.displayOrder||0),x.isVisible!==false,JSON.stringify(x.extraConfig||{}),req.user.id])}
+ });await audit(req,'catalog.display.update','system','game_display',{games:Array.isArray(b.games)?b.games.length:0,providers:Array.isArray(b.providers)?b.providers.length:0});ok(res,{saved:true});
+}catch(e){next(e)}});
+
+app.get('/api/backoffice-promotions-content',adminAuth,async(req,res,next)=>{try{const [items]=await pool.query('SELECT * FROM promotions_content ORDER BY display_order,id');ok(res,{items})}catch(e){next(e)}});
+app.post('/api/backoffice-promotions-content',adminAuth,role('admin','superadmin'),async(req,res,next)=>{try{const b=req.body||{},id=b.id||newId();await pool.query('INSERT INTO promotions_content(id,title,slug,description,image_url,start_at,end_at,is_active,display_order,extra_config,created_by,updated_by) VALUES(?,?,?,?,?,?,?,?,?,?,?,?) ON DUPLICATE KEY UPDATE title=VALUES(title),slug=VALUES(slug),description=VALUES(description),image_url=VALUES(image_url),start_at=VALUES(start_at),end_at=VALUES(end_at),is_active=VALUES(is_active),display_order=VALUES(display_order),extra_config=VALUES(extra_config),updated_by=VALUES(updated_by)',[id,b.title,b.slug,b.description||null,b.imageUrl||null,b.startAt||null,b.endAt||null,b.isActive!==false,Number(b.displayOrder||0),JSON.stringify(b.extraConfig||{}),req.user.id,req.user.id]);await audit(req,'promotion.content.upsert','promotion',id,{title:b.title});ok(res,{id})}catch(e){next(e)}});
+
+app.get('/api/backoffice-permissions',adminAuth,role('admin','superadmin'),async(req,res,next)=>{try{const [items]=await pool.query('SELECT * FROM admin_permissions ORDER BY role,permission_key');ok(res,{items})}catch(e){next(e)}});
+app.post('/api/backoffice-permissions',adminAuth,role('superadmin'),async(req,res,next)=>{try{const b=req.body||{};if(!b.role||!b.permissionKey)return fail(res,400,'permission_required');await pool.query('INSERT INTO admin_permissions(id,role,permission_key,allowed,updated_by) VALUES(?,?,?,?,?) ON DUPLICATE KEY UPDATE allowed=VALUES(allowed),updated_by=VALUES(updated_by)',[newId(),String(b.role),String(b.permissionKey),b.allowed!==false,req.user.id]);await audit(req,'permission.update','role',String(b.role),{permissionKey:b.permissionKey,allowed:b.allowed!==false});ok(res,{saved:true})}catch(e){next(e)}});
 
 app.use(notFound);app.use(errorHandler);
 const server=app.listen(config.port,()=>console.log('BrandalBet V2 listening on '+config.port));
