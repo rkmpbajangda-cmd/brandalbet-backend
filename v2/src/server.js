@@ -292,7 +292,7 @@ app.get('/api/backoffice-dashboard',adminAuth,async(req,res,next)=>{try{
   pool.query('SELECT COALESCE(SUM(balance),0) balance FROM wallets'),
   pool.query('SELECT COALESCE(SUM(amount),0) amount FROM withdrawals WHERE status="completed" AND created_at>=CURRENT_DATE'),
   pool.query('SELECT COUNT(*) count FROM deposits WHERE status="pending"'),
-  pool.query('SELECT COUNT(*) count FROM withdrawals WHERE status IN ("pending","processing","pending_compliance")'),
+  pool.query('SELECT COUNT(*) count FROM withdrawals WHERE status IN ("pending","processing","pending_compliance","reconciliation_required")'),
   pool.query('SELECT COUNT(*) count FROM provider_transactions WHERE status="pending"'),
   pool.query('SELECT COUNT(*) count FROM games WHERE is_active=1')
  ]);
@@ -321,8 +321,9 @@ app.get('/api/backoffice-finance',adminAuth,async(req,res,next)=>{try{
  const [d]=await pool.query('SELECT d.id,d.user_id userId,u.username member,d.amount,d.status,d.gateway channel,d.gateway_reference gatewayReference,d.gateway_reference reference,d.created_at createdAt FROM deposits d JOIN users u ON u.id=d.user_id ORDER BY d.created_at DESC LIMIT 200');
  const [w]=await pool.query('SELECT w.id,w.user_id userId,u.username member,w.amount,w.status,w.bank_account_id bankAccountId,w.gateway_reference gatewayReference,CONCAT("WD-",LEFT(w.id,12)) reference,CONCAT(ba.provider," • ",RIGHT(ba.account_number,4)) destinationMasked,w.reject_reason rejectReason,w.created_at createdAt FROM withdrawals w JOIN users u ON u.id=w.user_id LEFT JOIN bank_accounts ba ON ba.id=w.bank_account_id ORDER BY w.created_at DESC LIMIT 200');
  const [reconciliation]=await pool.query('SELECT p.id,p.reference,p.user_id userId,u.username member,p.amount,p.status,p.provider_reference providerReference,p.created_at createdAt FROM payment_orders p JOIN users u ON u.id=p.user_id WHERE p.status="reversal_pending" OR (p.status="pending" AND p.created_at<NOW()-INTERVAL 30 MINUTE) ORDER BY p.created_at ASC LIMIT 100');
+ const [payoutIssues]=await pool.query('SELECT w.id,w.user_id userId,u.username member,w.amount,w.status,w.payout_id payoutId,w.reject_reason reason,w.updated_at updatedAt FROM withdrawals w JOIN users u ON u.id=w.user_id WHERE w.status="reconciliation_required" ORDER BY w.updated_at ASC LIMIT 100');
  const [[pd],[pw],[pr]] = await Promise.all([pool.query('SELECT COUNT(*) count FROM deposits WHERE status="pending"'),pool.query('SELECT COUNT(*) count FROM withdrawals WHERE status IN ("pending","processing","pending_compliance")'),pool.query('SELECT COUNT(*) count FROM provider_transactions WHERE status="pending"')]);
- ok(res,{deposits:d,withdrawals:w,reconciliation,pendingDeposits:Number(pd[0].count),pendingWithdrawals:Number(pw[0].count),providerReconciliationPending:Number(pr[0].count),pendingReconciliation:Number(pr[0].count)+reconciliation.length,paymentOperational:xendit.configured,callbackIssues:null,note:xendit.configured?'Xendit adapter active; webhook settlement and reversal cases require reconciliation.':'Xendit API key not configured.'});
+ ok(res,{deposits:d,withdrawals:w,reconciliation,payoutIssues,pendingDeposits:Number(pd[0].count),pendingWithdrawals:Number(pw[0].count),providerReconciliationPending:Number(pr[0].count),pendingReconciliation:Number(pr[0].count)+reconciliation.length+payoutIssues.length,paymentOperational:xendit.configured,callbackIssues:null,note:xendit.configured?'Xendit adapter active; webhook settlement and reversal cases require reconciliation.':'Xendit API key not configured.'});
  }catch(e){next(e)}});
 app.get('/api/backoffice-ledger',adminAuth,async(req,res,next)=>{try{const [r]=await pool.query('SELECT l.*,u.username FROM wallet_ledger l JOIN users u ON u.id=l.user_id ORDER BY l.created_at DESC LIMIT 200');ok(res,{items:r,ledger:r})}catch(e){next(e)}});
 app.get('/api/backoffice-game-catalog',adminAuth,async(req,res,next)=>{try{
