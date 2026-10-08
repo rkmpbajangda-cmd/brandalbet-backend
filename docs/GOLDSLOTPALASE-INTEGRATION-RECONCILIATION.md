@@ -1,3 +1,21 @@
+# Current implementation status
+
+The following items have been changed on branch fix/goldslot-seamless-idempotency:
+- Game launch now declares Seamless as its wallet mode and no longer calls the provider wallet-balance/transfer bridge as a launch precondition.
+- The launch request no longer sends the unverified per-launch RTP override field.
+- Callback payload fingerprints are canonicalized so JSON key ordering alone does not change the digest.
+
+Still required before production:
+- Atomically enforce a single reversal for each original bet/win callback.
+- Enforce cross-command uniqueness for provider transaction identifiers where the provider contract defines them as globally unique.
+- Persist a durable normalized provider transaction ledger instead of relying only on temporary round records and weekly aggregates.
+- Verify callback schemas/error codes and monetary units in authenticated provider staging.
+- Add and run regression tests for callback concurrency, reversal races, provider retry behavior, and full Worker deployment validation.
+
+These status notes describe code review progress only. They are not a declaration of production readiness.
+
+---
+
 # GoldslotPalase Integration Reconciliation (v1.5)
 
 Status: implementation plan and release gate. This document does not claim provider staging tests have passed.
