@@ -42,6 +42,14 @@ async function digestHex(value) {
   return [...new Uint8Array(digest)].map(v => v.toString(16).padStart(2, '0')).join('');
 }
 
+function stableJson(value) {
+  if (Array.isArray(value)) return '[' + value.map(stableJson).join(',') + ']';
+  if (value && typeof value === 'object') {
+    return '{' + Object.keys(value).sort().map(key => JSON.stringify(key) + ':' + stableJson(value[key])).join(',') + '}';
+  }
+  return JSON.stringify(value);
+}
+
 async function constantTimeSecretMatch(actual, expected) {
   if (typeof actual !== 'string' || typeof expected !== 'string' || !actual || !expected) return false;
   const [a, b] = await Promise.all([digestHex(actual), digestHex(expected)]);
@@ -321,7 +329,7 @@ export function createHandler({ env = process.env, dbFactory = getAdminDb } = {}
     try {
       parsed = parseBody(event);
       const { command, data, account } = commandPayload(parsed.payload);
-      const payloadHash = await digestHex(parsed.body);
+      const payloadHash = await digestHex(stableJson(parsed.payload));
       const db = dbFactory(env);
       const player = await resolvePlayer(db, account);
       if (!player) return providerError(21);
