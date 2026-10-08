@@ -39,6 +39,17 @@ async function auth(req,res,next){
 }
 async function memberAuth(req,res,next){await auth(req,res,()=>req.user?.role==='member'?next():fail(res,403,'member_only'))}
 async function adminAuth(req,res,next){await auth(req,res,()=>role('operator','finance','admin','superadmin')(req,res,next))}
+async function ensureProviderUser(userId,username){
+ if(!provider.configured)return;
+ try{
+  const [existing]=await pool.query('SELECT provider_user_code FROM provider_users WHERE user_id=? AND provider_code="goldslotpalase" LIMIT 1',[userId]);
+  const created=await provider.createUser(username);
+  const providerUser=String(created?.data?.user_code??created?.user_code??'');
+  if(!providerUser)return;
+  if(existing[0])await pool.query('UPDATE provider_users SET provider_user_code=? WHERE user_id=? AND provider_code="goldslotpalase"',[providerUser,userId]);
+  else await pool.query('INSERT INTO provider_users(id,user_id,provider_code,provider_user_code) VALUES(?,?,?,?)',[newId(),userId,'goldslotpalase',providerUser]);
+ }catch(e){console.error('provider_user_sync_failed',e.code||e.message)}
+}
 async function completeOnboarding(userId,body){
  await pool.query('INSERT INTO member_profiles(user_id,language,timezone) VALUES(?,?,?) ON DUPLICATE KEY UPDATE language=VALUES(language),timezone=VALUES(timezone)',[userId,body.language||'id',body.timezone||'Asia/Jakarta']);
  if(body.displayName!==undefined||body.phone!==undefined)await pool.query('UPDATE users SET display_name=COALESCE(?,display_name),phone=COALESCE(?,phone) WHERE id=?',[body.displayName||null,body.phone||null,userId]);
@@ -57,6 +68,7 @@ async function login(req,res,username,password,deviceId){
   await c.query('UPDATE users SET last_login_at=NOW() WHERE id=?',[u.id]);
  });
  await audit({...req,user:{id:u.id}},'auth.login','user',u.id,{sessionType:type});
+ void ensureProviderUser(u.id,u.username);
  return ok(res,{token:raw,expiresAt:expires.toISOString(),user:{id:u.id,username:u.username,email:u.email,role:u.role,displayName:u.display_name}});
 }
 
@@ -318,7 +330,7 @@ app.post('/api/backoffice-provider',adminAuth,role('admin','superadmin'),async(r
 app.get('/api/backoffice-provider',adminAuth,async(req,res,next)=>{try{
  let info=null,status='UNCONFIGURED',message='Provider token belum dikonfigurasi.';
  if(provider.configured){try{info=await provider.info();status='READY';message='GoldslotPalase API dapat dihubungi.'}catch(e){status='ERROR';message=e.code||e.message}}
- ok(res,{configured:provider.configured,status,message,provider:info,capabilities:{catalogSync:provider.configured,gameLaunch:provider.configured,transactionIncrementalSync:false,transferWallet:provider.configured,callbackAuth:Boolean(config.providerCallbackToken)},lastSync:null});
+ ok(res,{configured:provider.configured,status,message,provider:info,capabilities:{catalogSync:provider.configured,gameLaunch:provider.configured,transactionIncrementalSync:provider.configured,transferWallet:provider.configured,callbackAuth:Boolean(config.providerCallbackToken)},lastSync:null});
 }catch(e){next(e)}});
 app.post('/api/backoffice-payment-connections',adminAuth,role('admin','superadmin'),async(req,res,next)=>{try{
  const b=req.body||{},id=b.id||newId(),providerName=String(b.provider||'').trim().toLowerCase(),label=String(b.label||b.name||providerName||'Payment Gateway').trim(),mode=String(b.mode||'production');
@@ -329,7 +341,7 @@ app.post('/api/backoffice-payment-connections',adminAuth,role('admin','superadmi
  await audit(req,'payment.connection.save','payment_connection',id,{provider:providerName,mode});
  ok(res,{id,saved:true,operational:false,status:'GATED',message:'Credential tersimpan, tetapi adapter payment belum diaktifkan sebelum kontrak provider resmi diverifikasi.'});
 }catch(e){next(e)}});
-app.get('/api/backoffice-payment-connections',adminAuth,async(req,res,next)=>{try{const [r]=await pool.query('SELECT id,name,provider,mode,is_active isActive,created_at createdAt FROM payment_connections ORDER BY created_at DESC');ok(res,{items:r,connections:r,configured:Boolean(config.paymentBaseUrl&&config.paymentApiKey),vaultConfigured:Boolean(config.paymentBaseUrl&&config.paymentApiKey)})}catch(e){next(e)}});
+app.get('/api/backoffice-payment-connections',adminAuth,async(req,res,next)=>{try{const [r]=await pool.query('SELECT id,name,provider,mode,is_active isActive,created_at createdAt FROM payment_connections ORDER BY created_at DESC');ok(res,{items:r,connections:r,configured:Boolean(config.paymentBaseUrl&&config.paymentApiKey),vaultConfigured:Boolean(config.paymentVaultKey)})}catch(e){next(e)}});
 app.get('/api/backoffice-promotions',adminAuth,async(req,res,next)=>{try{const [r]=await pool.query('SELECT * FROM promotions ORDER BY sort_order,id');ok(res,{items:r,promotions:r})}catch(e){next(e)}});
 app.post('/api/backoffice-promotions',adminAuth,role('admin','superadmin'),async(req,res,next)=>{try{const b=req.body||{},id=b.id||newId();await pool.query('INSERT INTO promotions(id,title,description,image_url,start_at,end_at,is_active,sort_order) VALUES(?,?,?,?,?,?,?,?) ON DUPLICATE KEY UPDATE title=VALUES(title),description=VALUES(description),image_url=VALUES(image_url),start_at=VALUES(start_at),end_at=VALUES(end_at),is_active=VALUES(is_active),sort_order=VALUES(sort_order)',[id,b.title,b.description||null,b.imageUrl||null,b.startAt||null,b.endAt||null,b.isActive!==false,Number(b.sortOrder||0)]);await audit(req,'promotion.upsert','promotion',id);ok(res,{id})}catch(e){next(e)}});
 app.get('/api/backoffice-rewards',adminAuth,async(req,res,next)=>{try{const [r]=await pool.query('SELECT c.user_id userId,u.username,c.balance FROM cashback_accounts c JOIN users u ON u.id=c.user_id ORDER BY c.balance DESC LIMIT 500');ok(res,{items:r})}catch(e){next(e)}});
