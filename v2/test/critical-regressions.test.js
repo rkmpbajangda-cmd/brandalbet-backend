@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
 import {fileURLToPath} from 'node:url';
 import {normalizeReferralCode} from '../src/referral.js';
+import {normalizeProviderRecord,normalizeProviderGame} from '../src/provider.js';
 
 const serverPath = fileURLToPath(new URL('../src/server.js', import.meta.url));
 
@@ -76,4 +77,23 @@ test('game launch rejects reused idempotency keys for a different game and unsaf
   assert.match(route, /parsedLaunchUrl\.protocol!=='https:'/);
   assert.match(route, /parsedLaunchUrl\.username\|\|parsedLaunchUrl\.password/);
   assert.match(route, /launchRequestId/);
+});
+
+
+test('MySQL numeric zero disables registration, wallet, deposits, withdrawals, and withdrawal password requirement correctly', async () => {
+  const server = await readFile(serverPath, 'utf8');
+  const payment = await readFile(new URL('../src/xendit-payment.js', import.meta.url), 'utf8');
+  assert.match(server, /Number\(site\.registration_enabled\)===0/);
+  assert.match(payment, /Number\(site\.wallet_enabled\)===0/);
+  assert.match(payment, /Number\(ps\.deposit_enabled\)===0/);
+  assert.match(payment, /Number\(ps\.withdrawal_enabled\)===0/);
+  assert.match(payment, /Number\(sec\?\.require_password_for_withdrawal\?\?1\)!==0/);
+});
+
+test('provider and game catalog normalization respects boolean and numeric inactive flags', () => {
+  assert.equal(normalizeProviderRecord({provider_id:1,name:'Provider',is_active:0}).isActive, false);
+  assert.equal(normalizeProviderRecord({provider_id:1,name:'Provider',is_active:'false'}).isActive, false);
+  assert.equal(normalizeProviderRecord({provider_id:1,name:'Provider',is_active:true}).isActive, true);
+  assert.equal(normalizeProviderGame({provider_id:1,game_symbol:'G1',name:'Game',is_active:0}).isActive, false);
+  assert.equal(normalizeProviderGame({provider_id:1,game_symbol:'G1',name:'Game',launch_enabled:false}).isActive, false);
 });
