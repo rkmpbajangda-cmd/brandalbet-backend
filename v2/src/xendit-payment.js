@@ -12,9 +12,9 @@ function fail(code,status=400,message=code){throw Object.assign(new Error(messag
 export async function createDeposit(user,body){
  const [[site]]=await pool.query('SELECT maintenance_mode,wallet_enabled FROM website_settings WHERE id=1');
  if(site?.maintenance_mode)fail('maintenance_mode',503);
- if(site?.wallet_enabled===false)fail('wallet_disabled',403);
+ if(site&&Number(site.wallet_enabled)===0)fail('wallet_disabled',403);
  const [[ps]]=await pool.query('SELECT deposit_enabled,min_deposit,max_deposit FROM payment_settings WHERE id=1');
- if(ps?.deposit_enabled===false)fail('deposit_disabled',403);
+ if(ps&&Number(ps.deposit_enabled)===0)fail('deposit_disabled',403);
  if(!xendit.configured)fail('payment_adapter_unavailable',503);
  const amount=money(body?.amountRupiah),min=Number(ps?.min_deposit??config.minDeposit),max=ps?.max_deposit==null?null:Number(ps.max_deposit);
  if(amount<min)fail('minimum_deposit'); if(max!=null&&amount>max)fail('maximum_deposit');
@@ -51,12 +51,12 @@ export async function createWithdrawal(user,body){
  if(site?.maintenance_mode)fail('maintenance_mode',503);
  if(site?.wallet_enabled===false)fail('wallet_disabled',403);
  const [[ps]]=await pool.query('SELECT withdrawal_enabled,min_withdrawal,max_withdrawal FROM payment_settings WHERE id=1');
- if(ps?.withdrawal_enabled===false)fail('withdrawal_disabled',403);
+ if(ps&&Number(ps.withdrawal_enabled)===0)fail('withdrawal_disabled',403);
  if(!xendit.configured)fail('payment_adapter_unavailable',503);
  const amount=money(body?.amountRupiah),min=Number(ps?.min_withdrawal??config.minWithdrawal),max=ps?.max_withdrawal==null?null:Number(ps.max_withdrawal);
  if(amount<min)fail('minimum_withdrawal'); if(max!=null&&amount>max)fail('maximum_withdrawal');
  const [[sec]]=await pool.query('SELECT require_password_for_withdrawal FROM member_security_settings WHERE user_id=?',[user.id]);
- if(sec?.require_password_for_withdrawal!==false){const password=String(body?.password||'');if(!password||!(await argon2.verify(user.password_hash,password)))fail('withdrawal_password_invalid',401)}
+ if(Number(sec?.require_password_for_withdrawal??1)!==0){const password=String(body?.password||'');if(!password||!(await argon2.verify(user.password_hash,password)))fail('withdrawal_password_invalid',401)}
  const requestedBankId=String(body?.bankAccountId||'').trim();const bankSql=requestedBankId?'SELECT * FROM bank_accounts WHERE user_id=? AND id=? LIMIT 1':'SELECT * FROM bank_accounts WHERE user_id=? ORDER BY is_primary DESC,created_at DESC LIMIT 1';const bankArgs=requestedBankId?[user.id,requestedBankId]:[user.id];const [banks]=await pool.query(bankSql,bankArgs);if(!banks[0])fail('bank_account_required');
  const ba=banks[0];const routingType=String(ba.routing_type||config.xenditBankRoutingType||'').trim();const routingValue=String(ba.routing_value||'').trim();if(!routingType||!routingValue)fail('bank_routing_unconfigured');
  const clientKey=String(body?.idempotencyKey||'').trim(),idempotencyKey=clientKey?crypto.createHash('sha256').update(user.id+':withdraw:'+clientKey).digest('hex'):null;
