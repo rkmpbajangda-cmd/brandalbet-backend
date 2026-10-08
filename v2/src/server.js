@@ -220,7 +220,7 @@ app.post('/api/provider/callback',async(req,res,next)=>{try{
  if(!pu[0])return res.status(404).json({result:21,status:'USER_NOT_FOUND'});
  if(pu[0].status!=='active')return res.status(403).json({result:22,status:'USER_INACTIVE'});
  const userId=pu[0].id;
- const [[w]]=await pool.query('SELECT balance FROM wallets WHERE user_id=?',[userId]);const currentBalance=Number(w?.balance||0);
+ const [[w]]=await pool.query('SELECT balance,locked_balance FROM wallets WHERE user_id=?',[userId]);const currentBalance=Number(w?.balance||0);const availableBalance=Math.max(0,currentBalance-Number(w?.locked_balance||0));
  if(command==='authenticate'||command==='balance')return res.json({result:0,status:'OK',data:{account,balance:currentBalance}});
  const transGuid=String(d.trans_guid??'').trim();if(!transGuid)return res.status(400).json({result:41,status:'TRANSACTION_INVALID'});
  if(command==='status'){
@@ -238,12 +238,12 @@ app.post('/api/provider/callback',async(req,res,next)=>{try{
   const lookupId=transGuid;
   const [existing]=await conn.query('SELECT response_json FROM provider_transactions WHERE provider_code="goldslotpalase" AND provider_transaction_id=? FOR UPDATE',[lookupId]);
   if(existing[0]?.response_json)return JSON.parse(existing[0].response_json);
-  const [[wallet]]=await conn.query('SELECT balance,locked FROM wallets WHERE user_id=? FOR UPDATE',[userId]);
+  const [[wallet]]=await conn.query('SELECT balance,locked,locked_balance FROM wallets WHERE user_id=? FOR UPDATE',[userId]);
   if(!wallet)return {result:21,status:'USER_NOT_FOUND'};
   if(wallet.locked)return {result:22,status:'USER_INACTIVE'};
   let before=Number(wallet.balance),after=before,ledgerDirection=null,ledgerAmount=amount,reason='provider_'+command;
   if(command==='bet'){
-   if(before<amount)return {result:31,status:'BALANCE_NOT_ENOUGH',data:{account,balance:before}};
+   if(before-Number(wallet.locked_balance||0)<amount)return {result:31,status:'BALANCE_NOT_ENOUGH',data:{account,balance:before}};
    after=before-amount;ledgerDirection='debit';
   }else if(command==='win'){after=before+amount;ledgerDirection='credit';
   }else{
