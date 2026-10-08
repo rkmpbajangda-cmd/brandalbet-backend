@@ -393,11 +393,33 @@ app.post('/api/backoffice-payment-connections',adminAuth,role('admin','superadmi
  const serialized=encryptJson(credentials);
  await pool.query('INSERT INTO payment_connections(id,name,provider,mode,encrypted_config,is_active) VALUES(?,?,?,?,?,?) ON DUPLICATE KEY UPDATE name=VALUES(name),provider=VALUES(provider),mode=VALUES(mode),encrypted_config=VALUES(encrypted_config)',[id,label,providerName,mode,serialized,false]);
  await audit(req,'payment.connection.save','payment_connection',id,{provider:providerName,mode});
- ok(res,{id,saved:true,operational:false,status:'GATED',message:'Credential tersimpan, tetapi adapter payment belum diaktifkan sebelum kontrak provider resmi diverifikasi.'});
+ const isXendit=providerName==='xendit';
+ ok(res,{id,saved:true,operational:isXendit&&xendit.configured,status:isXendit&&xendit.configured?'READY':'GATED',message:isXendit&&xendit.configured?'Xendit adapter aktif dari server environment.':'Credential tersimpan; adapter belum aktif sampai provider dikonfigurasi dan diverifikasi di server.'});
 }catch(e){next(e)}});
 app.get('/api/backoffice-payment-connections',adminAuth,async(req,res,next)=>{try{const [r]=await pool.query('SELECT id,name,provider,mode,is_active isActive,created_at createdAt FROM payment_connections ORDER BY created_at DESC');ok(res,{items:r,connections:r,configured:xendit.configured,vaultConfigured:Boolean(config.paymentVaultKey)})}catch(e){next(e)}});
-app.get('/api/backoffice-promotions',adminAuth,async(req,res,next)=>{try{const [r]=await pool.query('SELECT * FROM promotions ORDER BY sort_order,id');ok(res,{items:r,promotions:r})}catch(e){next(e)}});
-app.post('/api/backoffice-promotions',adminAuth,role('admin','superadmin'),async(req,res,next)=>{try{const b=req.body||{},id=b.id||newId();await pool.query('INSERT INTO promotions(id,title,description,image_url,start_at,end_at,is_active,sort_order) VALUES(?,?,?,?,?,?,?,?) ON DUPLICATE KEY UPDATE title=VALUES(title),description=VALUES(description),image_url=VALUES(image_url),start_at=VALUES(start_at),end_at=VALUES(end_at),is_active=VALUES(is_active),sort_order=VALUES(sort_order)',[id,b.title,b.description||null,b.imageUrl||null,b.startAt||null,b.endAt||null,b.isActive!==false,Number(b.sortOrder||0)]);await audit(req,'promotion.upsert','promotion',id);ok(res,{id})}catch(e){next(e)}});
+app.get('/api/backoffice-promotions',adminAuth,async(req,res,next)=>{try{
+ const [r]=await pool.query('SELECT p.*,pc.slug,pc.extra_config content_config FROM promotions p LEFT JOIN promotions_content pc ON pc.id=p.id ORDER BY p.sort_order,p.id');
+ const items=r.map(x=>{let e={};try{e=x.content_config?JSON.parse(x.content_config):{}}catch{};return {...x,revision:Number(e.revision||0),category:e.category||'general',badge:e.badge||'',summary:e.summary||x.description||'',active:Boolean(x.is_active),imageUrl:x.image_url||'',sortOrder:Number(x.sort_order||0),ctaLabel:e.ctaLabel||'Lanjutkan',ctaRoute:e.ctaRoute||'route-home',detailIntro:e.detailIntro||'',sections:Array.isArray(e.sections)?e.sections:[]}});
+ ok(res,{items,promotions:items})
+}catch(e){next(e)}});
+app.post('/api/backoffice-promotions',adminAuth,role('admin','superadmin'),async(req,res,next)=>{try{
+ const b=req.body||{},action=String(b.action||'upsert'),p=b.promotion&&typeof b.promotion==='object'?b.promotion:b,id=String(p.id||b.id||newId());
+ if(action==='delete'){
+  await withTransaction(async conn=>{await conn.query('DELETE FROM promotions_content WHERE id=?',[id]);await conn.query('DELETE FROM promotions WHERE id=?',[id])});
+  await audit(req,'promotion.delete','promotion',id);return ok(res,{deleted:true,id})
+ }
+ if(!String(p.title||'').trim())return fail(res,400,'promotion_title_required');
+ const [[old]]=await pool.query('SELECT extra_config FROM promotions_content WHERE id=?',[id]);let oldExtra={};try{oldExtra=old?.extra_config?JSON.parse(old.extra_config):{}}catch{}
+ const revision=Number(oldExtra.revision||0)+1;
+ const extra={...oldExtra,revision,category:String(p.category||oldExtra.category||'general'),badge:String(p.badge||oldExtra.badge||''),summary:String(p.summary??p.description??oldExtra.summary??''),ctaLabel:String(p.ctaLabel||oldExtra.ctaLabel||'Lanjutkan'),ctaRoute:String(p.ctaRoute||oldExtra.ctaRoute||'route-home'),detailIntro:String(p.detailIntro||oldExtra.detailIntro||''),sections:Array.isArray(p.sections)?p.sections:(Array.isArray(oldExtra.sections)?oldExtra.sections:[])};
+ const active=p.active!==undefined?Boolean(p.active):p.isActive!==false,sortOrder=Number(p.sortOrder??oldExtra.sortOrder??100);
+ await withTransaction(async conn=>{
+  await conn.query('INSERT INTO promotions(id,title,description,image_url,start_at,end_at,is_active,sort_order) VALUES(?,?,?,?,?,?,?,?) ON DUPLICATE KEY UPDATE title=VALUES(title),description=VALUES(description),image_url=VALUES(image_url),start_at=VALUES(start_at),end_at=VALUES(end_at),is_active=VALUES(is_active),sort_order=VALUES(sort_order)',[id,String(p.title).trim(),p.summary||p.description||null,p.imageUrl||null,p.startAt||null,p.endAt||null,active,sortOrder]);
+  const slug=String(p.slug||String(p.title).toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'')).slice(0,190);
+  await conn.query('INSERT INTO promotions_content(id,title,slug,description,image_url,start_at,end_at,is_active,display_order,extra_config,created_by,updated_by) VALUES(?,?,?,?,?,?,?,?,?,?,?,?) ON DUPLICATE KEY UPDATE title=VALUES(title),slug=VALUES(slug),description=VALUES(description),image_url=VALUES(image_url),start_at=VALUES(start_at),end_at=VALUES(end_at),is_active=VALUES(is_active),display_order=VALUES(display_order),extra_config=VALUES(extra_config),updated_by=VALUES(updated_by)',[id,String(p.title).trim(),slug,p.summary||p.description||null,p.imageUrl||null,p.startAt||null,p.endAt||null,active,sortOrder,JSON.stringify(extra),req.user.id,req.user.id]);
+ });
+ await audit(req,'promotion.upsert','promotion',id,{revision});ok(res,{id,saved:true,revision,promotion:{id,revision,active,sortOrder,...extra}})
+}catch(e){next(e)}});
 app.get('/api/backoffice-rewards',adminAuth,async(req,res,next)=>{try{const [r]=await pool.query('SELECT c.user_id userId,u.username,c.balance FROM cashback_accounts c JOIN users u ON u.id=c.user_id ORDER BY c.balance DESC LIMIT 500');ok(res,{items:r,settlement:{status:'GATED',reason:'reward_payout_disabled'}})}catch(e){next(e)}});
 app.post('/api/backoffice-rewards',adminAuth,role('admin','superadmin'),async(req,res,next)=>{try{
  const action=String(req.body?.action||'').trim();
@@ -416,6 +438,28 @@ app.post('/api/backoffice-rewards',adminAuth,role('admin','superadmin'),async(re
  return fail(res,400,'unknown_reward_action');
 }catch(e){next(e)}});
 app.get('/api/backoffice-reports',adminAuth,async(req,res,next)=>{try{const [[m],[d],[w],[g]] = await Promise.all([pool.query('SELECT COUNT(*) count FROM users WHERE role="member"'),pool.query('SELECT COALESCE(SUM(amount),0) amount FROM deposits WHERE status="completed"'),pool.query('SELECT COALESCE(SUM(amount),0) amount FROM withdrawals WHERE status="completed"'),pool.query('SELECT COUNT(*) count FROM games')]);ok(res,{members:m[0].count,deposits:d[0].amount,withdrawals:w[0].amount,games:g[0].count})}catch(e){next(e)}});
+app.post('/api/backoffice-reports',adminAuth,role('operator','finance','admin','superadmin'),async(req,res,next)=>{try{
+ const type=String(req.body?.type||'summary').toLowerCase();
+ const esc=v=>'"'+String(v??'').replace(/"/g,'""')+'"';
+ let header=[],rows=[];
+ if(type==='finance'||type==='summary'){
+  header=['createdAt','reference','member','type','amount','status'];
+  const [r]=await pool.query('SELECT t.created_at createdAt,t.reference,u.username,t.type,t.amount,t.status FROM transactions t JOIN users u ON u.id=t.user_id ORDER BY t.created_at DESC LIMIT 5000');
+  rows=r.map(x=>[x.createdAt,x.reference,x.username,x.type,x.amount,x.status]);
+ }else if(type==='game'){
+  header=['provider','gameCode','name','category','active','popular','new'];
+  const [r]=await pool.query('SELECT provider_code provider,game_code gameCode,name,category,is_active active,is_popular popular,is_new isNew FROM games ORDER BY provider_code,sort_order,id LIMIT 5000');
+  rows=r.map(x=>[x.provider,x.gameCode,x.name,x.category,x.active,x.popular,x.isNew]);
+ }else if(type==='member'){
+  header=['username','email','status','balance','createdAt'];
+  const [r]=await pool.query('SELECT u.username,u.email,u.status,w.balance,u.created_at createdAt FROM users u LEFT JOIN wallets w ON w.user_id=u.id WHERE u.role="member" ORDER BY u.created_at DESC LIMIT 5000');
+  rows=r.map(x=>[x.username,x.email,x.status,x.balance,x.createdAt]);
+ }else return fail(res,400,'unsupported_report_type');
+ const csv=[header.map(esc).join(','),...rows.map(row=>row.map(esc).join(','))].join('\\n')+'\\n';
+ const filename='brandalbet-'+type+'-'+new Date().toISOString().slice(0,10)+'.csv';
+ await audit(req,'report.export','report',type,{rows:rows.length});
+ ok(res,{filename,mimeType:'text/csv;charset=utf-8',contentBase64:Buffer.from(csv,'utf8').toString('base64'),rowCount:rows.length,type})
+}catch(e){next(e)}});
 app.get('/api/backoffice-audit',adminAuth,async(req,res,next)=>{try{const [r]=await pool.query('SELECT a.*,u.username actor FROM audit_logs a LEFT JOIN users u ON u.id=a.actor_user_id ORDER BY a.created_at DESC LIMIT 200');ok(res,{items:r,audit:r})}catch(e){next(e)}});
 app.get('/api/backoffice-website-settings',adminAuth,async(req,res,next)=>{try{
  const [r]=await pool.query('SELECT setting_key,value_json FROM system_settings');const settings={};
