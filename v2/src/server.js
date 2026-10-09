@@ -9,7 +9,7 @@ import {config} from './config.js';
 import {pool,pingDatabase,withTransaction,closeDatabase} from './db.js';
 import {requestContext,timeout,notFound,errorHandler} from './middleware.js';
 import {sendOk,sendError} from './http.js';
-import {provider,verifyProviderCallback,providerLedgerReference} from './provider.js';
+import {provider,verifyProviderCallback,providerLedgerReference,canonicalJson} from './provider.js';
 import {creditWallet,debitWallet,id as newId,money,availableBalance as getAvailableBalance} from './wallet.js';
 import {encryptJson} from './vault.js';
 import {normalizeReferralCode} from './referral.js';
@@ -200,36 +200,42 @@ app.get('/api/promotions',async(_,res,next)=>{try{const [r]=await pool.query('SE
 
 app.post('/api/game-launch',memberAuth,async(req,res,next)=>{try{
  const [[site]] = await pool.query('SELECT maintenance_mode,game_launch_enabled FROM website_settings WHERE id=1');
- if(site?.maintenance_mode) return fail(res,503,'maintenance_mode');
+ if(Number(site?.maintenance_mode)===1) return fail(res,503,'maintenance_mode');
  if(site&&Number(site.game_launch_enabled)===0) return fail(res,403,'game_launch_disabled');
- // Called only after the member explicitly presses "Main Game", never when a card/popup opens.
  const b=req.body||{},requestId=String(b.launchRequestId||req.get('Idempotency-Key')||'').trim(),providerId=String(b.providerId||''),symbol=String(b.gameSymbol||'').trim();
  if(!requestId||requestId.length>120||!providerId||providerId.length>64||!symbol||symbol.length>120)return fail(res,400,'invalid_launch_request');
  const numericProviderId=Number(providerId);
  if(!Number.isSafeInteger(numericProviderId)||numericProviderId<=0)return fail(res,400,'invalid_provider_id');
  const [games]=await pool.query('SELECT g.* FROM games g JOIN providers p ON p.id=g.provider_id AND p.is_active=1 WHERE g.provider_code="goldslotpalase" AND g.provider_id=? AND g.game_code=? AND g.is_active=1 LIMIT 1',[String(numericProviderId),symbol]);
  if(!games[0])return fail(res,404,'game_not_found');
- const [previousLaunch]=await pool.query('SELECT gl.game_id,gl.launch_url,gl.expires_at,gl.status FROM game_launches gl WHERE gl.user_id=? AND gl.request_id=? LIMIT 1',[req.user.id,requestId]);
+ const [previousLaunch]=await pool.query('SELECT user_id,game_id,launch_url,expires_at,status FROM game_launches WHERE request_id=? LIMIT 1',[requestId]);
  if(previousLaunch[0]){
-  if(String(previousLaunch[0].game_id)!==String(games[0].id))return fail(res,409,'idempotency_key_reused');
-  if(new Date(previousLaunch[0].expires_at).getTime()<=Date.now())return fail(res,409,'launch_request_expired');
-  return ok(res,{game:{launchUrl:previousLaunch[0].launch_url,expiresAt:previousLaunch[0].expires_at,status:previousLaunch[0].status,gameId:previousLaunch[0].game_id},idempotent:true});
+  const previous=previousLaunch[0];
+  if(String(previous.user_id)!==String(req.user.id)||String(previous.game_id)!==String(games[0].id))return fail(res,409,'idempotency_key_reused');
+  if(previous.status==='pending')return fail(res,409,'launch_request_in_progress');
+  if(previous.status!=='issued'||!previous.launch_url)return fail(res,409,'launch_request_failed');
+  if(!previous.expires_at||new Date(previous.expires_at).getTime()<=Date.now())return fail(res,409,'launch_request_expired');
+  return ok(res,{game:{launchUrl:previous.launch_url,expiresAt:previous.expires_at,status:previous.status,gameId:previous.game_id},idempotent:true});
  }
- const providerUser=await ensureProviderUser(req.user.id,req.user.username);
- if(!providerUser)throw Object.assign(new Error('provider_user_create_invalid'),{code:'provider_invalid_response',status:502});
- // Use provider defaults for odds and limits; do not accept member-controlled game parameters.
- const numericUserCode=Number(providerUser);
- if(!Number.isSafeInteger(numericUserCode)||numericUserCode<=0)throw Object.assign(new Error('provider_user_code_invalid'),{code:'provider_invalid_response',status:502});
- const launchPayload={user_code:numericUserCode,provider_id:numericProviderId,game_symbol:symbol,lang:9,return_url:config.memberOrigins[0]||'https://brandalbet.blogspot.com',min_bet:0,max_bet:0,round_max_win:0,rtp:0,is_finish_jackpot:true};
- Object.keys(launchPayload).forEach(k=>launchPayload[k]===undefined||launchPayload[k]===null||launchPayload[k]===''?delete launchPayload[k]:0);
- const launched=await provider.launch(launchPayload);
- const rawLaunchUrl=launched?.data?.game_url??launched?.data?.url??launched?.game_url??launched?.url;
- let parsedLaunchUrl;
- try{parsedLaunchUrl=new URL(String(rawLaunchUrl||''))}catch{}
- if(!parsedLaunchUrl||parsedLaunchUrl.protocol!=='https:'||!parsedLaunchUrl.hostname||parsedLaunchUrl.username||parsedLaunchUrl.password)return fail(res,502,'provider_invalid_launch_url');
- const launchUrl=parsedLaunchUrl.toString();
- const exp=new Date(Date.now()+10*60*1000);await pool.query('INSERT INTO game_launches(id,user_id,game_id,provider,request_id,status,launch_url,expires_at) VALUES(?,?,?,?,?,?,?,?)',[newId(),req.user.id,games[0].id,'goldslotpalase',requestId,'issued',launchUrl,exp]);
- await audit(req,'game.launch','game',games[0].id,{providerId,gameSymbol:symbol});ok(res,{game:{launchUrl,expiresAt:exp.toISOString(),gameId:games[0].id}});
+ try{await pool.query('INSERT INTO game_launches(id,user_id,game_id,provider,request_id,status,launch_url,expires_at) VALUES(?,?,?,?,?,?,NULL,NULL)',[newId(),req.user.id,games[0].id,'goldslotpalase',requestId,'pending']);}
+ catch(e){if(e.code==='ER_DUP_ENTRY')return fail(res,409,'launch_request_in_progress');throw e;}
+ try{
+  const providerUser=await ensureProviderUser(req.user.id,req.user.username);
+  if(!providerUser)throw Object.assign(new Error('provider_user_create_invalid'),{code:'provider_invalid_response',status:502});
+  const numericUserCode=Number(providerUser);
+  if(!Number.isSafeInteger(numericUserCode)||numericUserCode<=0)throw Object.assign(new Error('provider_user_code_invalid'),{code:'provider_invalid_response',status:502});
+  // Provider defaults remain authoritative until the provider contract is verified; never send rtp: 0.
+  const launchPayload={user_code:numericUserCode,provider_id:numericProviderId,game_symbol:symbol,lang:9,return_url:config.memberOrigins[0]||'https://brandalbet.blogspot.com',min_bet:0,max_bet:0,round_max_win:0,is_finish_jackpot:true};
+  Object.keys(launchPayload).forEach(k=>launchPayload[k]===undefined||launchPayload[k]===null||launchPayload[k]===''?delete launchPayload[k]:0);
+  const launched=await provider.launch(launchPayload);
+  const rawLaunchUrl=launched?.data?.game_url??launched?.data?.url??launched?.game_url??launched?.url;
+  let parsedLaunchUrl;try{parsedLaunchUrl=new URL(String(rawLaunchUrl||''))}catch{}
+  if(!parsedLaunchUrl||parsedLaunchUrl.protocol!=='https:'||!parsedLaunchUrl.hostname||parsedLaunchUrl.username||parsedLaunchUrl.password)throw Object.assign(new Error('provider_invalid_launch_url'),{code:'provider_invalid_launch_url',status:502});
+  const launchUrl=parsedLaunchUrl.toString(),exp=new Date(Date.now()+10*60*1000);
+  await pool.query('UPDATE game_launches SET status="issued",launch_url=?,expires_at=? WHERE request_id=? AND user_id=? AND status="pending"',[launchUrl,exp,requestId,req.user.id]);
+  await audit(req,'game.launch','game',games[0].id,{providerId,gameSymbol:symbol,launchRequestId:requestId});
+  return ok(res,{game:{launchUrl,expiresAt:exp.toISOString(),gameId:games[0].id,status:'issued'}});
+ }catch(e){await pool.query('UPDATE game_launches SET status="failed" WHERE request_id=? AND user_id=? AND status="pending"',[requestId,req.user.id]).catch(()=>{});throw e;}
 }catch(e){next(e)}});
 
 app.post('/api/payment-deposit',memberAuth,async(req,res,next)=>{try{const out=await createDeposit(req.user,{...(req.body||{}),idempotencyKey:req.get('Idempotency-Key')||req.body?.idempotencyKey});await audit(req,'payment.deposit.create','payment_order',out.reference,{amount:req.body?.amountRupiah,provider:'xendit'});ok(res,out)}catch(e){next(e)}});
@@ -260,14 +266,16 @@ app.post('/api/provider/callback',async(req,res,next)=>{try{
  }
  const cancelGuid=String(d.cancel_trans_guid??'').trim(),rawAmount=Number(d.amount??0);if(!Number.isFinite(rawAmount)||rawAmount<0||(['bet','win'].includes(command)&&rawAmount<=0))return res.status(400).json({result:1012,status:'PARAMETERS_INVALID'});const amount=money(rawAmount),providerType=command==='bet'?'Bet':command==='win'?'Win':'Cancel';
  const eventKey=command+':'+transGuid+':'+cancelGuid;
- const payloadHash=hash(JSON.stringify(b));
+ const payloadHash=hash(canonicalJson(b));
  const response=await withTransaction(async conn=>{
   await conn.query('INSERT IGNORE INTO provider_events(id,provider_code,event_key,command,raw_json,payload_hash,processing_status) VALUES(?,?,?,?,?,?,?)',[newId(),'goldslotpalase',eventKey,command,JSON.stringify(b),payloadHash,'processing']);
-  const [eventRows]=await conn.query('SELECT response_json,processing_status FROM provider_events WHERE provider_code="goldslotpalase" AND event_key=? FOR UPDATE',[eventKey]);
-  if(eventRows[0]?.response_json)return JSON.parse(eventRows[0].response_json);
+  const [eventRows]=await conn.query('SELECT response_json,processing_status,payload_hash FROM provider_events WHERE provider_code="goldslotpalase" AND event_key=? FOR UPDATE',[eventKey]);
+  if(eventRows[0]?.payload_hash&&eventRows[0].payload_hash!==payloadHash)return {result:41,status:'TRANSACTION_INVALID'};
+   if(eventRows[0]?.response_json)return JSON.parse(eventRows[0].response_json);
   const lookupId=transGuid;
-  const [existing]=await conn.query('SELECT response_json FROM provider_transactions WHERE provider_code="goldslotpalase" AND provider_transaction_id=? FOR UPDATE',[lookupId]);
-  if(existing[0]?.response_json)return JSON.parse(existing[0].response_json);
+  const [existing]=await conn.query('SELECT response_json,command FROM provider_transactions WHERE provider_code="goldslotpalase" AND provider_transaction_id=? FOR UPDATE',[lookupId]);
+  if(existing[0]?.command&&existing[0].command!==command)return {result:41,status:'TRANSACTION_INVALID'};
+   if(existing[0]?.response_json)return JSON.parse(existing[0].response_json);
   const [[wallet]]=await conn.query('SELECT balance,locked,locked_balance FROM wallets WHERE user_id=? FOR UPDATE',[userId]);
   if(!wallet)return {result:21,status:'USER_NOT_FOUND'};
   if(wallet.locked)return {result:22,status:'USER_INACTIVE'};
