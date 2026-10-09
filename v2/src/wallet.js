@@ -6,8 +6,16 @@ export function availableBalance(balance,lockedBalance=0){const b=Number(balance
 async function mutate(userId,amount,reason,reference,meta,direction){
  amount=money(amount);if(amount<=0)throw Object.assign(new Error('invalid_amount'),{code:'invalid_amount',status:400});
  return withTransaction(async c=>{
-  const [dup]=await c.query('SELECT id,balance_after FROM wallet_ledger WHERE reference=? LIMIT 1',[reference]);if(dup[0])return {id:dup[0].id,balance:Number(dup[0].balance_after),idempotent:true};
+  const checkDuplicate=async()=>{
+   const [rows]=await c.query('SELECT id,user_id,amount,direction,balance_after FROM wallet_ledger WHERE reference=? LIMIT 1',[reference]);
+   if(!rows[0])return null;
+   if(String(rows[0].user_id)!==String(userId)||Number(rows[0].amount)!==amount||rows[0].direction!==direction)throw Object.assign(new Error('idempotency_conflict'),{code:'idempotency_conflict',status:409});
+   return {id:rows[0].id,balance:Number(rows[0].balance_after),idempotent:true};
+  };
+  const duplicate=await checkDuplicate();if(duplicate)return duplicate;
   const [[w]]=await c.query('SELECT balance,locked,locked_balance FROM wallets WHERE user_id=? FOR UPDATE',[userId]);if(!w)throw Object.assign(new Error('wallet_not_found'),{code:'wallet_not_found',status:404});
+  // Recheck after taking the wallet lock: concurrent requests can share a reference.
+  const duplicateAfterLock=await checkDuplicate();if(duplicateAfterLock)return duplicateAfterLock;
   if(Number(w.locked))throw Object.assign(new Error('wallet_locked'),{code:'wallet_locked',status:409});
   const before=Number(w.balance),lockedBalance=Number(w.locked_balance||0),after=direction==='credit'?before+amount:before-amount;if(after<0||(direction==='debit'&&availableBalance(before,lockedBalance)<amount))throw Object.assign(new Error('insufficient_balance'),{code:'insufficient_balance',status:409});
   const txId=id();await c.query('UPDATE wallets SET balance=? WHERE user_id=?',[after,userId]);
