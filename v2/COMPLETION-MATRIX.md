@@ -60,6 +60,14 @@ Until the provider supplies a working current Swagger/OpenAPI file or written in
 
 The XML files currently checked into this repository are named `BRANDALBET_MEMBER_V76_1_STABLE_CLOUDFLARE.xml` and `BRANDALBET_BACKOFFICE_V4_CLOUDFLARE_FIREBASE_PRODUCTION.xml`. They are not named V77/V7, and they use the legacy Firebase/Cloudflare authentication contract. Do not treat route-name overlap as compatibility. The exact production XML versions must be supplied/audited and migrated to the V2 Bearer-session contract before cutover.
 
+## V2 game-flow hardening applied on `fix/v2-goldslot-game-flow`
+
+- Game launch claims a unique request ID in MySQL before making the provider call, preventing concurrent retries from issuing multiple launch URLs. Replays check both member ownership and game identity.
+- Launch attempts are marked `pending`, `issued`, or `failed`; failed attempts require a fresh request ID rather than silently replaying a potentially ambiguous provider request.
+- The launch request no longer sends `rtp: 0`; provider defaults remain authoritative until the exact GoldslotPalase launch contract is verified.
+- Callback payload hashing is canonical across object-key order, and reusing an event key with changed payload or a provider transaction ID with a different command is rejected.
+- These are code-level hardening changes only; CI, database-backed concurrency tests, and authenticated GoldslotPalase staging tests remain release gates.
+
 ## Rules for marking a feature complete
 
 1. The API contract is documented and matches the Member/Backoffice XML.
