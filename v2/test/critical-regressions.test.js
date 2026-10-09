@@ -103,7 +103,7 @@ test('MySQL numeric zero disables registration, wallet, deposits, withdrawals, a
 test('provider and game catalog normalization handles numeric inactive flags without requiring a database connection', async () => {
   const provider = await readFile(new URL('../src/provider.js', import.meta.url), 'utf8');
   assert.match(provider, /function activeFlag\(value,fallback=true\)/);
-  assert.match(provider, /isActive:activeFlag\(v\?\.is_active,activeFlag\(v\?\.active\)\)/);
+  assert.match(provider, /isActive:activeFlag\(v\?\.is_active,activeFlag\(v\?\.active,rawStatus===undefined\?true:activeFlag\(rawStatus,true\)\)\)/);
   assert.match(provider, /isActive:activeFlag\(g\?\.is_active\)&&activeFlag\(g\?\.launch_enabled\)/);
   assert.match(provider, /'0','false','no','off','inactive'/);
 });
@@ -119,8 +119,8 @@ test('catalog synchronization has one canonical persistence endpoint', async () 
   const catalogRouteEnd = source.indexOf("app.get('/api/backoffice-rtp", catalogRouteStart);
   const catalogRoute = source.slice(catalogRouteStart, catalogRouteEnd);
   assert.match(catalogRoute, /b\.action==='sync'/);
-  assert.match(catalogRoute, /provider\.providers\(\)/);
-  assert.match(catalogRoute, /provider\.allGames\(\)/);
+  assert.match(catalogRoute, /provider\.providers\(\{\}\)/);
+  assert.match(catalogRoute, /provider\.allGames\(\{\}\)/);
 });
 
 
