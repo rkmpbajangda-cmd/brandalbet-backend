@@ -27,7 +27,7 @@ This document is a delivery checklist, not a claim that features are production-
 | Wallet and ledger | Wallet, ledger, row locks and unique references exist | Concurrent debit/credit tests; ledger-to-wallet reconciliation; adjustment approval and audit tests |
 | Deposits | Xendit adapter and payment/webhook storage exist | Callback auth, duplicate/out-of-order webhook tests, provider status reconciliation and end-to-end test mode |
 | Withdrawals | Reserved balance, password check and payout adapter exist | Success/failure/unknown timeout/replay tests; verify no double debit/release; destination routing validation |
-| Games and provider | Explicit Backoffice catalog sync; Member GET reads MySQL only; launch endpoint requests URL on Main Game click; provider-user creation deferred to launch | Real sandbox tests for user mapping, game launch, bets, wins, cancel, duplicate IDs, status query and settlement; ensure deployed XML uses these exact routes and generates a new launchRequestId per intentional launch |
+| Games and provider | Explicit Backoffice catalog sync; Member GET reads MySQL only; launch endpoint requests URL on Main Game click; provider-user mapping resolved at member login and rechecked at launch | Real sandbox tests for user mapping, game launch, bets, wins, cancel, duplicate IDs, status query and settlement; ensure deployed XML uses these exact routes and generates a new launchRequestId per intentional launch |
 | Catalog display controls | Display tables and Backoffice endpoints exist | Validate referenced IDs; verify hidden/visible/order persistence and Member output after reload |
 | Promotions and website settings | Routes and tables exist | Validate fields and date windows; test XML rendering and malformed settings behavior |
 | Cashback/referrals | Referral tracking and reward policy storage exist | Trusted settled-round source; deterministic weekly calculation; idempotent payout; disputes/reversals; statements and reports |
@@ -39,7 +39,7 @@ This document is a delivery checklist, not a claim that features are production-
 
 - The game-launch success path referenced an undeclared `gameSymbol` identifier while writing its audit log. The audit metadata now uses the already validated `symbol` value, with a regression test.
 - `ensureProviderUser()` did not return the provider account code even though the game-launch handler requires that return value. As a result, game launch could fail after account mapping was successfully created or found. The helper now returns the existing or newly created mapping and has a regression test.
-- A post-hardening review found provider-account creation was still called during login; that call is now removed and provider-user creation occurs only in the explicit game-launch handler.
+- Provider-account mapping is resolved at member login as GoldslotPalase recommends, and rechecked at launch. If the provider is configured but the account cannot be confirmed, the member session is not issued as if game setup had succeeded.
 - MySQL numeric boolean values (`0`/`1`) are now handled explicitly for registration, wallet/payment gates, withdrawal-password policy, and provider/game active flags. Regression coverage was added.
 - The duplicate `/api/backoffice-provider` `sync` action is now rejected with a clear instruction to use the canonical `/api/backoffice-game-catalog` sync endpoint, preventing the old route from updating games without updating provider records.
 
@@ -54,7 +54,7 @@ The repository's Goldslot client is server-to-server and keeps the provider toke
 - status code meanings and provider maintenance semantics;
 - callback authentication header, transaction/cancel idempotency, and exact balance units.
 
-Until the provider supplies a working current Swagger/OpenAPI file or written integration guide, do not infer these items from another provider's documentation. Keep live-money readiness disabled and run only mocked tests. The local ten-minute launch expiry is currently an application-side guard, not proof of GoldslotPalase's actual URL expiry.
+Until the provider supplies a working current Swagger/OpenAPI file or written integration guide, do not infer these items from another provider's documentation. Keep live-money readiness disabled and run only mocked tests. The ten-minute launch expiry matches the supplied v1.5 integration spec. Repeated requests never replay an issued one-time URL; the member must create a fresh launchRequestId for a new intentional launch.
 
 ## Contract evidence limitation
 
