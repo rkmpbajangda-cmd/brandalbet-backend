@@ -229,3 +229,9 @@ test('successful deposit webhook credits wallet even when wallet outflows are lo
   assert.match(handler, /if\(!w\)fail\('wallet_not_found',404\)/);
   assert.doesNotMatch(handler, /if\(!w\|\|w\.locked\)fail\('wallet_locked',409\)/);
 });
+
+
+test('provider transaction status queries are scoped to the callback account owner', async () => {
+  const source = await readFile(serverPath, 'utf8');
+  assert.match(source, /SELECT status FROM provider_transactions WHERE provider_code="goldslotpalase" AND provider_transaction_id=\? AND user_id=\? LIMIT 1/);
+});
