@@ -28,14 +28,14 @@ jobs:
           cache: npm
       - run: npm install
       - run: npm run check
-      - name: Run tests
-        env:
-          DATABASE_URL: mysql://root:root@127.0.0.1:3306/brandalbet_test
-        run: npm test
-      - name: Apply database schema
+      - name: Apply database schema before integration tests
         env:
           DATABASE_URL: mysql://root:root@127.0.0.1:3306/brandalbet_test
         run: npm run migrate
+      - name: Run tests (unit, regression, and MySQL integration)
+        env:
+          DATABASE_URL: mysql://root:root@127.0.0.1:3306/brandalbet_test
+        run: npm test
       - name: Verify migration is idempotent
         env:
           DATABASE_URL: mysql://root:root@127.0.0.1:3306/brandalbet_test
