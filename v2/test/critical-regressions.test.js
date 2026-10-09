@@ -210,3 +210,22 @@ test('wallet mutation rechecks idempotency after acquiring the wallet row lock a
   assert.match(wallet, /code:'idempotency_conflict',status:409/);
   assert.match(wallet, /rows\[0\]\.direction!==direction/);
 });
+
+
+test('locked wallets still accept provider wins and reversals while blocking new bets', async () => {
+  const source = await readFile(serverPath, 'utf8');
+  const start = source.indexOf("app.post('/api/provider/callback'");
+  const end = source.indexOf("app.get('/api/backoffice-health'", start);
+  const route = source.slice(start, end);
+  assert.match(route, /if\(wallet\.locked&&command==='bet'\)return \{result:22,status:'USER_INACTIVE'\}/);
+  assert.doesNotMatch(route, /if\(wallet\.locked\)return \{result:22,status:'USER_INACTIVE'\}/);
+});
+
+test('successful deposit webhook credits wallet even when wallet outflows are locked', async () => {
+  const payment = await readFile(new URL('../src/xendit-payment.js', import.meta.url), 'utf8');
+  const start = payment.indexOf('export async function handleXenditPaymentWebhook');
+  const end = payment.indexOf('export async function handleXenditPayoutWebhook', start);
+  const handler = payment.slice(start, end);
+  assert.match(handler, /if\(!w\)fail\('wallet_not_found',404\)/);
+  assert.doesNotMatch(handler, /if\(!w\|\|w\.locked\)fail\('wallet_locked',409\)/);
+});
