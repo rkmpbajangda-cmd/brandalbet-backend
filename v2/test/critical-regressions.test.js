@@ -183,3 +183,30 @@ test('callback processing rejects changed payload for the same event key and com
   assert.match(source, /eventRows\[0\]\?\.payload_hash&&eventRows\[0\]\.payload_hash!==payloadHash/);
   assert.match(source, /existing\[0\]\?\.command&&existing\[0\]\.command!==command/);
 });
+
+
+test('provider transaction replay rejects reused IDs with a different user, account, command, or amount', async () => {
+  const source = await readFile(serverPath, 'utf8');
+  assert.match(source, /SELECT response_json,command,user_id,amount,account FROM provider_transactions/);
+  assert.match(source, /String\(existing\[0\]\.user_id\)!==String\(userId\)/);
+  assert.match(source, /String\(existing\[0\]\.account\)!==account/);
+  assert.match(source, /command!=='cancel'&&Number\(existing\[0\]\.amount\)!==Number\(amount\)/);
+});
+
+test('withdrawal settlement and release lock withdrawal before wallet and ignore terminal states', async () => {
+  const payment = await readFile(new URL('../src/xendit-payment.js', import.meta.url), 'utf8');
+  assert.match(payment, /SELECT status FROM withdrawals WHERE id=\? AND user_id=\? FOR UPDATE/);
+  assert.match(payment, /\['completed','failed','reversed'\]\.includes\(String\(wd\.status\)\.toLowerCase\(\)\)/);
+  assert.match(payment, /!\['pending','processing','pending_compliance'\]\.includes\(String\(wd\.status\)\.toLowerCase\(\)\)/);
+  const settle = payment.slice(payment.indexOf('async function settleWithdrawal'), payment.indexOf('async function releaseWithdrawal'));
+  assert.ok(settle.indexOf('FROM withdrawals') < settle.indexOf('FROM wallets'));
+  const release = payment.slice(payment.indexOf('async function releaseWithdrawal'), payment.indexOf('export async function handleXenditPaymentWebhook'));
+  assert.ok(release.indexOf('FROM withdrawals') < release.indexOf('FROM wallets'));
+});
+
+test('wallet mutation rechecks idempotency after acquiring the wallet row lock and rejects reference conflicts', async () => {
+  const wallet = await readFile(new URL('../src/wallet.js', import.meta.url), 'utf8');
+  assert.match(wallet, /const duplicateAfterLock=await checkDuplicate\(\);if\(duplicateAfterLock\)return duplicateAfterLock/);
+  assert.match(wallet, /code:'idempotency_conflict',status:409/);
+  assert.match(wallet, /rows\[0\]\.direction!==direction/);
+});
