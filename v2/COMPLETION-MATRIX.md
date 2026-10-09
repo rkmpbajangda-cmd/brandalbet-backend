@@ -8,7 +8,7 @@ This document is a delivery checklist, not a claim that features are production-
 
 - [x] Keep the legacy `main` branch isolated from V2 work.
 - [x] Keep real-money readiness explicitly disabled until external gates pass.
-- [ ] Run and verify the latest V2 CI workflow (syntax, unit tests, MySQL schema migration twice).
+- [x] Run and verify V2 CI on the hardening branch: syntax checks, regression/unit tests, MySQL 8.4 wallet + Xendit webhook integration tests, and schema migration twice.
 - [ ] Deploy a non-production DwaCloud staging instance with Node 22 and MySQL 8.4.
 - [ ] Migrate the Member and Backoffice XML from legacy Firebase/Cloudflare auth to the V2 Bearer-session API contract.
 - [ ] Verify data migration and reconcile all opening wallet balances and ledger entries.
@@ -24,10 +24,10 @@ This document is a delivery checklist, not a claim that features are production-
 | --- | --- | --- |
 | Authentication and sessions | Routes and hashed server-side sessions exist | Register/login/logout/refresh contract tests; session expiry/revocation; device policy tests; XML compatibility |
 | Member profile and bank details | Profile, onboarding and bank-account routes exist | Input validation; duplicate/primary account behavior; safe account masking; verify each XML request/response |
-| Wallet and ledger | Wallet, ledger, row locks and unique references exist | Concurrent debit/credit tests; ledger-to-wallet reconciliation; adjustment approval and audit tests |
-| Deposits | Xendit adapter and payment/webhook storage exist | Callback auth, duplicate/out-of-order webhook tests, provider status reconciliation and end-to-end test mode |
-| Withdrawals | Reserved balance, password check and payout adapter exist | Success/failure/unknown timeout/replay tests; verify no double debit/release; destination routing validation |
-| Games and provider | Explicit Backoffice catalog sync; Member GET reads MySQL only; launch endpoint requests URL on Main Game click; provider-user creation deferred to launch | Real sandbox tests for user mapping, game launch, bets, wins, cancel, duplicate IDs, status query and settlement; ensure deployed XML uses these exact routes and generates a new launchRequestId per intentional launch |
+| Wallet and ledger | Wallet, ledger, row locks and unique references exist; MySQL integration test covers concurrent overspend prevention, duplicate-reference idempotency, and conflicting-reference rejection | Broader concurrent credit/debit matrix; ledger-to-wallet reconciliation; adjustment approval and audit tests |
+| Deposits | Xendit adapter and payment/webhook storage exist; MySQL integration test verifies successful payment webhook replay credits only once | Live Xendit test-mode API flow, invalid/late/out-of-order event matrix, provider status reconciliation and end-to-end test mode |
+| Withdrawals | Reserved balance, password check and payout adapter exist; MySQL integration test verifies payout success webhook replay and one-time reserved-balance release | Live Xendit test-mode payout, failure/unknown timeout/replay matrix, reconciliation, and destination routing validation |
+| Games and provider | Explicit Backoffice catalog sync; Member GET reads MySQL only; launch endpoint requests URL on Main Game click; provider-user mapping resolved at member login and rechecked at launch | Real sandbox tests for user mapping, game launch, bets, wins, cancel, duplicate IDs, status query and settlement; ensure deployed XML uses these exact routes and generates a new launchRequestId per intentional launch |
 | Catalog display controls | Display tables and Backoffice endpoints exist | Validate referenced IDs; verify hidden/visible/order persistence and Member output after reload |
 | Promotions and website settings | Routes and tables exist | Validate fields and date windows; test XML rendering and malformed settings behavior |
 | Cashback/referrals | Referral tracking and reward policy storage exist | Trusted settled-round source; deterministic weekly calculation; idempotent payout; disputes/reversals; statements and reports |
@@ -35,11 +35,11 @@ This document is a delivery checklist, not a claim that features are production-
 | Audit and reporting | Audit/report endpoints exist | Verify all mutations are audited; CSV correctness/escaping; sensitive fields excluded |
 | Operations | Health/readiness and migration script exist | CI proof, staging deployment, backup/restore drill, logs/alerts, rollback and incident procedure |
 
-## Critical implementation issues fixed on the hardening branch
+## Additional transaction hardening verified by regression/MySQL tests\n\n- Wallet mutations recheck the ledger reference after locking the wallet row using a current locking read, preventing concurrent duplicate references from producing duplicate transaction writes under MySQL `REPEATABLE READ`. A reference reused with a different user, amount, or direction now returns `idempotency_conflict`.\n- Withdrawal settlement and release lock the withdrawal row before the wallet row, matching payout-webhook lock order and preventing terminal withdrawals from releasing reserved funds twice.\n- Provider transaction replay rejects a reused transaction ID if command, account, user, or amount conflicts; transaction-status lookups are scoped to the mapped user.\n- Locked wallets reject new provider bets but still process wins/cancellations; successful deposit webhooks still record incoming funds when outflows are locked.\n\n## Critical implementation issues fixed on the hardening branch
 
 - The game-launch success path referenced an undeclared `gameSymbol` identifier while writing its audit log. The audit metadata now uses the already validated `symbol` value, with a regression test.
 - `ensureProviderUser()` did not return the provider account code even though the game-launch handler requires that return value. As a result, game launch could fail after account mapping was successfully created or found. The helper now returns the existing or newly created mapping and has a regression test.
-- A post-hardening review found provider-account creation was still called during login; that call is now removed and provider-user creation occurs only in the explicit game-launch handler.
+- Provider-account mapping is resolved at member login as GoldslotPalase recommends, and rechecked at launch. If the provider is configured but the account cannot be confirmed, the member session is not issued as if game setup had succeeded.
 - MySQL numeric boolean values (`0`/`1`) are now handled explicitly for registration, wallet/payment gates, withdrawal-password policy, and provider/game active flags. Regression coverage was added.
 - The duplicate `/api/backoffice-provider` `sync` action is now rejected with a clear instruction to use the canonical `/api/backoffice-game-catalog` sync endpoint, preventing the old route from updating games without updating provider records.
 
@@ -54,11 +54,19 @@ The repository's Goldslot client is server-to-server and keeps the provider toke
 - status code meanings and provider maintenance semantics;
 - callback authentication header, transaction/cancel idempotency, and exact balance units.
 
-Until the provider supplies a working current Swagger/OpenAPI file or written integration guide, do not infer these items from another provider's documentation. Keep live-money readiness disabled and run only mocked tests. The local ten-minute launch expiry is currently an application-side guard, not proof of GoldslotPalase's actual URL expiry.
+Until the provider supplies a working current Swagger/OpenAPI file or written integration guide, do not infer these items from another provider's documentation. Keep live-money readiness disabled and run only mocked tests. The ten-minute launch expiry matches the supplied v1.5 integration spec. Repeated requests never replay an issued one-time URL; the member must create a fresh launchRequestId for a new intentional launch.
 
 ## Contract evidence limitation
 
 The XML files currently checked into this repository are named `BRANDALBET_MEMBER_V76_1_STABLE_CLOUDFLARE.xml` and `BRANDALBET_BACKOFFICE_V4_CLOUDFLARE_FIREBASE_PRODUCTION.xml`. They are not named V77/V7, and they use the legacy Firebase/Cloudflare authentication contract. Do not treat route-name overlap as compatibility. The exact production XML versions must be supplied/audited and migrated to the V2 Bearer-session contract before cutover.
+
+## V2 game-flow hardening applied on `fix/v2-goldslot-game-flow`
+
+- Game launch claims a unique request ID in MySQL before making the provider call, preventing concurrent retries from issuing multiple launch URLs. Replays check both member ownership and game identity.
+- Launch attempts are marked `pending`, `issued`, or `failed`; failed attempts require a fresh request ID rather than silently replaying a potentially ambiguous provider request.
+- The launch request no longer sends `rtp: 0`; provider defaults remain authoritative until the exact GoldslotPalase launch contract is verified.
+- Callback payload hashing is canonical across object-key order, and reusing an event key with changed payload or a provider transaction ID with a different command is rejected.
+- These are code-level hardening changes only; CI, database-backed concurrency tests, and authenticated GoldslotPalase staging tests remain release gates.
 
 ## Rules for marking a feature complete
 

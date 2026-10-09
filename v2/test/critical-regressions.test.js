@@ -3,13 +3,13 @@ import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
 import {fileURLToPath} from 'node:url';
 import {normalizeReferralCode} from '../src/referral.js';
-import {normalizeProviderGame, normalizeProviderRecord} from '../src/provider.js';
+import {normalizeProviderGame, normalizeProviderRecord, canonicalJson} from '../src/provider.js';
 
 const serverPath = fileURLToPath(new URL('../src/server.js', import.meta.url));
 
 test('game-launch audit metadata uses the validated game symbol', async () => {
   const source = await readFile(serverPath, 'utf8');
-  assert.match(source, /audit\(req,'game\.launch','game',games\[0\]\.id,\{providerId,gameSymbol:symbol\}\)/);
+  assert.match(source, /audit\(req,'game\.launch','game',games\[0\]\.id,\{providerId,gameSymbol:symbol,launchRequestId:requestId\}\)/);
   assert.doesNotMatch(source, /audit\(req,'game\.launch','game',games\[0\]\.id,\{providerId,gameSymbol\}\)/);
 });
 
@@ -55,13 +55,15 @@ test('member catalog endpoint reads MySQL snapshot and applies short HTTP cachin
   assert.match(route, /Cache-Control/);
 });
 
-test('provider account creation is deferred until the member launches a game', async () => {
+test('GoldslotPalase user mapping is resolved at member login and rechecked before game launch', async () => {
   const source = await readFile(serverPath, 'utf8');
   const loginStart = source.indexOf('async function login(');
   const launchStart = source.indexOf("app.post('/api/game-launch'");
   assert.ok(loginStart >= 0 && launchStart > loginStart);
   const loginRoute = source.slice(loginStart, launchStart);
-  assert.doesNotMatch(loginRoute, /ensureProviderUser\s*\(/);
+  assert.match(loginRoute, /type==='member'&&provider\.configured/);
+  assert.match(loginRoute, /ensureProviderUser\(u\.id,u\.username\)/);
+  assert.match(loginRoute, /provider_user_unavailable/);
   const launchRoute = source.slice(launchStart, source.indexOf("app.post('/api/payment-deposit'", launchStart));
   assert.match(launchRoute, /ensureProviderUser\(req\.user\.id,req\.user\.username\)/);
   assert.match(launchRoute, /provider\.launch\(launchPayload\)/);
@@ -74,11 +76,19 @@ test('game launch rejects reused idempotency keys for a different game and unsaf
   const route = source.slice(launchStart, launchEnd);
   assert.match(route, /idempotency_key_reused/);
   assert.match(route, /launch_request_expired/);
+  assert.match(route, /launch_url_already_issued/);
+  assert.doesNotMatch(route, /launchUrl:previous\.launch_url/);
   assert.match(route, /parsedLaunchUrl\.protocol!=='https:'/);
   assert.match(route, /parsedLaunchUrl\.username\|\|parsedLaunchUrl\.password/);
   assert.match(route, /launchRequestId/);
 });
 
+
+test('GoldslotPalase losing rounds may send a zero-amount Win callback', async () => {
+  const source = await readFile(serverPath, 'utf8');
+  assert.match(source, /rawAmount<0\|\|\(command==='bet'&&rawAmount<=0\)/);
+  assert.doesNotMatch(source, /\['bet','win'\]\.includes\(command\)&&rawAmount<=0/);
+});
 
 test('MySQL numeric zero disables registration, wallet, deposits, withdrawals, and withdrawal password requirement correctly', async () => {
   const server = await readFile(serverPath, 'utf8');
@@ -93,8 +103,9 @@ test('MySQL numeric zero disables registration, wallet, deposits, withdrawals, a
 test('provider and game catalog normalization handles numeric inactive flags without requiring a database connection', async () => {
   const provider = await readFile(new URL('../src/provider.js', import.meta.url), 'utf8');
   assert.match(provider, /function activeFlag\(value,fallback=true\)/);
-  assert.match(provider, /isActive:activeFlag\(v\?\.is_active,activeFlag\(v\?\.active\)\)/);
-  assert.match(provider, /isActive:activeFlag\(g\?\.is_active\)&&activeFlag\(g\?\.launch_enabled\)/);
+  assert.match(provider, /const active=activeFlag\(v\?\.is_active,activeFlag\(v\?\.active,rawStatus===undefined\?true:activeFlag\(rawStatus,true\)\)\)/);
+  assert.match(provider, /isActive:active&&!maintenance/);
+  assert.match(provider, /isActive:activeFlag\(g\?\.is_active,true\)&&launchEnabled/);
   assert.match(provider, /'0','false','no','off','inactive'/);
 });
 
@@ -109,8 +120,8 @@ test('catalog synchronization has one canonical persistence endpoint', async () 
   const catalogRouteEnd = source.indexOf("app.get('/api/backoffice-rtp", catalogRouteStart);
   const catalogRoute = source.slice(catalogRouteStart, catalogRouteEnd);
   assert.match(catalogRoute, /b\.action==='sync'/);
-  assert.match(catalogRoute, /provider\.providers\(\)/);
-  assert.match(catalogRoute, /provider\.allGames\(\)/);
+  assert.match(catalogRoute, /provider\.providers\(\{\}\)/);
+  assert.match(catalogRoute, /provider\.allGames\(\{\}\)/);
 });
 
 
@@ -147,4 +158,80 @@ test('game launch validates numeric provider/user codes and excludes inactive pr
   assert.match(route, /Number\.isSafeInteger\(numericUserCode\)/);
   assert.match(route, /lang:9/);
   assert.doesNotMatch(route, /lang:Number\(req\.body\.lang/);
+});
+
+test('Goldslot launch reserves the idempotency key before the provider call and does not override RTP', async () => {
+  const source = await readFile(serverPath, 'utf8');
+  const launchStart = source.indexOf("app.post('/api/game-launch'");
+  const launchEnd = source.indexOf("app.post('/api/payment-deposit'", launchStart);
+  const route = source.slice(launchStart, launchEnd);
+  assert.ok(route.indexOf("'pending'") >= 0 && route.indexOf("'pending'") < route.indexOf('provider.launch(launchPayload)'));
+  assert.match(route, /launch_request_in_progress/);
+  assert.match(route, /status="failed"/);
+  assert.doesNotMatch(route, /rtp\s*:\s*0/);
+  assert.match(route, /idempotency_key_reused/);
+  assert.match(route, /parsedLaunchUrl\.protocol!=='https:'/);
+});
+
+test('provider callback payload fingerprints are stable when object key order changes', () => {
+  assert.equal(canonicalJson({command:'bet',data:{amount:10,account:'123'}}), canonicalJson({data:{account:'123',amount:10},command:'bet'}));
+  assert.notEqual(canonicalJson({command:'bet',data:{amount:10}}), canonicalJson({command:'bet',data:{amount:11}}));
+});
+
+test('callback processing rejects changed payload for the same event key and command reuse for transaction IDs', async () => {
+  const source = await readFile(serverPath, 'utf8');
+  assert.match(source, /eventRows\[0\]\?\.payload_hash&&eventRows\[0\]\.payload_hash!==payloadHash/);
+  assert.match(source, /existing\[0\]\.command!==command/);
+});
+
+
+test('provider transaction replay rejects reused IDs with a different user, account, command, or amount', async () => {
+  const source = await readFile(serverPath, 'utf8');
+  assert.match(source, /SELECT response_json,command,user_id,amount,account FROM provider_transactions/);
+  assert.match(source, /String\(existing\[0\]\.user_id\)!==String\(userId\)/);
+  assert.match(source, /String\(existing\[0\]\.account\)!==account/);
+  assert.match(source, /command!=='cancel'&&Number\(existing\[0\]\.amount\)!==Number\(amount\)/);
+});
+
+test('withdrawal settlement and release lock withdrawal before wallet and ignore terminal states', async () => {
+  const payment = await readFile(new URL('../src/xendit-payment.js', import.meta.url), 'utf8');
+  assert.match(payment, /SELECT status FROM withdrawals WHERE id=\? AND user_id=\? FOR UPDATE/);
+  assert.match(payment, /\['completed','failed','reversed'\]\.includes\(String\(wd\.status\)\.toLowerCase\(\)\)/);
+  assert.match(payment, /!\['pending','processing','pending_compliance'\]\.includes\(String\(wd\.status\)\.toLowerCase\(\)\)/);
+  const settle = payment.slice(payment.indexOf('async function settleWithdrawal'), payment.indexOf('async function releaseWithdrawal'));
+  assert.ok(settle.indexOf('FROM withdrawals') < settle.indexOf('FROM wallets'));
+  const release = payment.slice(payment.indexOf('async function releaseWithdrawal'), payment.indexOf('export async function handleXenditPaymentWebhook'));
+  assert.ok(release.indexOf('FROM withdrawals') < release.indexOf('FROM wallets'));
+});
+
+test('wallet mutation rechecks idempotency after acquiring the wallet row lock and rejects reference conflicts', async () => {
+  const wallet = await readFile(new URL('../src/wallet.js', import.meta.url), 'utf8');
+  assert.match(wallet, /const duplicateAfterLock=await checkDuplicate\(true\);if\(duplicateAfterLock\)return duplicateAfterLock/);
+  assert.match(wallet, /code:'idempotency_conflict',status:409/);
+  assert.match(wallet, /rows\[0\]\.direction!==direction/);
+});
+
+
+test('locked wallets still accept provider wins and reversals while blocking new bets', async () => {
+  const source = await readFile(serverPath, 'utf8');
+  const start = source.indexOf("app.post('/api/provider/callback'");
+  const end = source.indexOf("app.get('/api/backoffice-health'", start);
+  const route = source.slice(start, end);
+  assert.match(route, /if\(wallet\.locked&&command==='bet'\)return \{result:22,status:'USER_INACTIVE'\}/);
+  assert.doesNotMatch(route, /if\(wallet\.locked\)return \{result:22,status:'USER_INACTIVE'\}/);
+});
+
+test('successful deposit webhook credits wallet even when wallet outflows are locked', async () => {
+  const payment = await readFile(new URL('../src/xendit-payment.js', import.meta.url), 'utf8');
+  const start = payment.indexOf('export async function handleXenditPaymentWebhook');
+  const end = payment.indexOf('export async function handleXenditPayoutWebhook', start);
+  const handler = payment.slice(start, end);
+  assert.match(handler, /if\(!w\)fail\('wallet_not_found',404\)/);
+  assert.doesNotMatch(handler, /if\(!w\|\|w\.locked\)fail\('wallet_locked',409\)/);
+});
+
+
+test('provider transaction status queries are scoped to the callback account owner', async () => {
+  const source = await readFile(serverPath, 'utf8');
+  assert.match(source, /SELECT status FROM provider_transactions WHERE provider_code="goldslotpalase" AND provider_transaction_id=\? AND user_id=\? LIMIT 1/);
 });

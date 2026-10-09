@@ -1,6 +1,7 @@
 import crypto from 'node:crypto';
 import {config} from './config.js';
 function pe(code,status=502,extra={}){const e=new Error(code);e.code=code;e.status=status;Object.assign(e,extra);return e}
+export function canonicalJson(value){if(Array.isArray(value))return '['+value.map(canonicalJson).join(',')+']';if(value&&typeof value==='object')return '{'+Object.keys(value).sort().map(k=>JSON.stringify(k)+':'+canonicalJson(value[k])).join(',')+'}';return JSON.stringify(value)}
 function activeFlag(value,fallback=true){if(value===undefined||value===null)return fallback;if(typeof value==='boolean')return value;return !['0','false','no','off','inactive'].includes(String(value).trim().toLowerCase())}
 export class GoldslotPalaseClient{
  constructor(){this.base=config.providerBaseUrl;this.token=config.providerToken;this.timeout=config.providerTimeoutMs}

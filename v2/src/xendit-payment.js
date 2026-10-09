@@ -95,6 +95,9 @@ export async function createWithdrawal(user,body){
 async function settleWithdrawal(id,userId,amount,payout){
  const status=String(payout.status||'').toUpperCase();
  await withTransaction(async c=>{
+  // Lock withdrawal before wallet, matching payout webhook lock order and preventing double settlement.
+  const [[wd]]=await c.query('SELECT status FROM withdrawals WHERE id=? AND user_id=? FOR UPDATE',[id,userId]);
+  if(!wd||['completed','failed','reversed'].includes(String(wd.status).toLowerCase()))return;
   const [[w]]=await c.query('SELECT balance,locked_balance FROM wallets WHERE user_id=? FOR UPDATE',[userId]);
   if(!w)fail('wallet_not_found',404);
   if(['FAILED','REJECTED','CANCELLED','REVERSED','EXPIRED'].includes(status)){
@@ -117,6 +120,9 @@ async function settleWithdrawal(id,userId,amount,payout){
 
 async function releaseWithdrawal(id,userId,amount,reason,detail){
  await withTransaction(async c=>{
+  // Use the same withdrawal -> wallet lock order as webhook and settlement handlers.
+  const [[wd]]=await c.query('SELECT status FROM withdrawals WHERE id=? AND user_id=? FOR UPDATE',[id,userId]);
+  if(!wd||!['pending','processing','pending_compliance'].includes(String(wd.status).toLowerCase()))return;
   const [[w]]=await c.query('SELECT locked_balance FROM wallets WHERE user_id=? FOR UPDATE',[userId]);if(!w)return;
   await c.query('UPDATE wallets SET locked_balance=GREATEST(0,locked_balance-?) WHERE user_id=?',[amount,userId]);
   await c.query('UPDATE withdrawals SET status="failed",reject_reason=?,updated_at=NOW() WHERE id=?',[String(reason+':'+detail).slice(0,500),id]);
@@ -136,7 +142,7 @@ export async function handleXenditPaymentWebhook(req){
    const reference=String(d.reference_id||'');const [orders]=await c.query('SELECT * FROM payment_orders WHERE reference=? FOR UPDATE',[reference]);if(!orders[0])fail('payment_order_not_found',404);
    const order=orders[0],amount=Number(d.request_amount||0);if(Number(order.amount)!==amount)fail('payment_amount_mismatch',409);
    if(order.status!=='paid'){
-    const [[w]]=await c.query('SELECT balance,locked FROM wallets WHERE user_id=? FOR UPDATE',[order.user_id]);if(!w||w.locked)fail('wallet_locked',409);
+    const [[w]]=await c.query('SELECT balance,locked FROM wallets WHERE user_id=? FOR UPDATE',[order.user_id]);if(!w)fail('wallet_not_found',404);
     const before=Number(w.balance),after=before+amount,txId=newId(),ref='PAY-'+reference;
     await c.query('UPDATE wallets SET balance=? WHERE user_id=?',[after,order.user_id]);
     await c.query('INSERT INTO transactions(id,user_id,type,amount,status,reference,metadata) VALUES(?,?,?,?,?,?,?)',[txId,order.user_id,'payment_deposit',amount,'completed',ref,JSON.stringify({provider:'xendit',paymentId,requestId,reference})]);
