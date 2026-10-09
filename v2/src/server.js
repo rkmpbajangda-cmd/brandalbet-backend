@@ -275,7 +275,7 @@ app.post('/api/provider/callback',async(req,res,next)=>{try{
  if(command==='authenticate'||command==='balance')return res.json({result:0,status:'OK',data:{account,balance:availableBalance}});
  const transGuid=String(d.trans_guid??'').trim();if(!transGuid)return res.status(400).json({result:41,status:'TRANSACTION_INVALID'});
  if(command==='status'){
-  const [tx]=await pool.query('SELECT status FROM provider_transactions WHERE provider_code="goldslotpalase" AND provider_transaction_id=? LIMIT 1',[transGuid]);
+  const [tx]=await pool.query('SELECT status FROM provider_transactions WHERE provider_code="goldslotpalase" AND provider_transaction_id=? AND user_id=? LIMIT 1',[transGuid,userId]);
   if(!tx[0]) return res.status(404).json({result:42,status:'TRANSACTION_NOT_FOUND',data:{account,trans_guid:transGuid}});
   return res.json({result:0,status:'OK',data:{account,trans_guid:transGuid,status:tx[0].status==='canceled'?'CANCELED':'OK'}});
  }
