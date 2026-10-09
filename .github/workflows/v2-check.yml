@@ -1,9 +1,9 @@
 name: BrandalBet V2 Checks
 on:
   push:
-    branches: [backend-v2-node-mysql]
+    branches: [backend-v2-node-mysql, v2-completion-hardening, fix/v2-goldslot-game-flow]
   pull_request:
-    branches: [main, backend-v2-node-mysql]
+    branches: [main, backend-v2-node-mysql, v2-completion-hardening]
 jobs:
   check:
     runs-on: ubuntu-latest
