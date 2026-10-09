@@ -103,7 +103,8 @@ test('MySQL numeric zero disables registration, wallet, deposits, withdrawals, a
 test('provider and game catalog normalization handles numeric inactive flags without requiring a database connection', async () => {
   const provider = await readFile(new URL('../src/provider.js', import.meta.url), 'utf8');
   assert.match(provider, /function activeFlag\(value,fallback=true\)/);
-  assert.match(provider, /isActive:activeFlag\(v\?\.is_active,activeFlag\(v\?\.active,/);\n  assert.match(provider, /rawStatus===undefined\?true:activeFlag\(rawStatus,true\)/);
+  assert.match(provider, /isActive:activeFlag\(v\?\.is_active,activeFlag\(v\?\.active,/);
+  assert.match(provider, /rawStatus===undefined\?true:activeFlag\(rawStatus,true\)/);
   assert.match(provider, /isActive:activeFlag\(g\?\.is_active,true\)&&launchEnabled/);
   assert.match(provider, /'0','false','no','off','inactive'/);
 });
