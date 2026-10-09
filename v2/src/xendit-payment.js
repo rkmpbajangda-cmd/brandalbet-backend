@@ -142,7 +142,7 @@ export async function handleXenditPaymentWebhook(req){
    const reference=String(d.reference_id||'');const [orders]=await c.query('SELECT * FROM payment_orders WHERE reference=? FOR UPDATE',[reference]);if(!orders[0])fail('payment_order_not_found',404);
    const order=orders[0],amount=Number(d.request_amount||0);if(Number(order.amount)!==amount)fail('payment_amount_mismatch',409);
    if(order.status!=='paid'){
-    const [[w]]=await c.query('SELECT balance,locked FROM wallets WHERE user_id=? FOR UPDATE',[order.user_id]);if(!w||w.locked)fail('wallet_locked',409);
+    const [[w]]=await c.query('SELECT balance,locked FROM wallets WHERE user_id=? FOR UPDATE',[order.user_id]);if(!w)fail('wallet_not_found',404);
     const before=Number(w.balance),after=before+amount,txId=newId(),ref='PAY-'+reference;
     await c.query('UPDATE wallets SET balance=? WHERE user_id=?',[after,order.user_id]);
     await c.query('INSERT INTO transactions(id,user_id,type,amount,status,reference,metadata) VALUES(?,?,?,?,?,?,?)',[txId,order.user_id,'payment_deposit',amount,'completed',ref,JSON.stringify({provider:'xendit',paymentId,requestId,reference})]);
