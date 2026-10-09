@@ -51,7 +51,14 @@ async function ensureProviderUser(userId,username){
   if(!providerUser)return;
   await pool.query('INSERT INTO provider_users(id,user_id,provider_code,provider_user_code) VALUES(?,?,?,?)',[newId(),userId,'goldslotpalase',providerUser]);
   return providerUser;
- }catch(e){console.error('provider_user_sync_failed',e.code||e.message)}
+ }catch(e){
+  if(e.code==='ER_DUP_ENTRY'){
+   const [mapped]=await pool.query('SELECT provider_user_code FROM provider_users WHERE user_id=? AND provider_code="goldslotpalase" LIMIT 1',[userId]);
+   if(mapped[0]?.provider_user_code)return mapped[0].provider_user_code;
+  }
+  console.error('provider_user_sync_failed',e.code||e.message);
+  return;
+ }
 }
 async function completeOnboarding(userId,body){
  const b=body||{};
@@ -78,6 +85,12 @@ async function login(req,res,username,password,deviceId){
  const u=rows[0],sid=newId(),raw=token(),expires=new Date(Date.now()+config.sessionTtlDays*86400000),type=u.role==='member'?'member':'backoffice';
  const [[security]]=u.role==='member'?await pool.query('SELECT login_enabled,one_device_only FROM member_security_settings WHERE user_id=?',[u.id]):[[null]];
  if(security&&Number(security.login_enabled)===0)return fail(res,403,'login_disabled');
+ // GoldslotPalase recommends creating/resolving the provider account at member login.
+ // If the provider is configured but account mapping cannot be confirmed, do not issue a session that cannot launch games.
+ if(type==='member'&&provider.configured){
+  const providerUser=await ensureProviderUser(u.id,u.username);
+  if(!providerUser)return fail(res,503,'provider_user_unavailable');
+ }
  await withTransaction(async c=>{
   if(type==='backoffice'||Number(security?.one_device_only??1)!==0)await c.query('UPDATE user_sessions SET revoked_at=NOW() WHERE user_id=? AND session_type=? AND revoked_at IS NULL',[u.id,type]);
   await c.query('INSERT INTO user_sessions(id,user_id,token_hash,device_id,session_type,ip,user_agent,expires_at) VALUES(?,?,?,?,?,?,?,?)',[sid,u.id,hash(raw),deviceId||null,type,req.ip,req.get('user-agent')||null,expires]);
