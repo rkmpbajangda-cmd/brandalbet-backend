@@ -76,11 +76,19 @@ test('game launch rejects reused idempotency keys for a different game and unsaf
   const route = source.slice(launchStart, launchEnd);
   assert.match(route, /idempotency_key_reused/);
   assert.match(route, /launch_request_expired/);
+  assert.match(route, /launch_url_already_issued/);
+  assert.doesNotMatch(route, /launchUrl:previous\.launch_url/);
   assert.match(route, /parsedLaunchUrl\.protocol!=='https:'/);
   assert.match(route, /parsedLaunchUrl\.username\|\|parsedLaunchUrl\.password/);
   assert.match(route, /launchRequestId/);
 });
 
+
+test('GoldslotPalase losing rounds may send a zero-amount Win callback', async () => {
+  const source = await readFile(serverPath, 'utf8');
+  assert.match(source, /rawAmount<0\|\|\(command==='bet'&&rawAmount<=0\)/);
+  assert.doesNotMatch(source, /\['bet','win'\]\.includes\(command\)&&rawAmount<=0/);
+});
 
 test('MySQL numeric zero disables registration, wallet, deposits, withdrawals, and withdrawal password requirement correctly', async () => {
   const server = await readFile(serverPath, 'utf8');
