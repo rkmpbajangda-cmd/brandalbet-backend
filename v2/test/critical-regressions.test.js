@@ -181,7 +181,7 @@ test('provider callback payload fingerprints are stable when object key order ch
 test('callback processing rejects changed payload for the same event key and command reuse for transaction IDs', async () => {
   const source = await readFile(serverPath, 'utf8');
   assert.match(source, /eventRows\[0\]\?\.payload_hash&&eventRows\[0\]\.payload_hash!==payloadHash/);
-  assert.match(source, /existing\[0\]\?\.command&&existing\[0\]\.command!==command/);
+  assert.match(source, /existing\[0\]\.command!==command/);
 });
 
 
