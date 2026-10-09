@@ -277,7 +277,7 @@ app.post('/api/provider/callback',async(req,res,next)=>{try{
   if(!tx[0]) return res.status(404).json({result:42,status:'TRANSACTION_NOT_FOUND',data:{account,trans_guid:transGuid}});
   return res.json({result:0,status:'OK',data:{account,trans_guid:transGuid,status:tx[0].status==='canceled'?'CANCELED':'OK'}});
  }
- const cancelGuid=String(d.cancel_trans_guid??'').trim(),rawAmount=Number(d.amount??0);if(!Number.isFinite(rawAmount)||rawAmount<0||(['bet','win'].includes(command)&&rawAmount<=0))return res.status(400).json({result:1012,status:'PARAMETERS_INVALID'});const amount=money(rawAmount),providerType=command==='bet'?'Bet':command==='win'?'Win':'Cancel';
+ const cancelGuid=String(d.cancel_trans_guid??'').trim(),rawAmount=Number(d.amount??0);if(!Number.isFinite(rawAmount)||rawAmount<0||(command==='bet'&&rawAmount<=0))return res.status(400).json({result:1012,status:'PARAMETERS_INVALID'});const amount=money(rawAmount),providerType=command==='bet'?'Bet':command==='win'?'Win':'Cancel';
  const eventKey=command+':'+transGuid+':'+cancelGuid;
  const payloadHash=hash(canonicalJson(b));
  const response=await withTransaction(async conn=>{
