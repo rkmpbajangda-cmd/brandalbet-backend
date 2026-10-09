@@ -288,8 +288,8 @@ app.post('/api/provider/callback',async(req,res,next)=>{try{
   if(eventRows[0]?.payload_hash&&eventRows[0].payload_hash!==payloadHash)return {result:41,status:'TRANSACTION_INVALID'};
    if(eventRows[0]?.response_json)return JSON.parse(eventRows[0].response_json);
   const lookupId=transGuid;
-  const [existing]=await conn.query('SELECT response_json,command FROM provider_transactions WHERE provider_code="goldslotpalase" AND provider_transaction_id=? FOR UPDATE',[lookupId]);
-  if(existing[0]?.command&&existing[0].command!==command)return {result:41,status:'TRANSACTION_INVALID'};
+  const [existing]=await conn.query('SELECT response_json,command,user_id,amount,account FROM provider_transactions WHERE provider_code="goldslotpalase" AND provider_transaction_id=? FOR UPDATE',[lookupId]);
+  if(existing[0]&&(existing[0].command!==command||String(existing[0].user_id)!==String(userId)||String(existing[0].account)!==account||(command!=='cancel'&&Number(existing[0].amount)!==Number(amount))))return {result:41,status:'TRANSACTION_INVALID'};
    if(existing[0]?.response_json)return JSON.parse(existing[0].response_json);
   const [[wallet]]=await conn.query('SELECT balance,locked,locked_balance FROM wallets WHERE user_id=? FOR UPDATE',[userId]);
   if(!wallet)return {result:21,status:'USER_NOT_FOUND'};
