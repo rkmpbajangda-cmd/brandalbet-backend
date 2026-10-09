@@ -55,13 +55,15 @@ test('member catalog endpoint reads MySQL snapshot and applies short HTTP cachin
   assert.match(route, /Cache-Control/);
 });
 
-test('provider account creation is deferred until the member launches a game', async () => {
+test('GoldslotPalase user mapping is resolved at member login and rechecked before game launch', async () => {
   const source = await readFile(serverPath, 'utf8');
   const loginStart = source.indexOf('async function login(');
   const launchStart = source.indexOf("app.post('/api/game-launch'");
   assert.ok(loginStart >= 0 && launchStart > loginStart);
   const loginRoute = source.slice(loginStart, launchStart);
-  assert.doesNotMatch(loginRoute, /ensureProviderUser\s*\(/);
+  assert.match(loginRoute, /type==='member'&&provider\.configured/);
+  assert.match(loginRoute, /ensureProviderUser\(u\.id,u\.username\)/);
+  assert.match(loginRoute, /provider_user_unavailable/);
   const launchRoute = source.slice(launchStart, source.indexOf("app.post('/api/payment-deposit'", launchStart));
   assert.match(launchRoute, /ensureProviderUser\(req\.user\.id,req\.user\.username\)/);
   assert.match(launchRoute, /provider\.launch\(launchPayload\)/);
