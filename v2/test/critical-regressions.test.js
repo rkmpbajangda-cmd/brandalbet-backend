@@ -9,7 +9,7 @@ const serverPath = fileURLToPath(new URL('../src/server.js', import.meta.url));
 
 test('game-launch audit metadata uses the validated game symbol', async () => {
   const source = await readFile(serverPath, 'utf8');
-  assert.match(source, /audit\(req,'game\.launch','game',games\[0\]\.id,\{providerId,gameSymbol:symbol\}\)/);
+  assert.match(source, /audit\(req,'game\.launch','game',games\[0\]\.id,\{providerId,gameSymbol:symbol,launchRequestId:requestId\}\)/);
   assert.doesNotMatch(source, /audit\(req,'game\.launch','game',games\[0\]\.id,\{providerId,gameSymbol\}\)/);
 });
 
