@@ -293,7 +293,7 @@ app.post('/api/provider/callback',async(req,res,next)=>{try{
    if(existing[0]?.response_json)return JSON.parse(existing[0].response_json);
   const [[wallet]]=await conn.query('SELECT balance,locked,locked_balance FROM wallets WHERE user_id=? FOR UPDATE',[userId]);
   if(!wallet)return {result:21,status:'USER_NOT_FOUND'};
-  if(wallet.locked)return {result:22,status:'USER_INACTIVE'};
+  if(wallet.locked&&command==='bet')return {result:22,status:'USER_INACTIVE'};
   let before=Number(wallet.balance),after=before,ledgerDirection=null,ledgerAmount=amount,reason='provider_'+command;
   if(command==='bet'){
    if(getAvailableBalance(before,wallet.locked_balance||0)<amount)return {result:31,status:'BALANCE_NOT_ENOUGH',data:{account,balance:before}};
