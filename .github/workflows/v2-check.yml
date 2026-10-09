@@ -28,7 +28,10 @@ jobs:
           cache: npm
       - run: npm install
       - run: npm run check
-      - run: npm test
+      - name: Run tests
+        env:
+          DATABASE_URL: mysql://root:root@127.0.0.1:3306/brandalbet_test
+        run: npm test
       - name: Apply database schema
         env:
           DATABASE_URL: mysql://root:root@127.0.0.1:3306/brandalbet_test
