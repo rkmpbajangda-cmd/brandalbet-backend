@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
 import {fileURLToPath} from 'node:url';
 import {normalizeReferralCode} from '../src/referral.js';
-import {normalizeProviderGame, normalizeProviderRecord} from '../src/provider.js';
+import {normalizeProviderGame, normalizeProviderRecord, canonicalJson} from '../src/provider.js';
 
 const serverPath = fileURLToPath(new URL('../src/server.js', import.meta.url));
 
@@ -147,4 +147,28 @@ test('game launch validates numeric provider/user codes and excludes inactive pr
   assert.match(route, /Number\.isSafeInteger\(numericUserCode\)/);
   assert.match(route, /lang:9/);
   assert.doesNotMatch(route, /lang:Number\(req\.body\.lang/);
+});
+
+test('Goldslot launch reserves the idempotency key before the provider call and does not override RTP', async () => {
+  const source = await readFile(serverPath, 'utf8');
+  const launchStart = source.indexOf("app.post('/api/game-launch'");
+  const launchEnd = source.indexOf("app.post('/api/payment-deposit'", launchStart);
+  const route = source.slice(launchStart, launchEnd);
+  assert.ok(route.indexOf("'pending'") >= 0 && route.indexOf("'pending'") < route.indexOf('provider.launch(launchPayload)'));
+  assert.match(route, /launch_request_in_progress/);
+  assert.match(route, /status="failed"/);
+  assert.doesNotMatch(route, /rtp\s*:\s*0/);
+  assert.match(route, /idempotency_key_reused/);
+  assert.match(route, /parsedLaunchUrl\.protocol!=='https:'/);
+});
+
+test('provider callback payload fingerprints are stable when object key order changes', () => {
+  assert.equal(canonicalJson({command:'bet',data:{amount:10,account:'123'}}), canonicalJson({data:{account:'123',amount:10},command:'bet'}));
+  assert.notEqual(canonicalJson({command:'bet',data:{amount:10}}), canonicalJson({command:'bet',data:{amount:11}}));
+});
+
+test('callback processing rejects changed payload for the same event key and command reuse for transaction IDs', async () => {
+  const source = await readFile(serverPath, 'utf8');
+  assert.match(source, /eventRows\[0\]\?\.payload_hash&&eventRows\[0\]\.payload_hash!==payloadHash/);
+  assert.match(source, /existing\[0\]\?\.command&&existing\[0\]\.command!==command/);
 });
