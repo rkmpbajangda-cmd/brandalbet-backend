@@ -206,7 +206,7 @@ test('withdrawal settlement and release lock withdrawal before wallet and ignore
 
 test('wallet mutation rechecks idempotency after acquiring the wallet row lock and rejects reference conflicts', async () => {
   const wallet = await readFile(new URL('../src/wallet.js', import.meta.url), 'utf8');
-  assert.match(wallet, /const duplicateAfterLock=await checkDuplicate\(\);if\(duplicateAfterLock\)return duplicateAfterLock/);
+  assert.match(wallet, /const duplicateAfterLock=await checkDuplicate\(true\);if\(duplicateAfterLock\)return duplicateAfterLock/);
   assert.match(wallet, /code:'idempotency_conflict',status:409/);
   assert.match(wallet, /rows\[0\]\.direction!==direction/);
 });
