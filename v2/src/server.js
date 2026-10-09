@@ -238,15 +238,16 @@ app.post('/api/game-launch',memberAuth,async(req,res,next)=>{try{
   if(!providerUser)throw Object.assign(new Error('provider_user_create_invalid'),{code:'provider_invalid_response',status:502});
   const numericUserCode=Number(providerUser);
   if(!Number.isSafeInteger(numericUserCode)||numericUserCode<=0)throw Object.assign(new Error('provider_user_code_invalid'),{code:'provider_invalid_response',status:502});
-  // Provider defaults remain authoritative until the provider contract is verified; never send rtp: 0.
-  const launchPayload={user_code:numericUserCode,provider_id:numericProviderId,game_symbol:symbol,lang:9,return_url:config.memberOrigins[0]||'https://brandalbet.blogspot.com',min_bet:0,max_bet:0,round_max_win:0,is_finish_jackpot:true};
-  Object.keys(launchPayload).forEach(k=>launchPayload[k]===undefined||launchPayload[k]===null||launchPayload[k]===''?delete launchPayload[k]:0);
+  // Send only required launch fields plus the member return URL; do not override provider defaults.
+  // Per-user RTP remains disabled by default and no guessed RTP value is sent.
+  const launchPayload={user_code:numericUserCode,provider_id:numericProviderId,game_symbol:symbol,lang:9,return_url:config.memberOrigins[0]||'https://brandalbet.blogspot.com'};
   const launched=await provider.launch(launchPayload);
   const rawLaunchUrl=launched?.data?.game_url??launched?.data?.url??launched?.game_url??launched?.url;
   let parsedLaunchUrl;try{parsedLaunchUrl=new URL(String(rawLaunchUrl||''))}catch{}
   if(!parsedLaunchUrl||parsedLaunchUrl.protocol!=='https:'||!parsedLaunchUrl.hostname||parsedLaunchUrl.username||parsedLaunchUrl.password)throw Object.assign(new Error('provider_invalid_launch_url'),{code:'provider_invalid_launch_url',status:502});
   const launchUrl=parsedLaunchUrl.toString(),exp=new Date(Date.now()+10*60*1000);
-  await pool.query('UPDATE game_launches SET status="issued",launch_url=?,expires_at=? WHERE request_id=? AND user_id=? AND status="pending"',[launchUrl,exp,requestId,req.user.id]);
+  const [issued]=await pool.query('UPDATE game_launches SET status="issued",launch_url=?,expires_at=? WHERE request_id=? AND user_id=? AND status="pending"',[launchUrl,exp,requestId,req.user.id]);
+  if(!issued.affectedRows)throw Object.assign(new Error('launch_state_conflict'),{code:'launch_state_conflict',status:409});
   await audit(req,'game.launch','game',games[0].id,{providerId,gameSymbol:symbol,launchRequestId:requestId});
   return ok(res,{game:{launchUrl,expiresAt:exp.toISOString(),gameId:games[0].id,status:'issued'}});
  }catch(e){await pool.query('UPDATE game_launches SET status="failed" WHERE request_id=? AND user_id=? AND status="pending"',[requestId,req.user.id]).catch(()=>{});throw e;}
