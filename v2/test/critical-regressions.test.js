@@ -104,7 +104,7 @@ test('provider and game catalog normalization handles numeric inactive flags wit
   const provider = await readFile(new URL('../src/provider.js', import.meta.url), 'utf8');
   assert.match(provider, /function activeFlag\(value,fallback=true\)/);
   assert.match(provider, /isActive:activeFlag\(v\?\.is_active,activeFlag\(v\?\.active,rawStatus===undefined\?true:activeFlag\(rawStatus,true\)\)\)/);
-  assert.match(provider, /isActive:activeFlag\(g\?\.is_active\)&&activeFlag\(g\?\.launch_enabled\)/);
+  assert.match(provider, /isActive:activeFlag\(g\?\.is_active,true\)&&launchEnabled/);
   assert.match(provider, /'0','false','no','off','inactive'/);
 });
 
