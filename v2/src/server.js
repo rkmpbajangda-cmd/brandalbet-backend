@@ -228,7 +228,8 @@ app.post('/api/game-launch',memberAuth,async(req,res,next)=>{try{
   if(previous.status==='pending')return fail(res,409,'launch_request_in_progress');
   if(previous.status!=='issued'||!previous.launch_url)return fail(res,409,'launch_request_failed');
   if(!previous.expires_at||new Date(previous.expires_at).getTime()<=Date.now())return fail(res,409,'launch_request_expired');
-  return ok(res,{game:{launchUrl:previous.launch_url,expiresAt:previous.expires_at,status:previous.status,gameId:previous.game_id},idempotent:true});
+  // GoldslotPalase launch URLs are one-time use: never replay a previously issued URL.
+  return fail(res,409,'launch_url_already_issued');
  }
  try{await pool.query('INSERT INTO game_launches(id,user_id,game_id,provider,request_id,status,launch_url,expires_at) VALUES(?,?,?,?,?,?,NULL,NULL)',[newId(),req.user.id,games[0].id,'goldslotpalase',requestId,'pending']);}
  catch(e){if(e.code==='ER_DUP_ENTRY')return fail(res,409,'launch_request_in_progress');throw e;}
