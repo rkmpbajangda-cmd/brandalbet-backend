@@ -35,6 +35,7 @@ jobs:
       - name: Run tests (unit, regression, and MySQL integration)
         env:
           DATABASE_URL: mysql://root:root@127.0.0.1:3306/brandalbet_test
+          XENDIT_WEBHOOK_TOKEN: integration-test-token
         run: npm test
       - name: Verify migration is idempotent
         env:
