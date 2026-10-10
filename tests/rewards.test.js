@@ -119,6 +119,7 @@ test('settled game round is replay-safe, aggregates valid bet/win and advances t
     'users/u1': { uid: 'u1', referralPromoterUid: 'promoter-1' },
     'wallets/u1': { ...wallet('u1'), rewardLockedMinor: 50_000 },
     'rewardTurnover/u1': { uid: 'u1', obligations: [obligation], pendingTurnoverMinor: 500_000 },
+    'referrals/u1': { uid: 'u1', promoterUid: 'promoter-1' },
   });
   const round = {
     provider: 'goldslotpalase',

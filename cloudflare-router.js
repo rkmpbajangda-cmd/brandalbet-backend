@@ -113,7 +113,7 @@ export async function functionEventFromRequest(request) {
     httpMethod: request.method.toUpperCase(),
     path: url.pathname,
     rawUrl: url.toString(),
-    rawQuery: url.search.startsWith('?') ? url.search.slice(1) : url.search,
+    rawQuery: url.search.startsWith('?') ? url.search.slice(1) : '',
     headers: requestHeaders(request),
     queryStringParameters: queryParameters(url),
     body: await readRequestBody(request),
@@ -157,10 +157,42 @@ function json(status, body, extraHeaders = {}) {
   });
 }
 
-function logHandlerLoadFailure(name, error) {
+function requestId(request) {
+  const supplied = request.headers.get('x-request-id');
+  return supplied && /^[A-Za-z0-9._:-]{8,128}$/.test(supplied) ? supplied : crypto.randomUUID();
+}
+
+function routerDiagnostic(code, status, route, requestIdValue, message, action) {
+  return {
+    ok: false,
+    error: code,
+    diagnostic: {
+      code,
+      httpStatus: status,
+      stage: 'BACKEND_ROUTER',
+      component: 'Cloudflare Worker',
+      operation: route || 'router',
+      requestId: requestIdValue,
+      timestamp: new Date().toISOString(),
+      message,
+      cause: code,
+      action,
+      safeContext: {
+        scope: route?.startsWith('backoffice-') ? 'backoffice' : route?.startsWith('member-') ? 'member' : 'unknown',
+        uid: null,
+        role: null,
+        firebaseAuthenticated: false,
+        memberSession: 'not_checked'
+      }
+    }
+  };
+}
+
+function logHandlerLoadFailure(name, error, requestIdValue) {
   console.error(JSON.stringify({
     event: 'cloudflare_handler_load_failed',
     route: name,
+    requestId: requestIdValue,
     name: error?.name || 'Error',
     message: typeof error?.message === 'string' ? error.message.slice(0, 300) : 'unknown',
   }));
@@ -169,26 +201,30 @@ function logHandlerLoadFailure(name, error) {
 export async function handleApiRequest(request, env = process.env) {
   const url = new URL(request.url);
   const name = functionNameFromPath(url.pathname);
-  if (!name || !handlerLoaders[name]) return json(404, { ok: false, error: 'not_found' });
+  const requestIdValue = requestId(request);
+  if (!name || !handlerLoaders[name]) {
+    return json(404, routerDiagnostic('not_found', 404, name || url.pathname, requestIdValue, 'Endpoint API tidak ditemukan.', 'Periksa path endpoint pada Blogger dan daftar route Worker.'), { 'X-Request-ID': requestIdValue });
+  }
 
   let handler;
   try {
     handler = await resolveHandler(name, env);
   } catch (error) {
-    logHandlerLoadFailure(name, error);
-    return json(503, { ok: false, error: 'backend_handler_unavailable' });
+    logHandlerLoadFailure(name, error, requestIdValue);
+    return json(503, routerDiagnostic('backend_handler_unavailable', 503, name, requestIdValue, 'Modul endpoint gagal dimuat oleh Worker.', 'Periksa bundle/deployment Worker menggunakan Request ID ini.'), { 'X-Request-ID': requestIdValue });
   }
 
   try {
     const event = await functionEventFromRequest(request);
     return responseFromFunctionResult(await handler(event));
   } catch (error) {
-    if (error?.statusCode === 413) return json(413, { ok: false, error: 'payload_too_large' });
     console.error(JSON.stringify({
       event: 'cloudflare_router_error',
-      requestId: request.headers.get('x-request-id') || null,
+      requestId: requestIdValue,
       route: name,
+      name: error?.name || 'Error',
+      message: typeof error?.message === 'string' ? error.message.slice(0, 300) : 'unknown',
     }));
-    return json(500, { ok: false, error: 'internal_error' });
+    return json(500, routerDiagnostic('internal_error', 500, name, requestIdValue, 'Worker mengalami error internal sebelum endpoint dapat mengembalikan respons.', 'Periksa log Cloudflare Worker menggunakan Request ID ini.'), { 'X-Request-ID': requestIdValue });
   }
 }

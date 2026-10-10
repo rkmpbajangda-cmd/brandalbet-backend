@@ -190,7 +190,7 @@ test('round finalizer applies valid betting turnover before releasing reward loc
     'rewardTurnover/member-1': {
       uid: 'member-1',
       obligations: [{
-        id: 'cashback-1', weekKey: '2026-W40', principalMinor: 300000,
+        id: 'c'.repeat(64), weekKey: '2026-W40', principalMinor: 300000,
         requiredTurnoverMinor: 3000000, remainingTurnoverMinor: 3000000,
       }],
       pendingTurnoverMinor: 3000000,
