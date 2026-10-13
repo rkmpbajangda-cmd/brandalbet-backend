@@ -9,6 +9,15 @@ import { loadStoredGameCatalog } from './catalog.js';
 const LAUNCH_GUARD_MS = 8_000;
 const LAUNCH_GUARD_COLLECTION = 'gameLaunchGuards';
 
+function launchLanguage(env) {
+  const raw = env?.GOLDSLOTPALASE_LANGUAGE ?? '9';
+  const value = typeof raw === 'number' ? raw : Number(String(raw).trim());
+  if (!Number.isSafeInteger(value) || value < 1 || value > 99) {
+    throw new ServiceError('provider_invalid_configuration', 503);
+  }
+  return value;
+}
+
 function launchTtlMs(env) {
   const raw = env?.GOLDSLOTPALASE_LAUNCH_URL_TTL_MS ?? '600000';
   if (typeof raw !== 'string' || !/^\d+$/.test(raw)) throw new ServiceError('provider_invalid_configuration', 503);
@@ -171,7 +180,7 @@ export async function launchGoldslotGame(actor, input, {
       userCode: player.userCode,
       providerId: game.providerId,
       gameSymbol: game.gameSymbol,
-      language: undefined,
+      language: launchLanguage(env),
     });
 
     return Object.freeze({
