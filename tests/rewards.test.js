@@ -117,6 +117,7 @@ test('settled game round is replay-safe, aggregates valid bet/win and advances t
   };
   const db = transactionDb({
     'users/u1': { uid: 'u1', referralPromoterUid: 'promoter-1' },
+    'referrals/u1': { memberUid: 'u1', promoterUid: 'promoter-1', referralCode: 'BRTEST123' },
     'wallets/u1': { ...wallet('u1'), rewardLockedMinor: 50_000 },
     'rewardTurnover/u1': { uid: 'u1', obligations: [obligation], pendingTurnoverMinor: 500_000 },
   });
