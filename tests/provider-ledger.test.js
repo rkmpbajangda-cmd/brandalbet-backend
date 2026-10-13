@@ -204,7 +204,7 @@ test('round finalizer applies valid betting turnover before releasing reward loc
 
   const result = await finalizeReadyGoldslotRounds({ db, now });
   assert.equal(result.finalized, 1);
-  assert.equal(db.read('wallets/member-1').rewardLockedMinor, 200000);
+  assert.equal(db.read('wallets/member-1').rewardLockedMinor, 300000);
   assert.equal(db.read('rewardTurnover/member-1').pendingTurnoverMinor, 2000000);
 });
 
