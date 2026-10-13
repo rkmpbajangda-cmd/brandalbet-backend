@@ -1,3 +1,5 @@
+import { handleApiRequest } from './cloudflare-router.js';
+
 function json(status, body) {
   return new Response(JSON.stringify(body), {
     status,
@@ -61,17 +63,7 @@ export default {
     const url = new URL(request.url);
     if (url.pathname === '/' || url.pathname === '/health') return rootResponse();
 
-    try {
-      const { handleApiRequest } = await import('./cloudflare-router.js');
-      return await handleApiRequest(request, env);
-    } catch (error) {
-      console.error(JSON.stringify({
-        event: 'cloudflare_router_load_failed',
-        name: error?.name || 'Error',
-        message: typeof error?.message === 'string' ? error.message.slice(0, 300) : 'unknown',
-      }));
-      return json(503, { ok: false, error: 'backend_router_unavailable' });
-    }
+    return await handleApiRequest(request, env);
   },
 
   scheduled(controller, env, ctx) {
