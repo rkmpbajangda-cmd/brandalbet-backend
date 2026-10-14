@@ -1,80 +1,46 @@
 const MAX_BODY_BYTES = 128 * 1024;
 
-import * as routeModule0 from './cloudflare/functions/backoffice-audit.js';
-import * as routeModule1 from './cloudflare/functions/backoffice-dashboard.js';
-import * as routeModule2 from './cloudflare/functions/backoffice-finance.js';
-import * as routeModule3 from './cloudflare/functions/backoffice-game-catalog.js';
-import * as routeModule4 from './cloudflare/functions/backoffice-health.js';
-import * as routeModule5 from './cloudflare/functions/backoffice-ledger.js';
-import * as routeModule6 from './cloudflare/functions/backoffice-master-control.js';
-import * as routeModule7 from './cloudflare/functions/backoffice-members.js';
-import * as routeModule8 from './cloudflare/functions/backoffice-payment-connections.js';
-import * as routeModule9 from './cloudflare/functions/backoffice-promotions.js';
-import * as routeModule10 from './cloudflare/functions/backoffice-provider.js';
-import * as routeModule11 from './cloudflare/functions/backoffice-readiness.js';
-import * as routeModule12 from './cloudflare/functions/backoffice-reports.js';
-import * as routeModule13 from './cloudflare/functions/backoffice-rewards.js';
-import * as routeModule14 from './cloudflare/functions/backoffice-website-settings.js';
-import * as routeModule15 from './cloudflare/functions/bootstrap-superadmin.js';
-import * as routeModule16 from './cloudflare/functions/game-launch.js';
-import * as routeModule17 from './cloudflare/functions/game-wallet-reconcile.js';
-import * as routeModule18 from './cloudflare/functions/game-wallet-status.js';
-import * as routeModule19 from './cloudflare/functions/game-wallet-transfer.js';
-import * as routeModule20 from './cloudflare/functions/goldslot-callback.js';
-import * as routeModule21 from './cloudflare/functions/games.js';
-import * as routeModule22 from './cloudflare/functions/health.js';
-import * as routeModule23 from './cloudflare/functions/me.js';
-import * as routeModule24 from './cloudflare/functions/member-bank-account.js';
-import * as routeModule25 from './cloudflare/functions/member-config.js';
-import * as routeModule26 from './cloudflare/functions/member-device-session.js';
-import * as routeModule27 from './cloudflare/functions/member-onboarding.js';
-import * as routeModule28 from './cloudflare/functions/member-profile.js';
-import * as routeModule29 from './cloudflare/functions/member-rewards.js';
-import * as routeModule30 from './cloudflare/functions/member-session.js';
-import * as routeModule31 from './cloudflare/functions/promotions.js';
-import * as routeModule32 from './cloudflare/functions/transactions.js';
-import * as routeModule33 from './cloudflare/functions/wallet.js';
-
-const handlerModules = Object.freeze({
-  'backoffice-audit': routeModule0,
-  'backoffice-dashboard': routeModule1,
-  'backoffice-finance': routeModule2,
-  'backoffice-game-catalog': routeModule3,
-  'backoffice-health': routeModule4,
-  'backoffice-ledger': routeModule5,
-  'backoffice-master-control': routeModule6,
-  'backoffice-members': routeModule7,
-  'backoffice-payment-connections': routeModule8,
-  'backoffice-promotions': routeModule9,
-  'backoffice-provider': routeModule10,
-  'backoffice-readiness': routeModule11,
-  'backoffice-reports': routeModule12,
-  'backoffice-rewards': routeModule13,
-  'backoffice-website-settings': routeModule14,
-  'bootstrap-superadmin': routeModule15,
-  'game-launch': routeModule16,
-  'game-wallet-reconcile': routeModule17,
-  'game-wallet-status': routeModule18,
-  'game-wallet-transfer': routeModule19,
-  'goldslot-callback': routeModule20,
-  'games': routeModule21,
-  'health': routeModule22,
-  'me': routeModule23,
-  'member-bank-account': routeModule24,
-  'member-config': routeModule25,
-  'member-device-session': routeModule26,
-  'member-onboarding': routeModule27,
-  'member-profile': routeModule28,
-  'member-rewards': routeModule29,
-  'member-session': routeModule30,
-  'promotions': routeModule31,
-  'transactions': routeModule32,
-  'wallet': routeModule33,
+const handlerLoaders = Object.freeze({
+  'backoffice-audit': () => import('./cloudflare/functions/backoffice-audit.js'),
+  'backoffice-dashboard': () => import('./cloudflare/functions/backoffice-dashboard.js'),
+  'backoffice-finance': () => import('./cloudflare/functions/backoffice-finance.js'),
+  'backoffice-game-catalog': () => import('./cloudflare/functions/backoffice-game-catalog.js'),
+  'backoffice-health': () => import('./cloudflare/functions/backoffice-health.js'),
+  'backoffice-ledger': () => import('./cloudflare/functions/backoffice-ledger.js'),
+  'backoffice-master-control': () => import('./cloudflare/functions/backoffice-master-control.js'),
+  'backoffice-members': () => import('./cloudflare/functions/backoffice-members.js'),
+  'backoffice-payment-connections': () => import('./cloudflare/functions/backoffice-payment-connections.js'),
+  'backoffice-promotions': () => import('./cloudflare/functions/backoffice-promotions.js'),
+  'backoffice-provider': () => import('./cloudflare/functions/backoffice-provider.js'),
+  'backoffice-readiness': () => import('./cloudflare/functions/backoffice-readiness.js'),
+  'backoffice-reports': () => import('./cloudflare/functions/backoffice-reports.js'),
+  'backoffice-rewards': () => import('./cloudflare/functions/backoffice-rewards.js'),
+  'backoffice-website-settings': () => import('./cloudflare/functions/backoffice-website-settings.js'),
+  'bootstrap-superadmin': () => import('./cloudflare/functions/bootstrap-superadmin.js'),
+  'game-launch': () => import('./cloudflare/functions/game-launch.js'),
+  'game-wallet-reconcile': () => import('./cloudflare/functions/game-wallet-reconcile.js'),
+  'game-wallet-status': () => import('./cloudflare/functions/game-wallet-status.js'),
+  'game-wallet-transfer': () => import('./cloudflare/functions/game-wallet-transfer.js'),
+  'goldslot-callback': () => import('./cloudflare/functions/goldslot-callback.js'),
+  'games': () => import('./cloudflare/functions/games.js'),
+  'health': () => import('./cloudflare/functions/health.js'),
+  'me': () => import('./cloudflare/functions/me.js'),
+  'member-bank-account': () => import('./cloudflare/functions/member-bank-account.js'),
+  'member-config': () => import('./cloudflare/functions/member-config.js'),
+  'member-device-session': () => import('./cloudflare/functions/member-device-session.js'),
+  'member-onboarding': () => import('./cloudflare/functions/member-onboarding.js'),
+  'member-profile': () => import('./cloudflare/functions/member-profile.js'),
+  'member-rewards': () => import('./cloudflare/functions/member-rewards.js'),
+  'member-session': () => import('./cloudflare/functions/member-session.js'),
+  'promotions': () => import('./cloudflare/functions/promotions.js'),
+  'transactions': () => import('./cloudflare/functions/transactions.js'),
+  'wallet': () => import('./cloudflare/functions/wallet.js'),
 });
 
-function resolveHandler(name, env) {
-  const module = handlerModules[name];
-  if (!module) return null;
+async function resolveHandler(name, env) {
+  const loadModule = handlerLoaders[name];
+  if (!loadModule) return null;
+  const module = await loadModule();
   if (typeof module?.createHandler === 'function') return module.createHandler({ env });
   if (typeof module?.handler === 'function') return module.handler;
   throw new TypeError(`Handler export is unavailable for ${name}`);
@@ -193,11 +159,11 @@ function logHandlerLoadFailure(name, error) {
 export async function handleApiRequest(request, env = process.env) {
   const url = new URL(request.url);
   const name = functionNameFromPath(url.pathname);
-  if (!name || !handlerModules[name]) return json(404, { ok: false, error: 'not_found' });
+  if (!name || !handlerLoaders[name]) return json(404, { ok: false, error: 'not_found' });
 
   let handler;
   try {
-    handler = resolveHandler(name, env);
+    handler = await resolveHandler(name, env);
   } catch (error) {
     logHandlerLoadFailure(name, error);
     return json(503, { ok: false, error: 'backend_handler_unavailable' });
