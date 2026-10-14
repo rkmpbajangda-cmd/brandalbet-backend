@@ -9,6 +9,8 @@ const child = spawn('npx', [
   'wrangler@4.129.1',
   'dev',
   '--local',
+  '--compatibility-date',
+  '2026-09-14',
   '--ip', host,
   '--port', String(port),
   '--log-level', 'error',
