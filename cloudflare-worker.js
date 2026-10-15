@@ -25,6 +25,26 @@ function startupModule(result, name) {
   throw error;
 }
 
+// Importing a module is not always enough: Firebase Admin initializes some
+// Firestore/protobuf schemas lazily when initializeFirestore() is called.
+// Initialize it during startup while allow_eval_during_startup is in effect,
+// using Worker bindings exposed through process.env for this compatibility date.
+// Keep liveness available if credentials are intentionally absent in local tests;
+// the first protected database route will still fail closed and logs contain
+// only a safe error code.
+let firebaseFirestoreStartupReady = false;
+try {
+  const { getAdminDb } = startupModule(firebaseAdminImport, 'firebase_admin');
+  getAdminDb(process.env);
+  firebaseFirestoreStartupReady = true;
+  console.log(JSON.stringify({ event: 'firebase_firestore_startup_preload_complete' }));
+} catch (error) {
+  console.error(JSON.stringify({
+    event: 'firebase_firestore_startup_preload_failed',
+    code: typeof error?.code === 'string' ? error.code : 'firebase_firestore_startup_failed',
+  }));
+}
+
 function json(status, body) {
   return new Response(JSON.stringify(body), {
     status,
