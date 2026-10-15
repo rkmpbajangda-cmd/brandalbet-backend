@@ -183,7 +183,7 @@ async function collectRuntimeSources(directory) {
   for (const entry of await readdir(directory, { withFileTypes: true })) {
     const path = `${directory}/${entry.name}`;
     if (entry.isDirectory()) await collectRuntimeSources(path);
-    else if (entry.isFile() && /\\.m?js$/.test(entry.name)) {
+    else if (entry.isFile() && (entry.name.endsWith('.js') || entry.name.endsWith('.mjs'))) {
       runtimeSources.push([path, await readFile(path, 'utf8')]);
     }
   }
