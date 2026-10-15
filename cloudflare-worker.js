@@ -32,11 +32,9 @@ function startupModule(result, name) {
 // Keep liveness available if credentials are intentionally absent in local tests;
 // the first protected database route will still fail closed and logs contain
 // only a safe error code.
-let firebaseFirestoreStartupReady = false;
 try {
   const { getAdminDb } = startupModule(firebaseAdminImport, 'firebase_admin');
   getAdminDb(process.env);
-  firebaseFirestoreStartupReady = true;
   console.log(JSON.stringify({ event: 'firebase_firestore_startup_preload_complete' }));
 } catch (error) {
   console.error(JSON.stringify({
