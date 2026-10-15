@@ -18,6 +18,29 @@ test('legacy Netlify function paths are not exposed', async () => {
   assert.deepEqual(await response.json(), { ok: false, error: 'not_found' });
 });
 
+test('member authentication routes are preloaded and return handler responses', async () => {
+  const onboarding = await handleApiRequest(new Request('https://backend.example/api/member-onboarding', {
+    method: 'GET',
+    headers: { Origin: 'https://brandalbet.blogspot.com' },
+  }));
+  assert.equal(onboarding.status, 405);
+  assert.deepEqual(await onboarding.json(), { ok: false, error: 'method_not_allowed' });
+
+  const deviceSession = await handleApiRequest(new Request('https://backend.example/api/member-device-session', {
+    method: 'GET',
+    headers: { Origin: 'https://brandalbet.blogspot.com' },
+  }));
+  assert.equal(deviceSession.status, 405);
+  assert.deepEqual(await deviceSession.json(), { ok: false, error: 'method_not_allowed' });
+
+  const memberSession = await handleApiRequest(new Request('https://backend.example/api/member-session', {
+    method: 'GET',
+    headers: { Origin: 'https://brandalbet.blogspot.com' },
+  }));
+  assert.equal(memberSession.status, 401);
+  assert.deepEqual(await memberSession.json(), { ok: false, error: 'missing_bearer_token' });
+});
+
 test('Cloudflare router creates the internal function event safely', async () => {
   const event = await functionEventFromRequest(new Request('https://backend.example/api/test?a=1', {
     method: 'POST',
