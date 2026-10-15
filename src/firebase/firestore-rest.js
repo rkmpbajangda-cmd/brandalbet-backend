@@ -8,7 +8,7 @@ class FirebaseConfigError extends Error {
 
 const TOKEN_URL = 'https://oauth2.googleapis.com/token';
 const FIRESTORE_BASE = 'https://firestore.googleapis.com/v1';
-const SCOPE = 'https://www.googleapis.com/auth/datastore';
+const DATASTORE_SCOPE = 'https://www.googleapis.com/auth/datastore';
 const TOKEN_TTL_SECONDS = 300;
 
 function base64UrlEncodeBytes(bytes) {
@@ -60,37 +60,38 @@ function readServiceAccount(env) {
   return { projectId, clientEmail, privateKey };
 }
 
-let tokenCache = null;
-let signingKeyPromise = null;
+const tokenCache = new Map();
+const signingKeyCache = new Map();
 
-async function getSigningKey(privateKey) {
-  if (!signingKeyPromise) {
-    signingKeyPromise = crypto.subtle.importKey(
+async function getSigningKey(privateKey, clientEmail) {
+  if (!signingKeyCache.has(clientEmail)) {
+    signingKeyCache.set(clientEmail, crypto.subtle.importKey(
       'pkcs8',
       pemToArrayBuffer(privateKey),
       { name: 'RSASSA-PKCS1-v1_5', hash: 'SHA-256' },
       false,
       ['sign'],
-    );
+    ));
   }
-  return signingKeyPromise;
+  return signingKeyCache.get(clientEmail);
 }
 
-async function getAccessToken(env) {
+async function getAccessToken(env, scope = DATASTORE_SCOPE) {
   const now = Math.floor(Date.now() / 1000);
-  if (tokenCache && tokenCache.expiresAt > now + 30) return tokenCache.value;
-
   const account = readServiceAccount(env);
+  const cacheKey = account.clientEmail + ':' + scope;
+  const cached = tokenCache.get(cacheKey);
+  if (cached && cached.expiresAt > now + 30) return cached.value;
   const header = base64UrlEncodeText(JSON.stringify({ alg: 'RS256', typ: 'JWT' }));
   const payload = base64UrlEncodeText(JSON.stringify({
     iss: account.clientEmail,
-    scope: SCOPE,
+    scope,
     aud: TOKEN_URL,
     iat: now,
     exp: now + TOKEN_TTL_SECONDS,
   }));
   const unsigned = header + '.' + payload;
-  const key = await getSigningKey(account.privateKey);
+  const key = await getSigningKey(account.privateKey, account.clientEmail);
   const signature = await crypto.subtle.sign('RSASSA-PKCS1-v1_5', key, new TextEncoder().encode(unsigned));
   const assertion = unsigned + '.' + base64UrlEncodeBytes(new Uint8Array(signature));
 
@@ -115,11 +116,11 @@ async function getAccessToken(env) {
     error.code = 'firebase_service_account_token_missing';
     throw error;
   }
-  tokenCache = {
+  tokenCache.set(cacheKey, {
     value: data.access_token,
     expiresAt: now + Math.min(Number(data.expires_in) || TOKEN_TTL_SECONDS, TOKEN_TTL_SECONDS),
-  };
-  return tokenCache.value;
+  });
+  return data.access_token;
 }
 
 function encodePathSegment(value) {
@@ -300,7 +301,11 @@ export function createFirestoreRestDb(env) {
   };
 }
 
+export async function getGoogleAccessToken(env, scope = DATASTORE_SCOPE) {
+  return getAccessToken(env, scope);
+}
+
 export function clearFirestoreRestTokenCache() {
-  tokenCache = null;
-  signingKeyPromise = null;
+  tokenCache.clear();
+  signingKeyCache.clear();
 }
