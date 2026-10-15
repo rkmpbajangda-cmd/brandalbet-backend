@@ -158,7 +158,8 @@ if (!workerSource.includes('await Promise.allSettled([') ||
     !workerSource.includes("import('./src/game/provider-ledger.js')") ||
     !workerSource.includes("import('./src/firebase/admin.js')") ||
     !workerSource.includes('startupModule(providerLedgerImport') ||
-    !workerSource.includes('startupModule(firebaseAdminImport')) {
+    !workerSource.includes('startupModule(firebaseAdminImport') ||
+    !workerSource.includes('getAdminDb(process.env)')) {
   throw new Error('Scheduled handlers must preload Firebase/provider dependencies during Worker startup.');
 }
 
