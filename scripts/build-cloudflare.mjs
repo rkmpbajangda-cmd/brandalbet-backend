@@ -191,7 +191,10 @@ async function collectRuntimeSources(directory) {
 await collectRuntimeSources('cloudflare/functions');
 await collectRuntimeSources('src');
 for (const [path, source] of runtimeSources) {
-  if (/(?:from\\s*|import\\s*\\()\\s*['"]firebase-admin\\//.test(source)) {
+  if (source.includes("from 'firebase-admin/") ||
+      source.includes('from "firebase-admin/') ||
+      source.includes("import('firebase-admin/") ||
+      source.includes('import("firebase-admin/')) {
     throw new Error(`Node Firebase Admin SDK import is not permitted in Cloudflare Worker source: ${path}`);
   }
 }
