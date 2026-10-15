@@ -1,4 +1,4 @@
-import { FieldValue } from 'firebase-admin/firestore';
+import { FieldValue } from '@ljoukov/firebase-admin-cloudflare/firestore';
 import { createHash } from 'node:crypto';
 
 const MAX_META_KEYS = 30;
