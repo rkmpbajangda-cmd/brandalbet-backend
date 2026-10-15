@@ -1,4 +1,4 @@
-import { FieldValue } from 'firebase-admin/firestore';
+import { FieldValue } from '@ljoukov/firebase-admin-cloudflare/firestore';
 import { getAdminDb } from '../firebase/admin.js';
 import { normalizeAssetPath } from '../config/assets.js';
 import { clearPublicSiteSettingsCache } from '../member/public-config.js';

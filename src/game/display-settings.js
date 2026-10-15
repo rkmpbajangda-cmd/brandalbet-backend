@@ -96,7 +96,7 @@ export function clearGameDisplaySettingsCache() {
 export async function updateGameDisplaySettings(actor, input, { db, env = process.env } = {}) {
   requireAdmin(actor);
   const [{ FieldValue }, { getAdminDb }] = await Promise.all([
-    import('firebase-admin/firestore'),
+    import('@ljoukov/firebase-admin-cloudflare/firestore'),
     import('../firebase/admin.js'),
   ]);
   if (!db) db = getAdminDb(env);

@@ -22,9 +22,9 @@ const handlerLoaders = Object.freeze({
   'game-wallet-status': () => import('./cloudflare/functions/game-wallet-status.js'),
   'game-wallet-transfer': () => import('./cloudflare/functions/game-wallet-transfer.js'),
   'goldslot-callback': () => import('./cloudflare/functions/goldslot-callback.js'),
-  games: () => import('./cloudflare/functions/games.js'),
-  health: () => import('./cloudflare/functions/health.js'),
-  me: () => import('./cloudflare/functions/me.js'),
+  'games': () => import('./cloudflare/functions/games.js'),
+  'health': () => import('./cloudflare/functions/health.js'),
+  'me': () => import('./cloudflare/functions/me.js'),
   'member-bank-account': () => import('./cloudflare/functions/member-bank-account.js'),
   'member-config': () => import('./cloudflare/functions/member-config.js'),
   'member-device-session': () => import('./cloudflare/functions/member-device-session.js'),
@@ -32,25 +32,34 @@ const handlerLoaders = Object.freeze({
   'member-profile': () => import('./cloudflare/functions/member-profile.js'),
   'member-rewards': () => import('./cloudflare/functions/member-rewards.js'),
   'member-session': () => import('./cloudflare/functions/member-session.js'),
-  promotions: () => import('./cloudflare/functions/promotions.js'),
-  transactions: () => import('./cloudflare/functions/transactions.js'),
-  wallet: () => import('./cloudflare/functions/wallet.js'),
+  'promotions': () => import('./cloudflare/functions/promotions.js'),
+  'transactions': () => import('./cloudflare/functions/transactions.js'),
+  'wallet': () => import('./cloudflare/functions/wallet.js'),
 });
 
-const moduleCache = new Map();
+// Firebase Admin's Firestore dependency can use new Function during module
+// initialization. Cloudflare permits that only during startup when
+// allow_eval_during_startup is enabled, so resolve every route module now,
+// before a request is handled. Keep failures isolated per route so one optional
+// handler cannot prevent the health endpoint or unrelated routes from starting.
+const preloadedHandlerModules = new Map();
+const handlerLoadErrors = new Map();
+
+await Promise.all(Object.entries(handlerLoaders).map(async ([name, loadModule]) => {
+  try {
+    preloadedHandlerModules.set(name, await loadModule());
+  } catch (error) {
+    handlerLoadErrors.set(name, error);
+    logHandlerLoadFailure(name, error);
+  }
+}));
 
 async function resolveHandler(name, env) {
-  const loader = handlerLoaders[name];
-  if (!loader) return null;
-  let promise = moduleCache.get(name);
-  if (!promise) {
-    promise = loader().catch((error) => {
-      moduleCache.delete(name);
-      throw error;
-    });
-    moduleCache.set(name, promise);
+  const module = preloadedHandlerModules.get(name);
+  if (!module) {
+    if (handlerLoadErrors.has(name)) throw handlerLoadErrors.get(name);
+    return null;
   }
-  const module = await promise;
   if (typeof module?.createHandler === 'function') return module.createHandler({ env });
   if (typeof module?.handler === 'function') return module.handler;
   throw new TypeError(`Handler export is unavailable for ${name}`);
@@ -163,6 +172,7 @@ function logHandlerLoadFailure(name, error) {
     route: name,
     name: error?.name || 'Error',
     message: typeof error?.message === 'string' ? error.message.slice(0, 300) : 'unknown',
+    stack: typeof error?.stack === 'string' ? error.stack.slice(0, 1600) : undefined,
   }));
 }
 

@@ -102,12 +102,15 @@ test('backoffice health forwards request-scoped Cloudflare env to token verifier
 });
 
 
-test('member RBAC is explicit and cannot be satisfied by backoffice roles', () => {
-  assert.equal(canAccessMember({ role: 'member', backoffice: false }), true);
-  assert.equal(canAccessMember({ role: 'operator', backoffice: true }), false);
-  assert.equal(canAccessMember({ role: 'admin', backoffice: true }), false);
-  assert.equal(canAccessMember({ role: 'admin', backoffice: false }), false);
-  assert.equal(canAccessMember({ role: 'unknown', backoffice: false }), false);
+test('member RBAC permits a new Firebase user without custom claims only in member scope', () => {
+  assert.equal(canAccessMember({ uid: 'new-member' }), true);
+  assert.equal(canAccessMember({ uid: 'new-member', role: null, backoffice: false }), true);
+  assert.equal(canAccessMember({ uid: 'member-1', role: 'member', backoffice: false }), true);
+  assert.equal(canAccessMember({ uid: 'operator-1', role: 'operator', backoffice: false }), false);
+  assert.equal(canAccessMember({ uid: 'admin-1', role: 'admin', backoffice: false }), false);
+  assert.equal(canAccessMember({ uid: 'admin-1', role: 'admin', backoffice: true }), false);
+  assert.equal(canAccessMember({ uid: 'backoffice-1', role: 'superadmin', backoffice: true }), false);
+  assert.equal(canAccessMember(null), false);
 });
 
 test('backoffice and member scopes remain mutually exclusive', () => {

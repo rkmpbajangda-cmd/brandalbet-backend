@@ -1,4 +1,4 @@
-import { FieldValue } from 'firebase-admin/firestore';
+import { FieldValue } from '@ljoukov/firebase-admin-cloudflare/firestore';
 import { getAdminDb } from '../firebase/admin.js';
 import { bankAccountView, sanitizeBankAccount, BankAccountValidationError } from './bank-account.js';
 import { profileView } from './profile.js';

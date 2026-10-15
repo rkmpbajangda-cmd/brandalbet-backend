@@ -1,3 +1,48 @@
+import { handleApiRequest } from './cloudflare-router.js';
+
+// Load modules used by scheduled events during startup too. A scheduled event
+// starts after startup; a first-time dynamic import there can hit
+// "Code generation from strings disallowed for this context" in dependencies
+// such as protobufjs. wrangler.jsonc deliberately enables
+// allow_eval_during_startup for this initialization path.
+const [
+  providerLedgerImport,
+  firebaseAdminImport,
+  rewardsServiceImport,
+  verifiedRewardImport,
+] = await Promise.allSettled([
+  import('./src/game/provider-ledger.js'),
+  import('./src/firebase/admin.js'),
+  import('./src/rewards/service.js'),
+  import('./src/rewards/verified-finalization.js'),
+]);
+
+function startupModule(result, name) {
+  if (result.status === 'fulfilled') return result.value;
+  const error = new Error(name + '_module_unavailable');
+  error.code = name + '_module_unavailable';
+  error.cause = result.reason;
+  throw error;
+}
+
+// Importing a module is not always enough: Firebase Admin initializes some
+// Firestore/protobuf schemas lazily when initializeFirestore() is called.
+// Initialize it during startup while allow_eval_during_startup is in effect,
+// using Worker bindings exposed through process.env for this compatibility date.
+// Keep liveness available if credentials are intentionally absent in local tests;
+// the first protected database route will still fail closed and logs contain
+// only a safe error code.
+try {
+  const { getAdminDb } = startupModule(firebaseAdminImport, 'firebase_admin');
+  getAdminDb(process.env);
+  console.log(JSON.stringify({ event: 'firebase_firestore_startup_preload_complete' }));
+} catch (error) {
+  console.error(JSON.stringify({
+    event: 'firebase_firestore_startup_preload_failed',
+    code: typeof error?.code === 'string' ? error.code : 'firebase_firestore_startup_failed',
+  }));
+}
+
 function json(status, body) {
   return new Response(JSON.stringify(body), {
     status,
@@ -18,18 +63,14 @@ function rootResponse() {
 }
 
 async function runProviderTransactionSync(env) {
-  const [{ syncGoldslotProviderTransactions }, { getAdminDb }] = await Promise.all([
-    import('./src/game/provider-ledger.js'),
-    import('./src/firebase/admin.js'),
-  ]);
+  const { syncGoldslotProviderTransactions } = startupModule(providerLedgerImport, 'provider_ledger');
+  const { getAdminDb } = startupModule(firebaseAdminImport, 'firebase_admin');
   return syncGoldslotProviderTransactions({ db: getAdminDb(env), env });
 }
 
 async function runProviderRoundFinalizer(env) {
-  const [{ finalizeReadyGoldslotRounds }, { getAdminDb }] = await Promise.all([
-    import('./src/game/provider-ledger.js'),
-    import('./src/firebase/admin.js'),
-  ]);
+  const { finalizeReadyGoldslotRounds } = startupModule(providerLedgerImport, 'provider_ledger');
+  const { getAdminDb } = startupModule(firebaseAdminImport, 'firebase_admin');
   return finalizeReadyGoldslotRounds({ db: getAdminDb(env) });
 }
 
@@ -37,15 +78,9 @@ async function runWeeklyRewards(env) {
   if (env.REWARDS_PAYOUT_ENABLED !== 'true') {
     return { status: 'disabled', weekKey: null, processed: 0 };
   }
-  const [
-    { previousRewardWeekKey },
-    { finalizeVerifiedRewardWeekBatch },
-    { getAdminDb },
-  ] = await Promise.all([
-    import('./src/rewards/service.js'),
-    import('./src/rewards/verified-finalization.js'),
-    import('./src/firebase/admin.js'),
-  ]);
+  const { previousRewardWeekKey } = startupModule(rewardsServiceImport, 'rewards_service');
+  const { finalizeVerifiedRewardWeekBatch } = startupModule(verifiedRewardImport, 'verified_reward_finalization');
+  const { getAdminDb } = startupModule(firebaseAdminImport, 'firebase_admin');
   const weekKey = previousRewardWeekKey();
   return finalizeVerifiedRewardWeekBatch(weekKey, {
     db: getAdminDb(env),
@@ -61,17 +96,7 @@ export default {
     const url = new URL(request.url);
     if (url.pathname === '/' || url.pathname === '/health') return rootResponse();
 
-    try {
-      const { handleApiRequest } = await import('./cloudflare-router.js');
-      return await handleApiRequest(request, env);
-    } catch (error) {
-      console.error(JSON.stringify({
-        event: 'cloudflare_router_load_failed',
-        name: error?.name || 'Error',
-        message: typeof error?.message === 'string' ? error.message.slice(0, 300) : 'unknown',
-      }));
-      return json(503, { ok: false, error: 'backend_router_unavailable' });
-    }
+    return await handleApiRequest(request, env);
   },
 
   scheduled(controller, env, ctx) {

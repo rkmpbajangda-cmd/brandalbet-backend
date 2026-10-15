@@ -14,11 +14,12 @@
     "build": "npm run build:cloudflare",
     "build:cloudflare": "node scripts/build-cloudflare.mjs",
     "bundle:cloudflare": "npx --yes wrangler@4.129.1 deploy --dry-run --outdir .wrangler/dry-run",
+    "smoke:cloudflare": "node scripts/smoke-cloudflare.mjs",
     "deploy:cloudflare": "npx --yes wrangler@4.129.1 deploy --yes",
-    "validate": "npm run check && npm test && npm run build:cloudflare && npm run bundle:cloudflare"
+    "validate": "npm run check && npm test && npm run build:cloudflare && npm run bundle:cloudflare && npm run smoke:cloudflare"
   },
   "dependencies": {
-    "firebase-admin": "14.5.0"
+    "@ljoukov/firebase-admin-cloudflare": "0.0.2"
   },
   "devDependencies": {}
 }

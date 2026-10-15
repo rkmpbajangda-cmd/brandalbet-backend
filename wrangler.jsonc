@@ -4,6 +4,7 @@
   "main": "cloudflare-worker.js",
   "compatibility_date": "2026-10-03",
   "workers_dev": true,
+  "compatibility_flags": ["nodejs_compat", "allow_eval_during_startup"],
   "keep_vars": true,
   "triggers": {
     "crons": [

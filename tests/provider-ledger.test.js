@@ -190,7 +190,7 @@ test('round finalizer applies valid betting turnover before releasing reward loc
     'rewardTurnover/member-1': {
       uid: 'member-1',
       obligations: [{
-        id: 'cashback-1', weekKey: '2026-W40', principalMinor: 300000,
+        id: 'd'.repeat(64), weekKey: '2026-09-28', principalMinor: 300000,
         requiredTurnoverMinor: 3000000, remainingTurnoverMinor: 3000000,
       }],
       pendingTurnoverMinor: 3000000,
@@ -204,7 +204,7 @@ test('round finalizer applies valid betting turnover before releasing reward loc
 
   const result = await finalizeReadyGoldslotRounds({ db, now });
   assert.equal(result.finalized, 1);
-  assert.equal(db.read('wallets/member-1').rewardLockedMinor, 200000);
+  assert.equal(db.read('wallets/member-1').rewardLockedMinor, 300000);
   assert.equal(db.read('rewardTurnover/member-1').pendingTurnoverMinor, 2000000);
 });
 

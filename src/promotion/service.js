@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { FieldValue } from 'firebase-admin/firestore';
+import { FieldValue } from '@ljoukov/firebase-admin-cloudflare/firestore';
 import { getAdminDb } from '../firebase/admin.js';
 import { ServiceError } from '../utils/errors.js';
 const FIELDS = { title: 100, badge: 40, summary: 240, metaTitle: 100, metaDescription: 160, imageUrl: 2000, ctaLabel: 40, detailIntro: 500 };
