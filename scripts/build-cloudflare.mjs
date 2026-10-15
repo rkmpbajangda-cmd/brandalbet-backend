@@ -149,6 +149,18 @@ const routerSource = await readFile('cloudflare-router.js', 'utf8');
 if (routerSource.includes('/.netlify/functions/') || routerSource.includes('./netlify/functions/')) {
   throw new Error('Cloudflare router must not expose or import Netlify function paths.');
 }
+if (!routerSource.includes('await Promise.all(Object.entries(handlerLoaders)') ||
+    !routerSource.includes('preloadedHandlerModules.set(name, await loadModule())') ||
+    !routerSource.includes('handlerLoadErrors.has(name)')) {
+  throw new Error('Every API handler must be loaded during Worker startup; request-time module loading can trigger blocked code generation.');
+}
+if (!workerSource.includes('await Promise.allSettled([') ||
+    !workerSource.includes("import('./src/game/provider-ledger.js')") ||
+    !workerSource.includes("import('./src/firebase/admin.js')") ||
+    !workerSource.includes('startupModule(providerLedgerImport') ||
+    !workerSource.includes('startupModule(firebaseAdminImport')) {
+  throw new Error('Scheduled handlers must preload Firebase/provider dependencies during Worker startup.');
+}
 
 const packageConfig = JSON.parse(await readFile('package.json', 'utf8'));
 if (packageConfig.scripts?.['build:netlify'] || /netlify/i.test(String(packageConfig.scripts?.dev ?? ''))) {
