@@ -10,7 +10,7 @@ const child = spawn('npx', [
   'dev',
   '--local',
   '--compatibility-date',
-  '2026-09-14',
+  '2026-10-03',
   '--ip', host,
   '--port', String(port),
   '--log-level', 'error',
@@ -72,6 +72,8 @@ try {
   await expectStatus('/api/health', 200);
   await expectStatus('/api/member-onboarding', 405, 'method_not_allowed');
   await expectStatus('/api/member-device-session', 405, 'method_not_allowed');
+  await expectStatus('/api/member-session', 401, 'missing_bearer_token');
+  await expectStatus('/api/me', 401, 'missing_bearer_token');
   console.log('Cloudflare runtime smoke test passed: Worker starts and health/onboarding/device-session routes initialize without handler-load failures.');
 } catch (error) {
   console.error(error?.stack ?? error);
