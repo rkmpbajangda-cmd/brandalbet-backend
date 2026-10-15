@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { FieldValue } from 'firebase-admin/firestore';
+import { FieldValue } from '@ljoukov/firebase-admin-cloudflare/firestore';
 import { getAdminDb } from '../firebase/admin.js';
 import { ServiceError } from '../utils/errors.js';
 import { PAYMENT_ADAPTERS, connectionReadiness } from './registry.js';
