@@ -1,4 +1,4 @@
-import { FieldValue } from 'firebase-admin/firestore';
+import { FieldValue } from '@ljoukov/firebase-admin-cloudflare/firestore';
 import { getAdminDb } from '../../src/firebase/admin.js';
 import { ServiceError } from '../../src/utils/errors.js';
 
