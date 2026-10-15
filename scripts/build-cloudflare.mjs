@@ -1,4 +1,4 @@
-import { access, readFile } from 'node:fs/promises';
+import { access, readFile, readdir } from 'node:fs/promises';
 import { spawnSync } from 'node:child_process';
 
 const config = JSON.parse(await readFile('wrangler.jsonc', 'utf8'));
@@ -168,12 +168,37 @@ if (packageConfig.scripts?.['build:netlify'] || /netlify/i.test(String(packageCo
   throw new Error('Netlify build/dev scripts must be removed from the Cloudflare-only backend.');
 }
 
-const firebaseAdminSource = await readFile('src/firebase/admin.js', 'utf8');
-if (!/initializeFirestore\s*\([^)]*,\s*\{\s*preferRest\s*:\s*true\s*\}/s.test(firebaseAdminSource)) {
-  throw new Error('Cloudflare Firestore must use initializeFirestore(..., { preferRest: true }) to avoid gRPC transport.');
+const firebaseAdapterSource = await readFile('src/firebase/admin.js', 'utf8');
+if (!firebaseAdapterSource.includes("@ljoukov/firebase-admin-cloudflare/app") ||
+    !firebaseAdapterSource.includes("@ljoukov/firebase-admin-cloudflare/firestore") ||
+    firebaseAdapterSource.includes("from 'firebase-admin/") ||
+    firebaseAdapterSource.includes('from "firebase-admin/')) {
+  throw new Error('Cloudflare runtime must use the REST-compatible Firestore adapter, not the Node Firebase Admin SDK.');
 }
-if (!firebaseAdminSource.includes('firebase_admin_project_mismatch')) {
-  throw new Error('Firebase Admin must fail closed when service-account project_id does not match FIREBASE_PROJECT_ID.');
+if (!firebaseAdapterSource.includes('firebase_admin_project_mismatch')) {
+  throw new Error('Firebase access must fail closed when service-account project_id does not match FIREBASE_PROJECT_ID.');
+}
+const runtimeSources = [];
+async function collectRuntimeSources(directory) {
+  for (const entry of await readdir(directory, { withFileTypes: true })) {
+    const path = `${directory}/${entry.name}`;
+    if (entry.isDirectory()) await collectRuntimeSources(path);
+    else if (entry.isFile() && /\\.m?js$/.test(entry.name)) {
+      runtimeSources.push([path, await readFile(path, 'utf8')]);
+    }
+  }
+}
+await collectRuntimeSources('cloudflare/functions');
+await collectRuntimeSources('src');
+for (const [path, source] of runtimeSources) {
+  if (/(?:from\\s*|import\\s*\\()\\s*['"]firebase-admin\\//.test(source)) {
+    throw new Error(`Node Firebase Admin SDK import is not permitted in Cloudflare Worker source: ${path}`);
+  }
+}
+const dependencyConfig = JSON.parse(await readFile('package.json', 'utf8'));
+if (!dependencyConfig.dependencies?.['@ljoukov/firebase-admin-cloudflare'] ||
+    dependencyConfig.dependencies?.['firebase-admin']) {
+  throw new Error('Runtime dependencies must use the Cloudflare-compatible Firestore adapter and exclude firebase-admin.');
 }
 
 for (const file of [
