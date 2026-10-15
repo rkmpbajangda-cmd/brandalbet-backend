@@ -11,8 +11,9 @@ Seluruh API berjalan melalui `cloudflare-worker.js` + `cloudflare-router.js` dan
 - Cloudflare API router: `cloudflare-router.js`
 - Production branch: `main`
 - Node.js compatibility: melalui Cloudflare compatibility date `2026-10-03`
-- Firebase Admin: server-side only
-- Firestore: menggunakan `initializeFirestore(..., { preferRest: true })`
+- Firebase service-account credential: server-side Secret only
+- Firestore: REST-compatible adapter `@ljoukov/firebase-admin-cloudflare` (REST + WebCrypto; no Node gRPC/protobuf Admin SDK in Worker runtime)
+- Firebase Custom Claims bootstrap: Identity Toolkit REST API with a narrowly scoped OAuth token
 
 `wrangler.jsonc` adalah source of truth konfigurasi Cloudflare. Secret tidak boleh berada di file tersebut.
 
@@ -138,3 +139,5 @@ Backoffice admin/superadmin dapat memakai readiness endpoint untuk melihat boole
 ## Cloudflare-only runtime
 
 Netlify dan Deno tidak digunakan sebagai runtime production. Semua API production melalui Cloudflare Worker dan secret production disimpan sebagai Cloudflare Secrets.
+
+The Worker must not import the official Node.js `firebase-admin` package: its Firestore dependency chain includes gRPC/google-gax/protobuf code that is incompatible with the Workers runtime. Firestore transactions and queries must use the Workers-compatible REST adapter and pass the backend validation suite before release. The adapter is community-maintained and is not an official Firebase SDK; keep its compatibility behavior covered by regression tests.
