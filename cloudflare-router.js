@@ -172,6 +172,7 @@ function logHandlerLoadFailure(name, error) {
     route: name,
     name: error?.name || 'Error',
     message: typeof error?.message === 'string' ? error.message.slice(0, 300) : 'unknown',
+    stack: typeof error?.stack === 'string' ? error.stack.slice(0, 1600) : undefined,
   }));
 }
 
