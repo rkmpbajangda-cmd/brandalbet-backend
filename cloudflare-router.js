@@ -37,10 +37,29 @@ const handlerLoaders = Object.freeze({
   'wallet': () => import('./cloudflare/functions/wallet.js'),
 });
 
+// Firebase Admin's Firestore dependency can use new Function during module
+// initialization. Cloudflare permits that only during startup when
+// allow_eval_during_startup is enabled, so resolve every route module now,
+// before a request is handled. Keep failures isolated per route so one optional
+// handler cannot prevent the health endpoint or unrelated routes from starting.
+const preloadedHandlerModules = new Map();
+const handlerLoadErrors = new Map();
+
+await Promise.all(Object.entries(handlerLoaders).map(async ([name, loadModule]) => {
+  try {
+    preloadedHandlerModules.set(name, await loadModule());
+  } catch (error) {
+    handlerLoadErrors.set(name, error);
+    logHandlerLoadFailure(name, error);
+  }
+}));
+
 async function resolveHandler(name, env) {
-  const loadModule = handlerLoaders[name];
-  if (!loadModule) return null;
-  const module = await loadModule();
+  const module = preloadedHandlerModules.get(name);
+  if (!module) {
+    if (handlerLoadErrors.has(name)) throw handlerLoadErrors.get(name);
+    return null;
+  }
   if (typeof module?.createHandler === 'function') return module.createHandler({ env });
   if (typeof module?.handler === 'function') return module.handler;
   throw new TypeError(`Handler export is unavailable for ${name}`);
