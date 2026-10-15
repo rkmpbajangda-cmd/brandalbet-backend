@@ -10,7 +10,7 @@ const child = spawn('npx', [
   'dev',
   '--local',
   '--compatibility-date',
-  '2026-10-03',
+  '2026-09-14',
   '--ip', host,
   '--port', String(port),
   '--log-level', 'error',
